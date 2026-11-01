@@ -1,0 +1,83 @@
+%% One-page CV template. Compile from cv/ with lualatex (see TEMPLATE.md).
+\documentclass[10pt,a4paper]{article}
+
+\usepackage[a4paper,top=11mm,bottom=10mm,left=14mm,right=14mm]{geometry}
+\usepackage{fontspec}
+\setmainfont{Lato}[
+    Path = ../cover_letters/OpenFonts/fonts/lato/,
+    Extension = .ttf,
+    Kerning = Off,
+    UprightFont = *-Reg,
+    BoldFont = *-Bol,
+    ItalicFont = *-RegIta,
+    BoldItalicFont = *-BolIta,
+]
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage[hidelinks,unicode,pdftitle={[YOUR_NAME] - CV}]{hyperref}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\definecolor{ink}{HTML}{1F1F1F}
+\color{ink}
+
+\titleformat{\section}{\normalsize\bfseries}{}{0pt}{\hspace{5mm}\MakeUppercase}[{\titlerule[0.4pt]}]
+\titlespacing*{\section}{0pt}{9pt}{4pt}
+\setlist[itemize]{leftmargin=5.5mm,itemsep=1.5pt,topsep=2pt,parsep=0pt,label=\textbullet}
+
+\newcommand{\cvlink}[2]{\href{#1}{\underline{#2}}}
+% \cvrole{left heading}{date range, single ASCII hyphen}
+\newcommand{\cvrole}[2]{\textbf{#1}\hfill\textbf{#2}\par}
+
+\begin{document}
+
+\begin{center}
+    {\fontsize{26}{30}\selectfont\bfseries [YOUR_NAME_UPPERCASE]\par}
+    \vspace{3pt}
+    {\fontsize{13.5}{16}\selectfont\bfseries [ROLE LINE TAILORED TO THE POSTING]\par}
+    \vspace{5pt}
+    \hrule height 0.4pt
+    \vspace{5pt}
+    {\small [YOUR_EMAIL] | [YOUR_PHONE] | \cvlink{[YOUR_LINKEDIN_URL]}{LinkedIn} | \cvlink{[YOUR_GITHUB_URL]}{GitHub}\par}
+    \vspace{5pt}
+    \hrule height 0.4pt
+\end{center}
+
+\vspace{2pt}
+[Profile statement, 3-4 lines, tailored to the posting.]
+
+\section{Technical Skills}
+\textbf{[Category 1]:} [Skills]\par
+\textbf{[Category 2]:} [Skills]\par
+\textbf{[Category 3]:} [Skills]\par
+\textbf{[Category 4]:} [Skills]\par
+
+\section{Professional Experience}
+\cvrole{\cvlink{[COMPANY_URL]}{[Company]} - [Title]}{[YYYY - Present]}
+\begin{itemize}
+    \item {[Achievement]}
+    \item {[Achievement]}
+    \item {[Achievement]}
+    \item {[Achievement]}
+\end{itemize}
+
+\section{Projects}
+\cvrole{\cvlink{[PROJECT_URL]}{[Project]} - [One-line description]}{[YYYY]}
+\begin{itemize}
+    \item {[Measured result]}
+    \item {[Technical detail]}
+\end{itemize}
+
+\section{Education}
+\cvrole{[Degree] - [Institution] ([Distinction])}{[YYYY - YYYY]}
+
+\section{Additional Information}
+\begin{itemize}
+    \item \textbf{Languages:} [Languages]
+    \item \textbf{Military Service:} [Service]
+    \item \textbf{Availability:} [Availability]
+\end{itemize}
+
+\end{document}
