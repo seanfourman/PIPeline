@@ -22,6 +22,7 @@
 
 ## Known pitfalls
 
+- Keep `\raggedright`. Justified lines squeeze word gaps until the text layer joins words (`andMongoDB`).
 - Keep `Kerning = Off` in the font setup. With kerning on, the PDF text layer splits words at kerning pairs (`PyT orch`, `T ensorFlow`), so an ATS keyword match fails even though the page looks right.
 - Compile from `cv/`. The font path is relative to that folder, so a compile from anywhere else fails with a missing Lato error.
 - Escape `&`, `%`, `#` and `_` in body text. An unescaped `%` silently removes the rest of the line.
