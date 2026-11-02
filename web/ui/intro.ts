@@ -8,7 +8,8 @@ import { foxPixels, type Mood, type Pixel } from "./pip";
 
 type Ctx = CanvasRenderingContext2D;
 type Card = DOMRect | null;
-export type Reaction = "wrong" | "right";
+// wrong and right answer the login; hop is for the board flipping to another language.
+export type Reaction = "wrong" | "right" | "hop";
 // card gives the form's box; shown says whether the form is on screen yet, so its board appears with it.
 export type IntroOptions = { play: boolean; night: boolean; card: () => Card; shown: () => boolean; onCardShow: () => void; onLanded: () => void };
 
@@ -357,8 +358,10 @@ const steady = (i: number) => (((i + 1) * 2654435761) >>> 0) / 4294967296;
 function drawBoard(g: Ctx, box: DOMRect, b: number, p: Palette, t: number) {
   const x0 = Math.round(box.left);
   const y0 = Math.round(box.top);
-  const C = Math.max(40, Math.round(box.width / b));
+  const C = Math.round(box.width / b);
   const R = Math.max(30, Math.round(box.height / b));
+  // Narrower than its frame, in the middle of a flip: nothing to draw.
+  if (C < 10) return;
   const q = p.board;
   const at = (x: number, y: number, w: number, h: number, color: string) => {
     g.fillStyle = color;
@@ -401,6 +404,9 @@ function drawBoard(g: Ctx, box: DOMRect, b: number, p: Palette, t: number) {
   plate(4, 1, q.panel);
   at(5, 4, C - 10, 1, q.panelShade);
   at(4, 5, 1, R - 10, q.panelShade);
+
+  // Too narrow for the rest, in a flip: just the bare board.
+  if (C < 40) return;
 
   // A vine along the top right edge, sagging a little, then hanging down the right side to a blossom.
   const [stem, leaf, light, tip] = q.vine;
@@ -656,7 +662,8 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
     }
 
     if (t >= T.jump && card) {
-      const perch = { x: card.left + 16, y: card.top + 1 };
+      // Near the board's left end, or over its middle while it is narrow in a flip.
+      const perch = { x: card.left + Math.min(16, card.width / 2), y: card.top + 1 };
       const k = clamp((t - T.jump) / (T.land - T.jump));
       const from = jumpFrom ?? { x: perch.x - 40, y: H * 0.8 };
       let x = perch.x;
@@ -681,6 +688,11 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
         if (reaction.kind === "right") {
           mood = "happy";
           y -= Math.round(Math.abs(Math.sin(since * 9)) * 6 * Math.max(0, 1 - since / 1.2));
+        } else if (reaction.kind === "hop") {
+          if (since < 0.36) {
+            mood = "happy";
+            y -= Math.round(Math.sin((since / 0.36) * Math.PI) * 8);
+          }
         } else if (since < 2.2) {
           mood = "worried";
           if (since < 0.5) x += Math.round(Math.sin(since * 40));

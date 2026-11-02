@@ -387,19 +387,23 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .intro-bg, .intro-fx { position: absolute; left: 0; top: 0; display: block; }
 .intro-bg { z-index: 0; }
 .intro-fx { z-index: 3; pointer-events: none; }
-.login-top { position: absolute; top: 0; inset-inline: 0; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; }
-/* A hard dark outline, like the form's, so the name reads over sky and trees, morning or night. */
-.login-brand {
-  color: #fff; font-family: var(--head); font-size: 26px; letter-spacing: 0.02em;
-  text-shadow: 2px 0 #0b0a22, -2px 0 #0b0a22, 0 2px #0b0a22, 0 -2px #0b0a22, 2px 2px #0b0a22, -2px -2px #0b0a22, 2px -2px #0b0a22, -2px 2px #0b0a22;
-}
+/* The buttons sit in the top left corner in both languages; the header is laid out left to right. */
+.login-top { position: absolute; top: 0; left: 0; right: 0; z-index: 4; display: flex; align-items: center; gap: 12px; padding: 16px 20px; }
+.login-top .row { gap: 12px; }
 /* The top buttons in the same pixel style: square, with a stepped dark edge. */
 .login-top .lang, .login-top .theme, .skip {
   border-radius: 0; background: var(--chip); color: var(--chip-ink);
   box-shadow: 0 calc(var(--px) * -1) 0 0 var(--board-line), 0 var(--px) 0 0 var(--board-line), calc(var(--px) * -1) 0 0 0 var(--board-line), var(--px) 0 0 0 var(--board-line);
 }
-.login-top .lang button { border-radius: 0; color: var(--chip-ink); }
-.login-top .lang button[aria-pressed="true"] { background: var(--chip-on); color: #fff; }
+/* The language switch: two equal halves, and a block that slides in steps under the language picked. */
+.login-top .lang { position: relative; display: grid; grid-template-columns: 1fr 1fr; flex: none; }
+.login-top .lang::before {
+  content: ""; position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); background: var(--chip-on);
+  transition: transform 0.2s steps(4, end);
+}
+.login-top .lang[data-on="he"]::before { transform: translateX(100%); }
+.login-top .lang button { position: relative; padding: 6px 12px; border-radius: 0; color: var(--chip-ink); }
+.login-top .lang button[aria-pressed="true"] { background: none; color: #fff; }
 .login-top .theme:hover, .login-top .lang button:hover, .skip:hover { color: #fff; }
 .skip { border: 0; padding: 9px 14px; font: inherit; font-weight: 600; cursor: pointer; }
 .skip:hover { background: var(--chip-on); }
@@ -439,15 +443,20 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .login-card .login-submit:focus-visible { outline: var(--px) solid var(--field-focus); outline-offset: calc(var(--px) * 2); }
 /* The pop stays in the list, so taking the shake off again does not play the pop a second time. */
 .login-card.show.shake { animation: pop 0.36s steps(3, end), shake 0.45s; }
+/* A new language flips the board like a sign, in hard steps: it narrows to nothing, holds there while the
+   words change, then opens again. The halves last FLIP_MS in ui/login.tsx. */
+.login-card.show.flip-out { animation: pop 0.36s steps(3, end), flip-out 0.18s steps(3, end) forwards; }
+.login-card.show.flip-in { animation: pop 0.36s steps(3, end), flip-in 0.18s steps(3, end); }
+@keyframes flip-out { to { transform: scaleX(0); } }
+@keyframes flip-in { from { transform: scaleX(0); } }
 @keyframes shake { 0%, 100% { transform: none; } 20% { transform: translateX(calc(var(--px) * -2)); } 40% { transform: translateX(calc(var(--px) * 2)); } 60% { transform: translateX(calc(var(--px) * -1)); } 80% { transform: translateX(var(--px)); } }
 /* The login's words in the pixel font. Pixel shape 2 joins the pixels into solid square letters; the other
    shapes come out dashed or dotted. It is narrow, so it runs larger than the rest of the site.
    Last in the block, so it wins over the fonts set above. */
-.login-brand, .login-card h1, .login-card .sub, .login-card .field-label, .login-card .error-line, .login-card .login-submit,
+.login-card h1, .login-card .sub, .login-card .field-label, .login-card .error-line, .login-card .login-submit,
 .login-top .lang button, .login-top .skip {
   font-family: "Handjet", var(--head); font-variation-settings: "ELSH" 2; font-weight: 500; line-height: 1.15;
 }
-.login-brand { font-size: 36px; font-weight: 600; }
 .login-card h1 { font-size: 46px; font-weight: 600; }
 .login-card .sub { font-size: 22px; }
 .login-card .field-label { font-size: 21px; }
