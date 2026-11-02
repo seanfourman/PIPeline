@@ -3,6 +3,9 @@
 @font-face { font-family: "Rubik"; src: url("fonts/rubik-latin.woff2") format("woff2"); font-weight: 300 900; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 @font-face { font-family: "Fredoka"; src: url("fonts/fredoka-hebrew.woff2") format("woff2"); font-weight: 300 700; font-display: swap; unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
 @font-face { font-family: "Fredoka"; src: url("fonts/fredoka-latin.woff2") format("woff2"); font-weight: 300 700; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+/* Handjet, a pixel font with Hebrew, for the pixel art login. Its ELSH axis sets the shape of each pixel. */
+@font-face { font-family: "Handjet"; src: url("fonts/handjet-hebrew.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
+@font-face { font-family: "Handjet"; src: url("fonts/handjet-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
 :root {
   color-scheme: light;
@@ -437,6 +440,20 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 /* The pop stays in the list, so taking the shake off again does not play the pop a second time. */
 .login-card.show.shake { animation: pop 0.36s steps(3, end), shake 0.45s; }
 @keyframes shake { 0%, 100% { transform: none; } 20% { transform: translateX(calc(var(--px) * -2)); } 40% { transform: translateX(calc(var(--px) * 2)); } 60% { transform: translateX(calc(var(--px) * -1)); } 80% { transform: translateX(var(--px)); } }
+/* The login's words in the pixel font. Pixel shape 2 joins the pixels into solid square letters; the other
+   shapes come out dashed or dotted. It is narrow, so it runs larger than the rest of the site.
+   Last in the block, so it wins over the fonts set above. */
+.login-brand, .login-card h1, .login-card .sub, .login-card .field-label, .login-card .error-line, .login-card .login-submit,
+.login-top .lang button, .login-top .skip {
+  font-family: "Handjet", var(--head); font-variation-settings: "ELSH" 2; font-weight: 500; line-height: 1.15;
+}
+.login-brand { font-size: 36px; font-weight: 600; }
+.login-card h1 { font-size: 46px; font-weight: 600; }
+.login-card .sub { font-size: 22px; }
+.login-card .field-label { font-size: 21px; }
+.login-card .error-line { font-size: 20px; }
+.login-card .login-submit { font-size: 27px; font-weight: 600; }
+.login-top .lang button, .login-top .skip { font-size: 20px; }
 .shell.entering { animation: enter 0.45s ease-out; }
 @keyframes enter { from { opacity: 0; transform: scale(0.985); } }
 
