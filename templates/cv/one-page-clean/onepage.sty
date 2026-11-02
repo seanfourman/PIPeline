@@ -1,0 +1,265 @@
+% Layout measured from the candidate's Canva resumes. Sizes and distances are in bp, as in the PDFs.
+% Those PDFs were placed by hand, so their left edges drift by up to 2bp. Here every rule, text
+% edge and date uses the same two margins, which are equal, so the page is symmetric.
+% Load from cv/: the font path below is relative to that folder.
+\ProvidesPackage{onepage}
+\RequirePackage[paperwidth=595.5bp,paperheight=842.25bp,left=35.8bp,textwidth=523.9bp,top=0bp,bottom=0bp,headheight=0bp,headsep=0bp,footskip=0bp,nomarginpar]{geometry}
+\RequirePackage{fontspec}
+\RequirePackage{xcolor}
+\RequirePackage{tikz}
+\RequirePackage[hidelinks,unicode]{hyperref}
+
+% The original font is Proxima Nova, which is commercial. It is used when installed,
+% and otherwise Figtree, adjusted to the same text widths.
+% Figtree's weights are set from the variable font to match the originals' ink per line:
+% Regular is wght 360, Bold is 670 for 11pt text, and Display is 710 for the name and headings.
+\newcommand{\cvdisplay}{\bfseries}
+\IfFontExistsTF{Proxima Nova}{
+  \setmainfont{Proxima Nova}[Kerning=Off, Ligatures=NoCommon]
+}{
+  \setmainfont{Figtree}[
+    Path = ../templates/cv/one-page-clean/fonts/,
+    Extension = .ttf,
+    UprightFont = *-Regular,
+    BoldFont = *-Bold,
+    UprightFeatures = {FakeStretch=0.9837},
+    BoldFeatures = {FakeStretch=0.987},
+    Kerning = Off,
+    Ligatures = NoCommon,
+  ]
+  \newfontface{\cvdisplayface}{Figtree-Display}[
+    Path = ../templates/cv/one-page-clean/fonts/,
+    Extension = .ttf,
+    FakeStretch = 0.9812,
+    Kerning = Off,
+    Ligatures = NoCommon,
+  ]
+  \renewcommand{\cvdisplay}{\cvdisplayface}
+}
+
+\definecolor{cvink}{HTML}{1E1E1E}
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0pt}
+\setlength{\topskip}{0pt}
+\setlength{\lineskiplimit}{-100bp}
+\raggedright
+\hyphenpenalty=10000
+\exhyphenpenalty=10000
+\frenchspacing
+\newlength{\cvline}\setlength{\cvline}{15.03bp}
+\newlength{\cvwidth}
+
+% Moves the next baseline to #1 below the previous one, whatever the font size.
+\newcommand{\cvgap}[1]{\par\vspace{\dimexpr #1bp-\cvline\relax}}
+\newcommand{\cvsize}[1]{\fontsize{#1bp}{\cvline}\selectfont}
+% A full-width rule, #1 below the baseline.
+\newcommand{\cvrule}[1]{\leavevmode\rlap{\textcolor{cvink}{\rule[-\dimexpr #1bp+0.375bp\relax]{\textwidth}{0.75bp}}}}
+\newcommand{\cvunderline}[1]{\settowidth{\cvwidth}{#1}\rlap{\textcolor{cvink}{\rule[-1.5bp]{\cvwidth}{0.75bp}}}#1}
+\newcommand{\cvlink}[2]{\href{#1}{\cvunderline{#2}}}
+\newcommand{\cvdot}{\makebox[0pt][r]{\raisebox{1.5bp}{\tikz\fill[cvink] (0,0) circle (1.5bp);}\hspace{8bp}}}
+
+% Equal ink margins at the top and bottom of the page: the spacer covers the name's capitals,
+% less the descenders on the last line.
+\AtBeginDocument{\color{cvink}\cvsize{11}\null\vspace{16.15bp}\vfill}
+\AtEndDocument{\par\vfill\null}
+
+% Centers a line by its ink, not its advance widths. Letters have different side bearings, so
+% without this a line sits up to 0.6bp off the middle of the page.
+\directlua{
+  function cvfindglyph(head, last)
+    local n = last and node.tail(head) or head
+    while n do
+      if n.id == node.id('glyph') then return n end
+      if (n.id == node.id('hlist') or n.id == node.id('vlist')) and n.head then
+        local g = cvfindglyph(n.head, last)
+        if g then return g end
+      end
+      n = last and n.prev or n.next
+    end
+  end
+  function cvbearing(g, side)
+    local data = fonts.hashes.identifiers[g.font]
+    local c = data.characters[g.char]
+    local d = data.shared.rawdata.descriptions[g.char]
+    if not (d and d.boundingbox and d.width and d.width > 0 and c) then return 0 end
+    local units = side == 'left' and d.boundingbox[1] or d.width - d.boundingbox[3]
+    return units / d.width * c.width
+  end
+  function cvinkkern(boxnumber, underlined)
+    local head = tex.box[boxnumber].head
+    local first, last = cvfindglyph(head, false), cvfindglyph(head, true)
+    if not (first and last) then return 0 end
+    local right = underlined and 0 or cvbearing(last, 'right')
+    return math.floor(right - cvbearing(first, 'left'))
+  end
+}
+\newbox\cvinkbox
+% [true] when the line ends in an underlined word, whose ink runs to the end of its width.
+\newcommand{\cvcentered}[2][false]{\setbox\cvinkbox=\hbox{#2}\centerline{\kern\directlua{tex.sprint(cvinkkern(\number\cvinkbox, #1))}sp\box\cvinkbox}}
+
+\newcommand{\cvname}[1]{{\cvsize{26}\cvdisplay\cvcentered{#1}}\par}
+
+% The separator in the role line is thinner than the words around it.
+\newcommand{\cvsep}{{\normalfont\cvsize{\cvheadsize}|}}
+\def\cvheadsize{18}
+
+% Long role lines step down to 16 and 15, as the originals do.
+\newcommand{\cvheadline}[1]{%
+  \cvgap{28.5}%
+  \settowidth{\cvwidth}{\cvsize{18}\cvdisplay #1}%
+  \ifdim\cvwidth>500bp\def\cvheadsize{16}\settowidth{\cvwidth}{\cvsize{16}\cvdisplay #1}%
+    \ifdim\cvwidth>500bp\def\cvheadsize{15}\fi
+  \fi
+  \cvfit{role line}{\textwidth}{\cvsize{\cvheadsize}\cvdisplay #1}%
+  {\cvrule{9.55}\cvsize{\cvheadsize}\cvdisplay\cvcentered{#1}}\par}
+
+\newcommand{\cvcsep}{\kern-0.25bp|\kern-0.25bp}
+% The contact line sits midway between the two rules around it.
+\newcommand{\cvcontact}[1]{\cvgap{26.8}{\cvrule{11.05}\cvcentered[true]{#1}}\par\cvgap{34}}
+% The numeric limits live in cv_checks.json, which the interface's rules screen edits.
+\directlua{
+  local file = io.open("../templates/cv/one-page-clean/cv_checks.json")
+  if not file then tex.error("cv_checks.json was not found. Compile from the cv folder.") end
+  local checks = file:read("*a")
+  file:close()
+  function cvlimit(name) tex.sprint(string.match(checks, '"' .. name .. '"[^0-9]*([0-9]+)')) end
+}
+\edef\cvsummarylines{\directlua{cvlimit("summaryLines")}}
+\edef\cvsummaryfill{\directlua{cvlimit("summaryFill")}}
+\edef\cvmaxskilllines{\directlua{cvlimit("skillLines")}}
+\edef\cvmaxskillitems{\directlua{cvlimit("skillItems")}}
+
+% The summary always fills the set number of lines, and the last one reaches the set share of the width.
+% Anything else stops the compile, so the text gets rewritten instead of shipped.
+\newcount\cvlines
+\newbox\cvlastline
+\newbox\cvsummarybox
+\newcommand{\cvsummary}[1]{%
+  \setbox\cvsummarybox=\vbox{#1\par\global\cvlines=\prevgraf\global\setbox\cvlastline=\lastbox}%
+  \setbox\cvlastline=\hbox{\unhbox\cvlastline\unskip\unskip\unpenalty}%
+  \ifnum\cvlines=\cvsummarylines\relax\else
+    \PackageError{onepage}{The summary is \the\cvlines\space lines, and it must be exactly \cvsummarylines\space full lines}{Rewrite the summary text to fill \cvsummarylines\space lines. Do not change the layout.}%
+  \fi
+  \ifdim\wd\cvlastline<\dimexpr\textwidth*\cvsummaryfill/100\relax
+    \PackageError{onepage}{The summary's last line fills only \the\numexpr\number\wd\cvlastline/(\number\textwidth/100)\relax\space percent of the width, and it must reach \cvsummaryfill\space percent}{Add to the summary text until the last line is nearly full. Do not change the layout.}%
+  \fi
+  #1\par}
+
+% Sean's rules for every generated CV. Each one stops the compile when broken, so the text gets
+% rewritten instead of shipped:
+%   - Nothing wraps. Only the summary has more than one line.
+%   - Skills stay believable for a recent graduate, within the limits in cv_checks.json. Those limits
+%     are a judgment of what a graduate with a year of work really knows, and Sean's own CVs, which
+%     Sean considers overstated, must not be used to raise them.
+%   - Jobs show months: "Aug 2025 - Present" or "Oct 2025 - Jul 2026".
+\newbox\cvfitbox
+\newcount\cvitems
+\newcount\cvskilllines
+\newcount\cvskillitems
+\newif\ifcvinexperience
+\def\cvexperiencetitle{PROFESSIONAL EXPERIENCE}
+\directlua{
+  function cvvaliddate(s)
+    local months = {Jan=1, Feb=1, Mar=1, Apr=1, May=1, Jun=1, Jul=1, Aug=1, Sep=1, Oct=1, Nov=1, Dec=1}
+    local function ok(p)
+      return months[string.sub(p, 1, 3)] and string.sub(p, 4, 4) == ' ' and string.len(p) == 8 and tonumber(string.sub(p, 5))
+    end
+    local dash = string.find(s, ' - ', 1, true)
+    if not dash then return false end
+    local right = string.sub(s, dash + 3)
+    return ok(string.sub(s, 1, dash - 1)) and (right == 'Present' or ok(right))
+  end
+}
+% #1 what it is, #2 the width it must fit, #3 its text.
+\newcommand{\cvfit}[3]{\setbox\cvfitbox=\hbox{#3}%
+  \ifdim\wd\cvfitbox>#2\relax
+    \PackageError{onepage}{This #1 wraps to a second line, over by \the\dimexpr\wd\cvfitbox-#2\relax: \detokenize{#3}}{Shorten the text so it fits on one line. Do not change the layout.}%
+  \fi}
+
+% [#1] is the gap above, #2 the title.
+\newcommand{\cvsection}[2][29.5]{\cvgap{#1}\def\cvtitle{#2}%
+  \ifx\cvtitle\cvexperiencetitle\cvinexperiencetrue\else\cvinexperiencefalse\fi
+  \cvrule{5.7}\hspace*{15bp}{\cvsize{12}\cvdisplay #2}\par}
+\newcommand{\cvskill}[2]{%
+  \cvfit{skills line}{\textwidth}{\cvsize{10.98}\textbf{#1:} #2}%
+  \cvitems=\directlua{tex.sprint(select(2, string.gsub("\luaescapestring{\detokenize{#2}}", ",", ",")) + 1)}\relax
+  \advance\cvskilllines by 1 \advance\cvskillitems by \cvitems
+  {\color{black}\cvsize{10.98}\textbf{#1:} #2}\par}
+\newcommand{\cvskillsstart}{\cvgap{20}}
+\AtEndDocument{%
+  \ifnum\cvskilllines>\cvmaxskilllines\relax
+    \PackageError{onepage}{There are \the\cvskilllines\space skills lines, and the limit is \cvmaxskilllines}{Merge or remove lines.}%
+  \fi
+  \ifnum\cvskillitems>\cvmaxskillitems\relax
+    \PackageError{onepage}{The skills list \the\cvskillitems\space items, and the limit is \cvmaxskillitems}{Keep only what the posting needs and the candidate can defend.}%
+  \fi}
+
+% #1 the project or degree, #2 the date, which ends at the right margin.
+\newcommand{\cvrole}[2]{%
+  \ifcvinexperience
+    \PackageError{onepage}{A job must use cvjob, which requires months}{Use the cvjob command with a date like Aug 2025 - Present.}%
+  \fi
+  \cvfit{line}{\textwidth}{\textbf{#1}\kern12bp\textbf{#2}}%
+  \textbf{#1}\hfill\textbf{#2}\par}
+% #1 the job, #2 its dates with months.
+\newcommand{\cvjob}[2]{%
+  \directlua{if not cvvaliddate("\luaescapestring{\detokenize{#2}}") then tex.error("Job dates need months, like Aug 2025 - Present or Oct 2025 - Jul 2026: \luaescapestring{\detokenize{#2}}") end}%
+  \cvfit{job line}{\textwidth}{\textbf{#1}\kern12bp\textbf{#2}}%
+  \textbf{#1}\hfill\textbf{#2}\par}
+\newcommand{\cvrolegap}[1][21]{\cvgap{#1}}
+\newcommand{\cvfirstrole}{\cvgap{20}}
+\newcommand{\cvbullet}[1]{%
+  \cvfit{bullet}{\dimexpr\textwidth-19bp\relax}{#1}%
+  \hangindent=19bp\hangafter=0\cvdot #1\par}
+\newcommand{\cvinfo}[2]{\cvbullet{\textbf{#1:} #2}}
+
+% Word gaps are glue, which a PDF stores as a jump with no character, so some parsers join the words.
+% Each gap gives up the width of a real space glyph, going negative if it is narrower, so the page does not move.
+\directlua{
+  local GLYPH, GLUE, HLIST, VLIST = node.id("glyph"), node.id("glue"), node.id("hlist"), node.id("vlist")
+  local function istext(n) return n.id == GLYPH or (n.id == HLIST and n.list ~= nil) end
+  local function textafter(n)
+    while n do
+      if istext(n) then return true end
+      n = n.next
+    end
+    return false
+  end
+  local function gapwidth(box, gap)
+    if box.glue_sign == 1 and gap.stretch_order == box.glue_order then return gap.width + gap.stretch * box.glue_set end
+    if box.glue_sign == 2 and gap.shrink_order == box.glue_order then return gap.width - gap.shrink * box.glue_set end
+    return gap.width
+  end
+  local WORDGAP = {}
+  for subtype, name in pairs(node.subtypes("glue")) do
+    if name == "userskip" or name == "spaceskip" or name == "xspaceskip" then WORDGAP[subtype] = true end
+  end
+  local lastfont
+  local function addspaces(box)
+    local seen = false
+    local n = box.list
+    while n do
+      local following = n.next
+      if n.id == HLIST or n.id == VLIST then
+        addspaces(n)
+      elseif n.id == GLYPH then
+        lastfont = n.font
+      elseif n.id == GLUE and WORDGAP[n.subtype] and box.id == HLIST and seen and lastfont and textafter(following) then
+        local character = font.getfont(lastfont).characters[32]
+        if character and gapwidth(box, n) > 0 then
+          local space = node.new("glyph")
+          space.font, space.char = lastfont, 32
+          n.width = n.width - character.width
+          box.list = node.insert_before(box.list, n, space)
+        end
+      end
+      seen = seen or istext(n)
+      n = following
+    end
+  end
+  luatexbase.add_to_callback("pre_shipout_filter", function(box)
+    addspaces(box)
+    return true
+  end, "cv real spaces")
+}

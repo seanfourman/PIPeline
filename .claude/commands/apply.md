@@ -1,5 +1,11 @@
 # /apply - Drafter-Reviewer Job Application Workflow
 
+**All CV rules are in `CV_RULES.md`. Read it before drafting. It wins over anything below.**
+
+**Sean's rule:** every job gets its own tailored CV. Write a cover letter only when the posting asks for one, or when Sean asks. Otherwise skip every cover letter step in this workflow.
+
+The CV sent to an employer is always named `Sean Fourman - Resume.pdf`. Build a CV with `python templates/cv/one-page-clean/build.py <company>_<role>`, run from the repository root. It compiles, verifies, and saves `documents/applications/<company>_<role>/Sean Fourman - Resume.pdf`. Run one plain command per shell call, without `cd`, variables or `&&`, because anything else stops to ask Sean for approval.
+
 You are orchestrating a two-agent job application workflow. The job posting is provided below as `$ARGUMENTS` (either a URL or pasted text).
 
 Follow these steps **exactly in order**. Do not skip steps.
@@ -102,6 +108,7 @@ Also read the most recent existing CV and cover letter files for concrete struct
 *The master candidate profile (`01-candidate-profile.md`), the master CV (`cv/main_example.tex`), and CLAUDE.md's Candidate Profile section are the sole source of truth for facts; existing tailored CVs may be read for structure and phrasing only, never as a source of claims.*
 
 ### Requirement coverage (both documents)
+**On the CV, `CV_RULES.md` limits this section.** Cover the main requirements and leave the rest out, because a CV that ticks every requirement is not believable. Bridging phrases such as "conceptually aligned with" belong in a cover letter, never on a CV, and the CV's section headings stay as the template has them.
 - **Every requirement the posting states gets addressed - matched or honestly gapped, never silently omitted.** A stated requirement the candidate lacks (a tool, a clearance, years of experience) is acknowledged with an honest bridge ("not in my daily toolkit yet; a natural extension of X"), because omission reads as hiding once an interviewer asks. Build the requirement list from Step 1 and check both drafts against it before Step 3.
 - **Engage nice-to-haves by name** where the profile supports honest adjacency (e.g. "conceptually aligned with <named tool>"), and use the posting's own term over a synonym wherever it is truthfully applicable - including in CV section headings (a posting hiring for "MLOps" should find a heading containing "MLOps", not only a paraphrase).
 - **Address stated logistics and prerequisites** in the cover letter where the posting raises them: security clearance willingness, start date or availability, commute or location fit, and the posting's reference/job ID where one exists. When the employer operates across several countries, a truthful language-capabilities sentence mapped to their footprint is high-value targeting.
@@ -110,10 +117,10 @@ Also read the most recent existing CV and cover letter files for concrete struct
 
 ### CV (`cv/main_<company>_<role><CV_EXT>`)
 - In the **CV language from the profile** (the `CV language:` line in CLAUDE.md's Identity section). When the profile does not set one, default to **English**. Never switch language per posting - the CV language is a profile-level choice, so all CVs stay consistent and reusable
-- Follow the moderncv/banking format from `05-cv-templates.md`
+- Follow the active template named in `05-cv-templates.md`
 - Tailor the profile statement and experience bullets to the specific role
 - Reframe skills and achievements to match job requirements
-- Keep to 2 pages
+- Keep to the active template's page limit: one page
 - **Grounding Audit:** Before writing to disk, audit all tailored bullet points against the union of three sources: `.claude/skills/job-application-assistant/01-candidate-profile.md` + the master CV (`cv/main_example.tex`) + `CLAUDE.md`'s Candidate Profile section to verify that all dates, roles, and metrics match exactly (zero profile drift or fabrication).
 
 ### Cover Letter (`cover_letters/cover_<company>_<role><COVER_EXT>`)
@@ -123,7 +130,7 @@ Also read the most recent existing CV and cover letter files for concrete struct
 - Tailor the opening paragraph to the specific role and company
 - Address to a named person if available in the posting, otherwise "Dear Hiring Manager" (or equivalent in posting language)
 - Keep to approximately one page
-- Any mention of agentic coding or AI tooling must reference **Claude Code** by name
+- Follow `CV_RULES.md`
 
 Write both files to disk. Keep the exact text of both drafts in working memory — you will pass them inline to the reviewer in Step 3 and revise them in Step 4 without re-reading.
 
@@ -277,7 +284,7 @@ The thresholds are calibrated for the stock moderncv and `cover.cls` geometry; a
 Then read both PDFs via the Read tool and verify:
 
 **CV (`cv/main_<company>_<role>.pdf`):**
-- [ ] Exactly 2 pages (not 1, not 3)
+- [ ] Exactly the active template's page limit: one page
 - [ ] No orphaned `\cventry` titles — a job/education title line must never sit alone at the bottom of page 1 with its bullets on page 2. This is the most common failure.
 - [ ] Section headings are not isolated at the top of page 2 with only 1-2 lines below
 - [ ] No awkward whitespace gaps
@@ -406,6 +413,8 @@ Do this before the optional offer below, and before ending the turn for any othe
 5. Never restructure the CSV, reorder rows, or touch other rows.
 6. **Do not modify `job_scraper/seen_jobs.json`.** Dedup runs off the tracker instead: `/rank` builds its exclusion set from company+role there regardless of status.
 7. **Archive the posting now.** Write the posting text you are holding from Step 0 - the text as `tools/posting_guard.py` cleaned it, verbatim from there and never a summary, never a fresh fetch - to `documents/applications/<company>_<role>/job_posting.md`, creating the folder if absent. Append a `## posting_guard` section holding the verdict line and the finding **counts** only (hidden blocks, instruction-like lines, hidden URLs, invisible characters, mixed-script words); never the excerpts, so content the gate removed is never re-read by `/interview`, `/outcome` or `/setup` later. Derive `<company>_<role>` from the `company` and `role` values this tracker row ends up holding, by the same rule `/outcome` Step 1.4 uses. **If the file already exists, leave it** - the archived copy is what was actually submitted (a re-application to the same company and role collides here and keeps the older posting, as it does in `/outcome` today). **If you no longer hold the posting text, write nothing** - say so in the report and never reconstruct it from memory; `/outcome` Step 3.2 archives it later.
+
+8. **Score the CV.** Run `python templates/cv/one-page-clean/ats.py <company>_<role>`, once the posting is archived. Report the score and the missing terms to Sean. Never add a term to raise the score: `CV_RULES.md` explains why.
 
 Name the tracker row in the "Files Created" report above, and the archived posting - saying explicitly when an existing `job_posting.md` was left in place rather than written.
 

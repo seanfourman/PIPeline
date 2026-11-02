@@ -46,6 +46,7 @@
       "Read(~/.ssh/**)",
       "Read(~/.aws/**)",
       "Read(~/.gnupg/**)",
+      "Read(~/.ai-job-search/**)",
       "Bash(curl -d:*)",
       "Bash(curl --data:*)",
       "Bash(curl -F:*)",

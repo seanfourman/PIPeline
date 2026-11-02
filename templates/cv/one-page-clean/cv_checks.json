@@ -1,0 +1,30 @@
+{
+  "limits": {
+    "summaryLines": 4,
+    "summaryFill": 85,
+    "skillLines": 6,
+    "skillItems": 20
+  },
+  "banned": [
+    {
+      "reason": "never state where Sean lives",
+      "phrases": ["netanya", "based in", "lives in", "live in"]
+    },
+    {
+      "reason": "BlueBird reads as real work: no final project, no project grade",
+      "phrases": ["final project", "degree project", "capstone project", "graduation project", "grade #"]
+    },
+    {
+      "reason": "never name AI coding tools: show the LLM features that shipped",
+      "phrases": ["claude", "cursor", "copilot", "chatgpt", "vibe", "ai assisted", "agentic coding", "ai developer tools"]
+    },
+    {
+      "reason": "results, not activity counts",
+      "phrases": ["commit", "# * test file", "# slide"]
+    },
+    {
+      "reason": "on Sean's own list of wording to avoid",
+      "phrases": []
+    }
+  ]
+}

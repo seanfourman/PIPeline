@@ -119,3 +119,8 @@ company_research/*.json
 
 # Brainstorm mockups (superpowers visual companion) - never ship
 .superpowers/
+
+# Local web interface: conversations and the access token
+web/data/
+# Bundled from web/ui/ on every start
+web/public/build/
