@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useApp } from "./app";
 import type { Lang } from "./i18n";
-import { startIntro } from "./intro";
+import { LANG_HOP, startIntro } from "./intro";
 import { api, Btn, Field, Icon } from "./kit";
 
 // Each half of the board's flip when the language changes; matches flip-out and flip-in in styles.css.
@@ -21,21 +21,28 @@ export function Login({ onDone, intro }: { onDone: () => void; intro: boolean })
   const [flip, setFlip] = useState<"" | "flip-out" | "flip-in">("");
   const [picked, setPicked] = useState<Lang | null>(null);
   const showing = picked ?? lang;
+  // The form's colours follow the forest, which changes under its leaves a moment after the theme button.
+  const [nightShown, setNightShown] = useState(dark);
   const bg = useRef<HTMLCanvasElement>(null);
   const fx = useRef<HTMLCanvasElement>(null);
   const card = useRef<HTMLFormElement>(null);
   const userBox = useRef<HTMLInputElement>(null);
   const scene = useRef<ReturnType<typeof startIntro> | null>(null);
+  // Reduced motion: no intro run, no dissolve between day and night, no flip.
+  const calm = useRef(matchMedia("(prefers-reduced-motion: reduce)").matches).current;
+  // Set from Pip's jump off the board until it is back on, so a second click waits for the first.
+  const changing = useRef(false);
 
   useEffect(() => {
-    const play = intro && !matchMedia("(prefers-reduced-motion: reduce)").matches;
     scene.current = startIntro(bg.current!, fx.current!, {
-      play,
+      play: intro && !calm,
+      calm,
       night: dark,
       card: () => card.current?.getBoundingClientRect() ?? null,
       shown: () => card.current?.classList.contains("show") ?? false,
       onCardShow: () => setShown(true),
       onLanded: () => setLanded(true),
+      onSwap: setNightShown,
     });
     return () => scene.current?.destroy();
   }, []);
@@ -45,20 +52,21 @@ export function Login({ onDone, intro }: { onDone: () => void; intro: boolean })
 
   useEffect(() => { if (shown) userBox.current?.focus({ preventScroll: true }); }, [shown]);
 
-  // A new language flips the board like a sign: it narrows to nothing, the words change, and it opens again
-  // while Pip hops. Before the form is up, or with reduced motion, the words just change.
+  // A new language: Pip jumps off the board, the board flips like a sign (it narrows to nothing, the words
+  // change, it opens again), and Pip jumps back on. Before the form is up, or with reduced motion, the
+  // words just change.
   const pickLang = (next: Lang) => {
-    if (next === showing || flip) return;
-    if (!shown || matchMedia("(prefers-reduced-motion: reduce)").matches) { setLang(next); return; }
+    if (next === showing || changing.current) return;
+    if (!shown || calm) { setLang(next); return; }
+    changing.current = true;
     setPicked(next);
-    setFlip("flip-out");
-    scene.current?.react("hop");
-    setTimeout(() => {
-      setLang(next);
-      setPicked(null);
-      setFlip("flip-in");
-      setTimeout(() => setFlip(""), FLIP_MS);
-    }, FLIP_MS);
+    scene.current?.react("off");
+    const at = (seconds: number, fn: () => void) => setTimeout(fn, seconds * 1000);
+    const flipAt = LANG_HOP.leave;
+    at(flipAt, () => setFlip("flip-out"));
+    at(flipAt + FLIP_MS / 1000, () => { setLang(next); setPicked(null); setFlip("flip-in"); });
+    at(flipAt + (2 * FLIP_MS) / 1000, () => setFlip(""));
+    at(LANG_HOP.done, () => { changing.current = false; });
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -81,7 +89,7 @@ export function Login({ onDone, intro }: { onDone: () => void; intro: boolean })
   };
 
   return (
-    <div className={`login ${dark ? "" : "morning"}`}>
+    <div className={`login ${nightShown ? "" : "morning"}`}>
       <canvas ref={bg} className="intro-bg" aria-hidden="true" />
       {/* Always laid out left to right, so the buttons stay where they are when the language changes. */}
       <header className="login-top" dir="ltr">

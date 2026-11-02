@@ -420,7 +420,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .login-card h1 { font-size: 30px; text-align: center; color: var(--board-ink); }
 .login-card .sub { text-align: center; margin-top: -4px; margin-bottom: 4px; color: var(--board-ink-2); }
 .login-card .field-label { color: var(--board-label); }
-.login-card .error-line { color: var(--board-bad); font-weight: 600; }
+.login-card .error-line { color: var(--board-bad); }
 /* Fields: square, a stepped edge that turns bright while typing, and a shadow under the top edge. */
 .login-card input, .login-card input:hover, .login-card input:focus {
   width: 100%; border: 0; border-radius: 0; background: var(--field); color: var(--field-ink);
@@ -455,19 +455,19 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
    Last in the block, so it wins over the fonts set above. */
 .login-card h1, .login-card .sub, .login-card .field-label, .login-card .error-line, .login-card .login-submit,
 .login-top .lang button, .login-top .skip {
-  font-family: "Handjet", var(--head); font-variation-settings: "ELSH" 2; font-weight: 500; line-height: 1.15;
+  font-family: "Handjet", var(--head); font-variation-settings: "ELSH" 2; font-weight: 700; line-height: 1.15;
 }
-.login-card h1 { font-size: 46px; font-weight: 600; }
+.login-card h1 { font-size: 46px; font-weight: 800; }
 .login-card .sub { font-size: 22px; }
 .login-card .field-label { font-size: 21px; }
 .login-card .error-line { font-size: 20px; }
-.login-card .login-submit { font-size: 27px; font-weight: 600; }
+.login-card .login-submit { font-size: 27px; font-weight: 800; }
 .login-top .lang button, .login-top .skip { font-size: 20px; }
 .shell.entering { animation: enter 0.45s ease-out; }
 @keyframes enter { from { opacity: 0; transform: scale(0.985); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .scene *, .dots i, .btn, .login-card, .shell.entering { animation: none !important; transition: none !important; }
+  .pip *, .scene *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering { animation: none !important; transition: none !important; }
   .pip-a { opacity: 1; }
 }
 

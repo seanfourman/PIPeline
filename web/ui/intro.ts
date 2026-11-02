@@ -8,10 +8,22 @@ import { foxPixels, type Mood, type Pixel } from "./pip";
 
 type Ctx = CanvasRenderingContext2D;
 type Card = DOMRect | null;
-// wrong and right answer the login; hop is for the board flipping to another language.
-export type Reaction = "wrong" | "right" | "hop";
+// wrong and right answer the login; off is Pip jumping off the board while it flips to another language.
+export type Reaction = "wrong" | "right" | "off";
 // card gives the form's box; shown says whether the form is on screen yet, so its board appears with it.
-export type IntroOptions = { play: boolean; night: boolean; card: () => Card; shown: () => boolean; onCardShow: () => void; onLanded: () => void };
+// calm is for reduced motion: day and night then change at once, without the leaves. onSwap says when the
+// scene has changed to night or day, so the form's colours change at the same moment.
+export type IntroOptions = {
+  play: boolean; calm: boolean; night: boolean; card: () => Card; shown: () => boolean;
+  onCardShow: () => void; onLanded: () => void; onSwap: (night: boolean) => void;
+};
+
+// Pip's jump off the board when the language changes, in seconds from the click: down on the ground by
+// leave, the jump back up starting at back, on the board again by done. The board flips while Pip is off it.
+export const LANG_HOP = { leave: 0.3, back: 0.75, done: 1.1 };
+// Changing between day and night, in seconds: the new time's leaves close over the whole screen, the scene
+// changes under them while they hold, and they part again like at the start.
+const SWAP = { close: 0.4, hold: 0.12, open: 0.6 };
 
 const GROUND = 2;
 const FOX_Z = 15;
@@ -49,8 +61,10 @@ type Palette = {
   flower: [stem: string, petal: string, middle: string]; mushroom: [stem: string, cap: string, shine: string];
   leaves: string[]; leafVein: string; leafFill: string;
   flies: [string, string];
+  // The sun in the morning, the moon at night: its disc, a lighter middle, a dithered ring, and spots.
+  light: { body: string; core: string; halo: string; spots: string };
   // The form's board. The form's own colours in styles.css are picked to sit on it.
-  board: { line: string; frame: string; frameLight: string; frameShade: string; rivet: string; panel: string; panelShade: string; vine: [stem: string, leaf: string, light: string, tip: string] };
+  board:{ line: string; frame: string; frameLight: string; frameShade: string; rivet: string; panel: string; panelShade: string; vine: [stem: string, leaf: string, light: string, tip: string] };
 };
 
 const NIGHT: Palette = {
@@ -65,7 +79,8 @@ const NIGHT: Palette = {
   flower: ["#20305e", "#c98dff", "#f3e1ff"], mushroom: ["#a9bdf0", "#6ff0ff", "#d6fbff"],
   leaves: ["#0c2b21", "#0a2331", "#103526"], leafVein: "#1f5a3d", leafFill: "#071a14",
   flies: ["#e4ff8a", "#9ff8ff"],
-  board: { line: "#0b0a22", frame: "#262c6e", frameLight: "#3f4fb8", frameShade: "#1a1f52", rivet: "#8f9cff", panel: "#14163a", panelShade: "#0f1130", vine: ["#1a4560", "#2f7fa0", "#4fc0d8", "#8cffd8"] },
+  light: { body: "#e9ecff", core: "#e9ecff", halo: "#2c3375", spots: "#c3c9f0" },
+  board:{ line: "#0b0a22", frame: "#262c6e", frameLight: "#3f4fb8", frameShade: "#1a1f52", rivet: "#8f9cff", panel: "#14163a", panelShade: "#0f1130", vine: ["#1a4560", "#2f7fa0", "#4fc0d8", "#8cffd8"] },
 };
 
 const MORNING: Palette = {
@@ -80,7 +95,8 @@ const MORNING: Palette = {
   flower: ["#3f7a34", "#ff8fb3", "#fff3a0"], mushroom: ["#f1e5cf", "#e2553f", "#ffffff"],
   leaves: ["#2f6e2c", "#3b7f33", "#285f27"], leafVein: "#7cba52", leafFill: "#22511f",
   flies: ["#fffbe0", "#ffe68f"],
-  board: { line: "#3a2414", frame: "#9a6438", frameLight: "#cf9356", frameShade: "#73472a", rivet: "#f6d79a", panel: "#fbf1d8", panelShade: "#efdfba", vine: ["#3f7a34", "#5aa548", "#8fd16a", "#ffe27a"] },
+  light: { body: "#ffe98a", core: "#fffbe0", halo: "#fff6cf", spots: "" },
+  board:{ line: "#3a2414", frame: "#9a6438", frameLight: "#cf9356", frameShade: "#73472a", rivet: "#f6d79a", panel: "#fbf1d8", panelShade: "#efdfba", vine: ["#3f7a34", "#5aa548", "#8fd16a", "#ffe27a"] },
 };
 
 // ---------- pixel painting, once per screen size ----------
@@ -341,6 +357,26 @@ function paintCurtain(W: number, H: number, p: Palette): Sheet[] {
   return sheets;
 }
 
+// ---------- the sky's light ----------
+
+const MOON_SPOTS = [[-2, -2], [-3, -1], [1, 2], [2, 1], [2, -3], [-1, 3]];
+
+// The sun or the moon high over the clearing, up and left of the shafts of light: a disc with a dithered
+// ring round it.
+function drawSkyLight(g: Ctx, W: number, H: number, p: Palette) {
+  const { body, core, halo, spots } = p.light;
+  const cx = Math.round(W * 0.3);
+  const cy = Math.round(H * 0.13);
+  for (let j = -10; j <= 10; j++) {
+    for (let i = -10; i <= 10; i++) {
+      const d = Math.hypot(i, j);
+      if (d <= 6.4) rect(g, cx + i, cy + j, 1, 1, d <= 3.6 ? core : body);
+      else if (d <= 9.6 && (i + j) % 2 === 0) rect(g, cx + i, cy + j, 1, 1, halo);
+    }
+  }
+  if (spots) for (const [i, j] of MOON_SPOTS) rect(g, cx + i, cy + j, 1, 1, spots);
+}
+
 // ---------- the form's board ----------
 
 // Mushrooms in blocks, bottom row last: c cap, s shine, t stem.
@@ -498,13 +534,34 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
   const sparks: Spark[] = Array.from({ length: 90 }, () => ({ a: rnd() * Math.PI * 2, r: 0.5 + rnd() * 0.7, speed: 0.6 + rnd() * 1.4, color: pick(["#ffffff", "#fff1a8", "#ffd27a", "#9ff8ff"]) }));
   const bgx = bg.getContext("2d")!;
   const fxx = fx.getContext("2d")!;
-  let pal = opts.night ? NIGHT : MORNING;
   let W = 0;
   let H = 0;
   let scale = 4;
-  let layers: Layer[] = [];
-  let sky = canvas(1, 1);
-  let curtain: Sheet[] | null = null;
+  let destroyed = false;
+
+  // The forest painted in each time of day, with its leaves, kept so switching back and forth does not paint
+  // it again.
+  type World = { pal: Palette; layers: Layer[]; sky: HTMLCanvasElement; leaves?: Sheet[] };
+  const worlds = new Map<Palette, World>();
+  const worldOf = (p: Palette) => {
+    let w = worlds.get(p);
+    if (!w) {
+      w = { pal: p, layers: paintForest(H * 0.82, p), sky: paintSky(W, H, p) };
+      worlds.set(p, w);
+    }
+    return w;
+  };
+  const leavesOf = (w: World) => (w.leaves ??= paintCurtain(W, H, w.pal));
+  // Leaf sheets drawn apart by part: 0 closed over the whole screen, 1 off its sides, far enough that the
+  // longest leaves are gone on a wide screen or a phone.
+  const drawLeaves = (g: Ctx, sheets: Sheet[], part: number) => {
+    const away = (W + H) / 2;
+    for (const sheet of sheets) g.drawImage(sheet.img, Math.round(sheet.side * part * away * sheet.speed), 0);
+  };
+  // The time of day on screen, the one asked for, and a change between them under the leaves.
+  let world!: World;
+  let target = opts.night ? NIGHT : MORNING;
+  let swap: { at: number | null; done: boolean } | null = null;
   // Where Pip starts: close to the camera, just past the left edge of the screen.
   let entryX = 0;
 
@@ -532,9 +589,12 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
     }
     // The form's fields and buttons use the same block size for their pixel edges.
     bg.parentElement?.style.setProperty("--px", `${scale}px`);
-    if (changed) layers = paintForest(H * 0.82, pal);
-    sky = paintSky(W, H, pal);
-    curtain = null;
+    if (changed) worlds.clear();
+    for (const w of worlds.values()) {
+      w.sky = paintSky(W, H, w.pal);
+      w.leaves = undefined;
+    }
+    world = worldOf(world?.pal ?? target);
     const s = (H * 0.82) / FOX_NEAR;
     entryX = camAt(T.foxIn).x + ((-11 * foxPixel(s)) / scale - 2 - W / 2) / s;
   };
@@ -546,7 +606,7 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
   let offset = clock;
   let cardShown = false;
   let landed = false;
-  let reaction: { kind: Reaction; at: number } | null = null;
+  let reaction: { kind: Reaction; at: number; wait?: { x: number; y: number } } | null = null;
   let jumpFrom: { x: number; y: number } | null = null;
   let frame = 0;
 
@@ -557,6 +617,16 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
     const s = (H * 0.82) / (FOX_Z - CAM_END.z);
     const target = card.width / scale > W * 0.7 ? W * 0.18 : card.left / scale - 16;
     stopX = CAM_END.x + (target - W / 2) / s;
+  };
+  // Where Pip stood in the clearing, with the camera at rest.
+  const clearingSpot = () => {
+    const s = (H * 0.82) / (FOX_Z - CAM_END.z);
+    return { x: W / 2 + ((stopX ?? -4.6) - CAM_END.x) * s, y: H * 0.46 + (GROUND - CAM_END.y) * s };
+  };
+  // A jump from a to b, peaking `lift` above the higher of the two, k from 0 to 1.
+  const arc = (a: { x: number; y: number }, b: { x: number; y: number }, k: number, lift: number) => {
+    const peak = Math.min(a.y, b.y) - lift;
+    return { x: lerp(a.x, b.x, k), y: (1 - k) * (1 - k) * a.y + 2 * (1 - k) * k * peak + k * k * b.y };
   };
 
   function tick(now: number) {
@@ -574,71 +644,94 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
       return { x: cx + (x - cam.x) * s, y: cy + (y - cam.y) * s, s };
     };
 
-    bgx.drawImage(sky, 0, 0);
+    const box = opts.card();
 
-    type Item = { z: number; draw: () => void };
-    const items: Item[] = [];
-    for (const L of layers) {
-      items.push({ z: L.z, draw: () => {
-        const p = project(0, L.y, L.z);
-        if (!p) return;
-        const w = Math.round(L.w * p.s);
-        const h = Math.round(L.h * p.s);
-        bgx.drawImage(L.img, Math.round(p.x - w / 2), Math.round(p.y - h), w, h);
-      } });
-    }
-    for (const fl of flies) {
-      items.push({ z: fl.z, draw: () => {
-        if (Math.sin(t * 1.7 + fl.ph * 3) < -0.2) return;
-        const p = project(fl.x + Math.sin(t * 0.4 + fl.ph) * 0.5, fl.y + Math.sin(t * 0.7 + fl.ph * 2) * 0.25, fl.z);
-        if (!p) return;
-        const size = p.s > 30 ? 2 : 1;
-        rect(bgx, p.x, p.y, size, size, pal.flies[fl.color]);
-      } });
-    }
+    // The whole forest in one time of day, with the board behind the form once the form is on screen.
+    const paintWorld = (g: Ctx, w: World) => {
+      g.drawImage(w.sky, 0, 0);
+      drawSkyLight(g, W, H, w.pal);
 
-    // Pip comes in from the left edge, seen from behind, hops away into the clearing, then turns round.
-    if (t >= T.foxIn && t < T.jump) {
-      const run = clamp((t - T.foxIn) / (T.foxStop - T.foxIn));
-      const z = lerp(camAt(T.foxIn).z + FOX_NEAR, FOX_Z, easeSoft(run));
-      items.push({ z, draw: () => {
-        const hops = 4;
-        const phase = (run * hops) % 1;
-        const moving = run < 1;
-        const lift = moving ? Math.sin(phase * Math.PI) * 0.55 : 0;
-        const x = lerp(entryX, stopX ?? -4.6, easeSoft(run));
-        const p = project(x, GROUND - lift, z);
-        if (!p) return;
-        const view = moving ? (phase > 0.12 && phase < 0.88 ? "leap" : "back") : "front";
-        // Standing in the clearing it sits on the forest's own grid, where its jump onto the form starts.
-        drawFox(bgx, p.x, p.y, foxPixel(p.s) / scale, sprite(view, "idle", "a", !moving && (t % 3.1) < 0.14), moving ? scale : 1);
-        jumpFrom = { x: p.x, y: p.y };
-      } });
-    }
-    items.sort((a, b) => b.z - a.z).forEach((i) => i.draw());
+      type Item = { z: number; draw: () => void };
+      const items: Item[] = [];
+      for (const L of w.layers) {
+        items.push({ z: L.z, draw: () => {
+          const p = project(0, L.y, L.z);
+          if (!p) return;
+          const lw = Math.round(L.w * p.s);
+          const lh = Math.round(L.h * p.s);
+          g.drawImage(L.img, Math.round(p.x - lw / 2), Math.round(p.y - lh), lw, lh);
+        } });
+      }
+      for (const fl of flies) {
+        items.push({ z: fl.z, draw: () => {
+          if (Math.sin(t * 1.7 + fl.ph * 3) < -0.2) return;
+          const p = project(fl.x + Math.sin(t * 0.4 + fl.ph) * 0.5, fl.y + Math.sin(t * 0.7 + fl.ph * 2) * 0.25, fl.z);
+          if (!p) return;
+          const size = p.s > 30 ? 2 : 1;
+          rect(g, p.x, p.y, size, size, w.pal.flies[fl.color]);
+        } });
+      }
 
-    // The leaves in front of everything, parting to the sides.
-    if (t < T.parted) {
-      curtain ??= paintCurtain(W, H, pal);
-      const k = easeInOut((t - T.part) / (T.parted - T.part));
-      // Far enough that the longest leaves leave the screen, on a wide screen or a phone.
-      const away = (W + H) / 2;
-      for (const sheet of curtain) bgx.drawImage(sheet.img, Math.round(sheet.side * k * away * sheet.speed), 0);
+      // Pip comes in from the left edge, seen from behind, hops away into the clearing, then turns round.
+      if (t >= T.foxIn && t < T.jump) {
+        const run = clamp((t - T.foxIn) / (T.foxStop - T.foxIn));
+        const z = lerp(camAt(T.foxIn).z + FOX_NEAR, FOX_Z, easeSoft(run));
+        items.push({ z, draw: () => {
+          const hops = 4;
+          const phase = (run * hops) % 1;
+          const moving = run < 1;
+          const lift = moving ? Math.sin(phase * Math.PI) * 0.55 : 0;
+          const x = lerp(entryX, stopX ?? -4.6, easeSoft(run));
+          const p = project(x, GROUND - lift, z);
+          if (!p) return;
+          const view = moving ? (phase > 0.12 && phase < 0.88 ? "leap" : "back") : "front";
+          // Standing in the clearing it sits on the forest's own grid, where its jump onto the form starts.
+          drawFox(g, p.x, p.y, foxPixel(p.s) / scale, sprite(view, "idle", "a", !moving && (t % 3.1) < 0.14), moving ? scale : 1);
+          jumpFrom = { x: p.x, y: p.y };
+        } });
+      }
+      items.sort((a, b) => b.z - a.z).forEach((i) => i.draw());
+
+      // The leaves in front of everything, parting to the sides.
+      if (t < T.parted) drawLeaves(g, leavesOf(w), easeInOut((t - T.part) / (T.parted - T.part)));
+
+      if (box && opts.shown()) {
+        g.save();
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        drawBoard(g, box, scale, w.pal, t);
+        g.restore();
+      }
+    };
+
+    // Changing between day and night: the leaves of the time asked for close over the screen, the scene
+    // changes under them, and they part again. part is how far apart they are; they are drawn last, on top.
+    let part: number | null = null;
+    if (swap) {
+      swap.at ??= t;
+      const e = t - swap.at;
+      // They rush in at once and slow as they meet, so the button answers on the next frame.
+      if (e < SWAP.close) part = 1 - ease(e / SWAP.close);
+      else if (e < SWAP.close + SWAP.hold) part = 0;
+      else part = easeInOut((e - SWAP.close - SWAP.hold) / SWAP.open);
+      if (e >= SWAP.close && !swap.done) {
+        swap.done = true;
+        if (world.pal !== target) {
+          world = worldOf(target);
+          opts.onSwap(target === NIGHT);
+        }
+      }
+      if (e >= SWAP.close + SWAP.hold + SWAP.open) {
+        part = null;
+        // Asked for the other one again while this ran: go round once more.
+        swap = world.pal === target ? null : { at: null, done: false };
+      }
     }
+    paintWorld(bgx, world);
 
     // The opening: from black in four steps.
     if (t < 0.6) {
       bgx.fillStyle = `rgba(4,4,14,${1 - Math.floor(t / 0.15) / 4})`;
       bgx.fillRect(0, 0, W, H);
-    }
-
-    // The board behind the form, once the form is on screen.
-    const box = opts.card();
-    if (box && opts.shown()) {
-      bgx.save();
-      bgx.setTransform(1, 0, 0, 1, 0, 0);
-      drawBoard(bgx, box, scale, pal, t);
-      bgx.restore();
     }
 
     // In front of the form: the sparks, and Pip once it jumps.
@@ -670,13 +763,20 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
       let y = perch.y;
       let mood: Mood = "idle";
       if (k < 1) {
-        x = lerp(from.x, perch.x, k);
-        const peak = Math.min(from.y, perch.y) - 30;
-        y = (1 - k) * (1 - k) * from.y + 2 * (1 - k) * k * peak + k * k * perch.y;
+        ({ x, y } = arc(from, perch, k, 30));
         mood = "happy";
       } else if (!landed) {
         landed = true;
         opts.onLanded();
+        // Paint the other time of day and its leaves while nothing is happening, one at a time, so the first
+        // switch starts at once.
+        const other = world.pal === NIGHT ? MORNING : NIGHT;
+        const idle = (fn: () => void) => {
+          const run = () => { if (!destroyed) fn(); };
+          if ("requestIdleCallback" in window) requestIdleCallback(run, { timeout: 4000 });
+          else setTimeout(run, 1500);
+        };
+        idle(() => { worldOf(other); idle(() => leavesOf(worldOf(other))); });
       }
       if (k >= 1) {
         const since = t - T.land;
@@ -688,10 +788,19 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
         if (reaction.kind === "right") {
           mood = "happy";
           y -= Math.round(Math.abs(Math.sin(since * 9)) * 6 * Math.max(0, 1 - since / 1.2));
-        } else if (reaction.kind === "hop") {
-          if (since < 0.36) {
+        } else if (reaction.kind === "off") {
+          // Off the board while it flips: down beside it in the clearing, or below it when the board fills
+          // the screen's width, then back up. The spot is fixed at the start, while the board is still whole.
+          const spot = clearingSpot();
+          const wait = (reaction.wait ??= spot.x + 12 < card.left ? spot : { x: card.left + 18, y: Math.min(H - 2, card.top + card.height + 24) });
+          if (since < LANG_HOP.leave) {
+            ({ x, y } = arc(perch, wait, since / LANG_HOP.leave, 14));
             mood = "happy";
-            y -= Math.round(Math.sin((since / 0.36) * Math.PI) * 8);
+          } else if (since < LANG_HOP.back) {
+            ({ x, y } = wait);
+          } else if (since < LANG_HOP.done) {
+            ({ x, y } = arc(wait, perch, (since - LANG_HOP.back) / (LANG_HOP.done - LANG_HOP.back), 14));
+            mood = "happy";
           }
         } else if (since < 2.2) {
           mood = "worried";
@@ -703,6 +812,9 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
       drawFox(fxx, x, y, 1, sprite("front", mood, frameName, mood !== "happy" && (t % 3.7) < 0.13), scale);
     }
 
+    // The leaves of a change between day and night, over everything, the form too.
+    if (part !== null) drawLeaves(fxx, leavesOf(worldOf(target)), part);
+
     frame = requestAnimationFrame(tick);
   }
   frame = requestAnimationFrame(tick);
@@ -713,16 +825,22 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
       offset += T.end - clock;
     },
     react(kind: Reaction) { reaction = { kind, at: clock }; },
-    // Morning in the light theme, night in the dark one; the forest keeps its shape.
+    // Morning in the light theme, night in the dark one; the forest keeps its shape. The change happens under
+    // closing leaves, except with reduced motion and under the opening leaves, where it is at once.
     setNight(night: boolean) {
-      const next = night ? NIGHT : MORNING;
-      if (next === pal) return;
-      pal = next;
-      layers = paintForest(H * 0.82, pal);
-      sky = paintSky(W, H, pal);
-      curtain = null;
+      target = night ? NIGHT : MORNING;
+      if (swap || target === world.pal) return;
+      if (opts.calm || clock < T.parted) {
+        world = worldOf(target);
+        opts.onSwap(night);
+        return;
+      }
+      // Painted now if not yet, so the leaves start closing on the next frame rather than after a pause.
+      leavesOf(worldOf(target));
+      swap = { at: null, done: false };
     },
     destroy() {
+      destroyed = true;
       cancelAnimationFrame(frame);
       removeEventListener("resize", resize);
     },
