@@ -87,23 +87,35 @@ function useHint(line: string, examples: string[]) {
   return hint;
 }
 
+// Where a role's pill lands, tossed under the box: a small tilt and a nudge off its place, from its own words, so
+// it lands the same way on every visit.
+function toss(text: string) {
+  let h = 2166136261;
+  for (const ch of text) h = Math.imul(h ^ ch.codePointAt(0)!, 16777619);
+  const part = (shift: number) => (((h >>> shift) & 255) / 255) * 2 - 1;
+  return { "--tilt": `${(part(0) * 6).toFixed(1)}deg`, "--nx": `${Math.round(part(8) * 9)}px`, "--ny": `${Math.round(part(16) * 6)}px` };
+}
+
 // The search, plain like a chat app's first screen: a question, one round box with Pip lying on its top edge,
-// and the roles from the settings as pills floating under it, over the sky above. Where and how to search, and
-// Pip's two jobs that use Claude, wait in a menu at the box's end.
+// and the roles from the settings as pills tossed under it, over the sky above. At the box's end, a menu of where
+// and how to search, and the sparkles, for Pip's two jobs that use Claude; once something is typed, the search
+// button flies in past them.
 function Quick() {
   const { s, t, lang, err, start } = useApp();
   const [, paint] = useState(0);
   const repaint = () => paint((n) => n + 1);
-  const [menu, setMenu] = useState(false);
+  const [menu, setMenu] = useState<"" | "filters" | "ai">("");
   const menuBox = useRef<HTMLDivElement>(null);
   const { markets = [], roles = [], workMode = "any", areas: myAreas = [] } = s.settings;
   search.q ??= "";
   const [q, setQ] = useState(search.q ?? "");
-  // The menu closes on a click outside it, or on Escape.
+  const typing = q.trim() !== "";
+  const toggle = (which: "filters" | "ai") => setMenu(menu === which ? "" : which);
+  // A menu closes on a click outside the box's end, or on Escape.
   useEffect(() => {
     if (!menu) return;
-    const away = (e: PointerEvent) => { if (!menuBox.current?.contains(e.target as Node)) setMenu(false); };
-    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(false); };
+    const away = (e: PointerEvent) => { if (!menuBox.current?.contains(e.target as Node)) setMenu(""); };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(""); };
     addEventListener("pointerdown", away);
     addEventListener("keydown", escape);
     return () => { removeEventListener("pointerdown", away); removeEventListener("keydown", escape); };
@@ -146,16 +158,21 @@ function Quick() {
     <div className={`seek ${asked ? "asked" : ""}`}>
       <Sky />
       <h1 className="seek-title">{t("jobs.prompt")}</h1>
-      <form className="seek-box" onSubmit={(e) => { e.preventDefault(); if (q.trim()) run(); }}>
+      <form className={`seek-box ${typing ? "typing" : ""}`} onSubmit={(e) => { e.preventDefault(); setMenu(""); if (typing) run(); }}>
         <PipLying className="seek-pip" />
         {/* Empty, the box takes the page's direction, so the hint starts on the page's side; typed words take their own. */}
         <input
           type="search" value={q} placeholder={hint} aria-label={t("jobs.query")} dir={q ? "auto" : undefined} disabled={noMarket}
           onChange={(e) => { setQ(e.target.value); search.q = e.target.value; }}
         />
-        <div className="seek-menu" ref={menuBox}>
-          <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu} onClick={() => setMenu(!menu)}><Icon name="filters" /></button>
-          {menu && (
+        <div className="seek-tools" ref={menuBox}>
+          <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
+          <button type="button" className="seek-ai" aria-label={t("jobs.ai")} aria-expanded={menu === "ai"} onClick={() => toggle("ai")}><Icon name="ai" /></button>
+          {/* The search button's place, closed until something is typed. */}
+          <span className="seek-go-slot">
+            <button type="submit" className="seek-go" aria-label={t("jobs.search")} aria-hidden={!typing} tabIndex={typing ? undefined : -1} disabled={!typing || search.busy || noMarket}><Icon name="jobs" /></button>
+          </span>
+          {menu === "filters" && (
             <div className="seek-panel" role="group" aria-label={t("jobs.menu")}>
               <p className="seek-where">{where} <a href="#/settings">{t("jobs.change")}</a></p>
               {!noMarket && <>
@@ -183,13 +200,16 @@ function Quick() {
                   </label>
                 )}
               </>}
+            </div>
+          )}
+          {menu === "ai" && (
+            <div className="seek-panel" role="group" aria-label={t("jobs.ai")}>
               <p className="seek-more">{t("jobs.more")}</p>
               <button type="button" className="seek-action" onClick={() => start("/job-scraper")}><strong>{t("jobs.smart")}</strong><small>{t("jobs.smartNote")}</small></button>
               <button type="button" className="seek-action" onClick={() => start("/rank")}><strong>{t("jobs.rank")}</strong><small>{t("jobs.rankNote")}</small></button>
             </div>
           )}
         </div>
-        <button type="submit" className="seek-go" aria-label={t("jobs.search")} disabled={search.busy || noMarket || !q.trim()}><Icon name="jobs" /></button>
       </form>
       {noMarket ? (
         <p className="seek-note">{t("jobs.needMarket")} <a href="#/settings">{t("jobs.toSettings")}</a></p>
@@ -199,12 +219,11 @@ function Quick() {
           {roles.map((r: any, i: number) => (
             <button
               key={r.query} type="button" className="seek-pill" dir="auto" onClick={() => run(r.query)}
-              style={{ animationDuration: `${4.2 + (i % 3) * 0.7}s`, animationDelay: `${-i * 1.3}s` }}
+              style={{ ...toss(r.query), animationDuration: `${4.2 + (i % 3) * 0.7}s`, animationDelay: `${-i * 1.3}s` } as React.CSSProperties}
             >{r.label}</button>
           ))}
         </div>
       )}
-      <a className="seek-saved" href="#/jobs/saved">{t("jobs.saved", { n: s.jobs.length })}</a>
       {search.busy && <div className="row note seek-status" role="status"><Spinner />{t("jobs.searching")}</div>}
       {search.failed.length > 0 && <p className="error-line">{t("jobs.failed", { list: search.failed.join(", ") })}</p>}
       {search.results !== null && !search.busy && (
@@ -217,11 +236,11 @@ function Quick() {
   );
 }
 
-// The search on its own page, with no title; the saved jobs on theirs, back to the search from there.
-export function Jobs({ tab }: { tab?: string }) {
+// The search on its own page, with no title.
+export const Jobs = () => <div className="page"><Quick /></div>;
+
+// The saved jobs, a tab of their own in the sidebar.
+export function SavedJobs() {
   const { s, t } = useApp();
-  if (tab === "saved") {
-    return <Page title={t("jobs.saved", { n: s.jobs.length })} sub={<a href="#/jobs">{t("jobs.backToSearch")}</a>}><Saved /></Page>;
-  }
-  return <div className="page"><Quick /></div>;
+  return <Page title={t("jobs.saved", { n: s.jobs.length })}><Saved /></Page>;
 }

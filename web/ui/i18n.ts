@@ -10,7 +10,7 @@ const he = {
     viaChat: "עדכון דרך שיחה", saveFailed: "השמירה נכשלה: {error}", run: "הפעל", none: "אין",
   },
   nav: {
-    home: "הבית", jobs: "משרות", apps: "ההגשות שלי", chat: "שיחות", you: "עליך", profile: "הפרופיל שלי", settings: "הגדרות",
+    home: "הבית", jobs: "משרות", saved: "משרות שמורות", apps: "ההגשות שלי", chat: "שיחות", you: "עליך", profile: "הפרופיל שלי", settings: "הגדרות",
     advanced: "מתקדם", rules: "כללי קורות חיים", tools: "כל הכלים", files: "קבצים", waiting: "{n} מחכות לך",
     dark: "מצב כהה", light: "מצב בהיר", language: "שפה", main: "ניווט ראשי",
   },
@@ -20,6 +20,7 @@ const he = {
     running: "אני על זה. אפשר להמשיך בינתיים, ואגיד כשאסיים.", watch: "לראות מה קורה",
     views: {
       jobs: "כאן מוצאים משרות. החיפוש המהיר חינם, בלי מכסת Claude.",
+      saved: "המשרות ששמרתי, המתאימות ביותר למעלה.",
       apps: "כל מה שהכנו נמצא כאן. שלחת משהו? משנים את הסטטוס בטבלה.",
       chat: "כאן אני עובד. כשאצטרך אותך, אבקש אישור ואחכה.",
       profile: "זה כל מה שאני יודע עליך. מה שלא כתוב כאן לא ייכנס למסמכים.",
@@ -65,7 +66,7 @@ const he = {
     startTitle: "בוא נמצא משרות", startText: "החיפוש המהיר לא צורך מכסת Claude. החיפוש החכם גם מסנן ושומר.", startLabel: "לחיפוש משרות",
   },
   jobs: {
-    prompt: "מה מחפשים היום?", menu: "איפה ואיך לחפש, ועוד", backToSearch: "חזרה לחיפוש",
+    prompt: "מה מחפשים היום?", menu: "איפה ואיך לחפש", ai: "חיפוש ודירוג עם Claude",
     noMarket: "עוד לא נבחר איפה לחפש.", hidden: "מוסתר: {names}", change: "שינוי",
     more: "פיפ יכול גם, במכסת Claude:",
     rank: "דרג משרות חדשות", rankNote: "קורא כל משרה חדשה ברשימה ונותן לה ציון לפי כמה היא מתאימה לך.",
@@ -219,7 +220,7 @@ const en: Dict = {
     viaChat: "Change it in a conversation", saveFailed: "Saving failed: {error}", run: "Run", none: "None",
   },
   nav: {
-    home: "Home", jobs: "Jobs", apps: "My applications", chat: "Conversations", you: "About you", profile: "My profile", settings: "Settings",
+    home: "Home", jobs: "Jobs", saved: "Saved jobs", apps: "My applications", chat: "Conversations", you: "About you", profile: "My profile", settings: "Settings",
     advanced: "Advanced", rules: "CV rules", tools: "All tools", files: "Files", waiting: "{n} waiting for you",
     dark: "Dark mode", light: "Light mode", language: "Language", main: "Main navigation",
   },
@@ -229,6 +230,7 @@ const en: Dict = {
     running: "I'm on it. Carry on, and I'll tell you when I'm done.", watch: "See what's happening",
     views: {
       jobs: "This is where we find jobs. Quick search is free, with no Claude usage.",
+      saved: "The jobs I saved, the best fits first.",
       apps: "Everything we prepared is here. Sent something? Change its status in the table.",
       chat: "This is where I work. When I need you, I ask and wait.",
       profile: "This is everything I know about you. What isn't here won't go into your documents.",
@@ -274,7 +276,7 @@ const en: Dict = {
     startTitle: "Let's find jobs", startText: "Quick search uses no Claude usage. Smart search also filters and saves.", startLabel: "Search for jobs",
   },
   jobs: {
-    prompt: "What are we looking for today?", menu: "Where and how to search, and more", backToSearch: "Back to the search",
+    prompt: "What are we looking for today?", menu: "Where and how to search", ai: "Search and rank with Claude",
     noMarket: "You haven't chosen where to search yet.", hidden: "Hidden: {names}", change: "Change",
     more: "Pip can also, using your Claude usage:",
     rank: "Rank new jobs", rankNote: "Reads each new job on your list and scores how well it fits you.",

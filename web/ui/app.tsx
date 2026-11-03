@@ -8,7 +8,7 @@ import { Chat } from "./views/chat";
 import { Editor, Files, Profile, Rules, Tools } from "./views/docs";
 import { Home } from "./views/home";
 import { Login } from "./login";
-import { Jobs } from "./views/jobs";
+import { Jobs, SavedJobs } from "./views/jobs";
 import { Settings } from "./views/settings";
 
 export type AppState = {
@@ -68,7 +68,7 @@ export function friendlyTitle(title: string, t: Ctx["t"]) {
 
 // One flat list, like a social site's sidebar; the order still runs from daily use to the advanced pages.
 const NAV: [string, string][] = [
-  ["dash", "home"], ["jobs", "jobs"], ["apps", "apps"], ["chat", "chat"],
+  ["dash", "home"], ["jobs", "jobs"], ["saved", "saved"], ["apps", "apps"], ["chat", "chat"],
   ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"],
 ];
 
@@ -127,7 +127,8 @@ function Toast() {
 function Screen() {
   const { view, arg, s } = useApp();
   switch (view) {
-    case "jobs": return <Jobs tab={arg} />;
+    case "jobs": return <Jobs />;
+    case "saved": return <SavedJobs />;
     case "apps": return <Apps />;
     case "chat": return <Chat id={arg ?? s.sessions[0]?.id ?? "new"} />;
     case "tools": return <Tools />;
