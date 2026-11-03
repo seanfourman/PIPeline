@@ -226,7 +226,7 @@ export function App() {
 
   const t = useCallback((key: string, params?: Record<string, string | number>) => translate(lang, key, params), [lang]);
   const waiting = s.sessions.filter((x) => x.status === "waiting").length;
-  useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ""}${t("brand.name")} · ${t(`nav.${view === "dash" ? "home" : view}`)}`; }, [waiting, view, t]);
+  useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ""}${t("brand.name")} / ${t(`nav.${view === "dash" ? "home" : view}`)}`; }, [waiting, view, t]);
 
   const dark = theme === "dark" || (!theme && systemDark);
   const ctx: Ctx = {

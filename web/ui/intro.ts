@@ -569,12 +569,31 @@ function drawFox(g: Ctx, x: number, y: number, size: number, img: HTMLCanvasElem
 // Painted forests by size and time of day, so moving between pages or themes does not paint them again.
 const stills = new Map<string, { layers: Layer[]; sky: HTMLCanvasElement }>();
 
+// A number from 0 to 1 that looks random but is the same for the same block every time, so the fade's scatter of
+// blocks stays put when the banner is painted again.
+// It mixes the two the way MurmurHash3 finishes, so neighbouring blocks share no stripes.
+const scatter = (x: number, y: number) => {
+  let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y + 0x9e3779b9, 0x165667b1);
+  h ^= h >>> 15;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+};
+
 // The clearing as it is once the camera stops, drawn into a canvas of any size in the same pixels as the login:
-// the home page's banner. sunAt places the sun or moon across the width, clear of what covers the banner.
-export function paintStill(c: HTMLCanvasElement, night: boolean, sunAt = 0.3) {
-  const scale = Math.max(2, Math.round(c.clientHeight / 225));
+// the home page's banner. sunAt places the sun or moon across the width, clear of what covers the banner. fade,
+// if given, is a strip that much taller at the bottom (in CSS pixels), where the forest goes on and breaks off
+// into the page's colour, in 8-pixel patches, two of the banner's pixel blocks. The break is a ragged line that
+// bellies down in the middle like part of a circle and rises to the two ends; above it the forest is whole,
+// below it is the page's colour, with a few patches of forest left over that thin out further down.
+export function paintStill(c: HTMLCanvasElement, night: boolean, sunAt = 0.3, fade?: { height: number; color: string }) {
+  const below = fade?.height ?? 0;
+  const scale = Math.max(2, Math.round((c.clientHeight - below) / 225));
   const W = Math.max(1, Math.ceil(c.clientWidth / scale));
-  const H = Math.max(1, Math.ceil(c.clientHeight / scale));
+  const H = Math.max(1, Math.ceil((c.clientHeight - below) / scale));
+  const total = Math.max(H, Math.ceil(c.clientHeight / scale));
   const p = night ? NIGHT : MORNING;
   const key = `${W}x${H}/${night}`;
   let still = stills.get(key);
@@ -584,7 +603,7 @@ export function paintStill(c: HTMLCanvasElement, night: boolean, sunAt = 0.3) {
     stills.set(key, still);
   }
   c.width = W * scale;
-  c.height = H * scale;
+  c.height = total * scale;
   const g = c.getContext("2d")!;
   g.setTransform(scale, 0, 0, scale, 0, 0);
   g.imageSmoothingEnabled = false;
@@ -596,6 +615,27 @@ export function paintStill(c: HTMLCanvasElement, night: boolean, sunAt = 0.3) {
     const w = Math.round(L.w * s);
     const h = Math.round(L.h * s);
     g.drawImage(L.img, Math.round(W / 2 - CAM_END.x * s - w / 2), Math.round(H * 0.46 + (L.y - CAM_END.y) * s - h), w, h);
+  }
+  if (fade && total > H) {
+    const block = Math.max(1, Math.round(8 / scale));
+    const rows = Math.ceil((total - H) / block);
+    // The belly reaches a little over half way down the strip in the middle, and the line wobbles a block up or
+    // down from it at random.
+    const sag = Math.max(1, Math.floor(rows * 0.55));
+    let wobble = 0;
+    g.fillStyle = fade.color;
+    for (let bx = 0; bx * block < W; bx++) {
+      const across = ((bx + 0.5) * block - W / 2) / (W / 2);
+      const arc = sag * Math.sqrt(Math.max(0, 1 - across * across));
+      wobble = Math.min(1, Math.max(-1, wobble + Math.floor(scatter(bx, -1) * 3) - 1));
+      const edge = Math.min(rows - 2, Math.max(0, Math.round(arc) + wobble));
+      for (let by = edge; by < rows; by++) {
+        // How much of the forest is left: a quarter of the patches just under the line, fewer further down, and
+        // none in the last row, so the banner meets the page without a seam.
+        const left = by === rows - 1 ? 0 : 0.25 * Math.pow(1 - (by - edge) / (rows - edge), 2);
+        if (scatter(bx, by) >= left) g.fillRect(bx * block, H + by * block, block, block);
+      }
+    }
   }
 }
 

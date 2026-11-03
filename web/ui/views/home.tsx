@@ -1,8 +1,59 @@
 import React, { useLayoutEffect, useRef } from "react";
-import { companionLine, friendlyTitle, useApp, type AppState } from "../app";
+import { companionLine, useApp, type AppState } from "../app";
 import { paintStill } from "../intro";
-import { Badge, Btn, Card } from "../kit";
-import { Pip } from "../pip";
+import { Btn, Icon } from "../kit";
+import { Pip, PipAsleep, pixelPath } from "../pip";
+
+// Small one-colour drawings in the banner's pixel blocks rather than a font's or an icon set's: the tick on a
+// stage passed, the numbers, and the pictures on the signs under the banner.
+const PixelArt = ({ rows, className }: { rows: string[]; className: string }) => (
+  <svg className={className} viewBox={`0 0 ${rows[0].length} ${rows.length}`} shapeRendering="crispEdges" aria-hidden="true">
+    <path d={pixelPath(rows)} fill="currentColor" />
+  </svg>
+);
+
+const Tick = () => <PixelArt className="tick" rows={[".....X", "....XX", "X..XX.", "XXXX..", ".XX..."]} />;
+
+// The line under the best jobs' heading, like the edge of a cave's mouth: a rocky ridge in the middle with points
+// hanging under it, and only a short thin stretch at each end.
+const LEDGE = [
+  ".............XX...XXX..X...............",
+  "..........XXXXXX.XXXXXXXXX.XX..........",
+  ".......XXXXXXXXXXXXXXXXXXXXXXXXX.......",
+  "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  "..XX..XXXX.XXXXXXXXXXXXXXXXX.XXXX..XX..",
+  "...X...XX...XXX.XXXXXXX.XXX...XX...X...",
+  "........X....X...XXXXX...X.....X.......",
+  ".................XXX...................",
+  "..................X....................",
+];
+
+// A star for new jobs, an envelope for applications sent, a speech bubble for interviews, a cup for offers.
+const SIGNS: Record<string, string[]> = {
+  fresh: ["....X....", "...XXX...", "XXXXXXXXX", ".XXXXXXX.", "..XXXXX..", ".XXX.XXX.", ".X.....X."],
+  sent: ["XXXXXXXXX", "XX.....XX", "X.X...X.X", "X..X.X..X", "X...X...X", "X.......X", "XXXXXXXXX"],
+  interview: [".XXXXXXX.", "XXXXXXXXX", "XX.X.X.XX", "XXXXXXXXX", ".XXXXXXX.", "..XX.....", ".X......."],
+  offer: ["XXXXXXXXX", "X.XXXXX.X", ".XXXXXXX.", "..XXXXX..", "...XXX...", "....X....", "..XXXXX.."],
+};
+
+const DIGITS: Record<string, string[]> = {
+  0: [".XX.", "X..X", "X..X", "X..X", "X..X", ".XX."],
+  1: [".X.", "XX.", ".X.", ".X.", ".X.", "XXX"],
+  2: [".XX.", "X..X", "...X", "..X.", ".X..", "XXXX"],
+  3: ["XXX.", "...X", ".XX.", "...X", "...X", "XXX."],
+  4: ["..X.", ".XX.", "X.X.", "XXXX", "..X.", "..X."],
+  5: ["XXXX", "X...", "XXX.", "...X", "...X", "XXX."],
+  6: [".XX.", "X...", "XXX.", "X..X", "X..X", ".XX."],
+  7: ["XXXX", "...X", "..X.", "..X.", ".X..", ".X.."],
+  8: [".XX.", "X..X", ".XX.", "X..X", "X..X", ".XX."],
+  9: [".XX.", "X..X", "X..X", ".XXX", "...X", ".XX."],
+};
+// A number in those digits, a block apart. It is only a picture: the list numbers the stages for screen readers,
+// and a sign's link says its number.
+function Digits({ n }: { n: number }) {
+  const glyphs = [...String(n)].map((d) => DIGITS[d]);
+  return <PixelArt className="digits" rows={glyphs[0].map((_, y) => glyphs.map((g) => g[y]).join("."))} />;
+}
 
 // The login's forest, at rest, behind the home page's card: morning or night with the theme, repainted when
 // the banner changes size. The sun or moon sits off to the side, clear of the card in the middle.
@@ -13,7 +64,11 @@ function Forest() {
   useLayoutEffect(() => {
     const c = ref.current!;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const paint = () => paintStill(c, dark, 0.15);
+    // The fade into the page below: its height and the page's colour, both from the stylesheet.
+    const paint = () => {
+      const css = getComputedStyle(c);
+      paintStill(c, dark, 0.15, { height: parseFloat(css.getPropertyValue("--fade")) || 0, color: css.getPropertyValue("--bg").trim() });
+    };
     paint();
     let size = "";
     const watch = new ResizeObserver(() => {
@@ -107,7 +162,7 @@ function Hero() {
             <li key={i} className={`station ${passed ? "done" : ""} ${here ? "here" : ""}`} aria-current={here ? "step" : undefined}>
               {here && <Pip mood={mood} className="station-pip" />}
               <a href={stage.href}>
-                <span className="flag">{passed ? "✓" : i + 1}</span>
+                <span className="flag">{passed ? <Tick /> : <Digits n={i + 1} />}</span>
                 <span className="station-text"><strong>{stage.label}</strong><small>{stage.hint}</small></span>
               </a>
             </li>
@@ -118,37 +173,58 @@ function Hero() {
   );
 }
 
+// Nothing here yet: Pip asleep over the empty list.
+const Empty = ({ text, href, label }: { text: string; href: string; label: string }) => (
+  <div className="best-empty">
+    <PipAsleep className="best-pip" />
+    <p>{text}</p>
+    <a className="btn pixel" href={href}>{label}</a>
+  </div>
+);
+
 export function Home() {
   const { s, t } = useApp();
   const st = appStats(s);
-  const top = s.jobs.filter((j) => j.score !== null && j.tier !== "far").sort((a, b) => b.score - a.score).slice(0, 5);
+  // Every job with a score, best first; a long list runs on down the page.
+  const top = s.jobs.filter((j) => j.score !== null && j.tier !== "far").sort((a, b) => b.score - a.score);
   const fresh = s.jobs.filter((j) => j.status === "new").length;
-  const tile = (n: number, label: string, href: string) => <a className="card tile" href={href}><span className="num">{n}</span><span className="lbl">{label}</span></a>;
-  // The banner runs the whole width beside the menu; the rest sits in the page's column below it.
+  // A plain card in the banner's colours: a pixel picture, the number in pixel digits, the words.
+  const stat = (key: "sent" | "interview" | "offer" | "fresh", n: number, href: string) => (
+    <a className="stat" href={href} aria-label={`${n} ${t(`home.tiles.${key}`)}`}>
+      <PixelArt className="stat-sign" rows={SIGNS[key]} />
+      <span className="stat-text"><Digits n={n} /><span className="stat-label">{t(`home.tiles.${key}`)}</span></span>
+    </a>
+  );
+  // The banner runs the whole width beside the menu; the rest sits in the page's column below it. The signs run
+  // in the journey's order, new jobs first.
   return (
     <>
       <Hero />
       <div className="page home">
-        <div className="tiles">
-          {tile(st.sent, t("home.tiles.sent"), "#/apps")}
-          {tile(st.interview, t("home.tiles.interview"), "#/apps")}
-          {tile(st.offer, t("home.tiles.offer"), "#/apps")}
-          {tile(fresh, t("home.tiles.fresh"), "#/jobs/saved")}
-        </div>
-        <div className="two">
-          <Card>
+        <section className="stats" aria-label={t("home.glance")}>
+          {stat("fresh", fresh, "#/jobs/saved")}
+          {stat("sent", st.sent, "#/apps")}
+          {stat("interview", st.interview, "#/apps")}
+          {stat("offer", st.offer, "#/apps")}
+        </section>
+        <section className="best">
+          <div className="best-head">
             <h2>{t("home.topJobs")}</h2>
-            {top.length ? top.map((j) => (
-              <a key={j.key} className="list-link" href="#/jobs/saved"><span className="ellipsis" dir="auto">{j.title}, {j.company}</span><strong className="score">{j.score}</strong></a>
-            )) : <div className="empty">{t("home.noJobs")}<a className="btn" href="#/jobs">{t("home.toJobs")}</a></div>}
-          </Card>
-          <Card>
-            <h2>{t("home.recent")}</h2>
-            {s.sessions.length ? s.sessions.slice(0, 4).map((c) => (
-              <a key={c.id} className="list-link" href={`#/chat/${c.id}`}><span className="ellipsis" dir="auto">{friendlyTitle(c.title, t)}</span><Badge tone={SESSION_TONE[c.status]}>{t(`session.${c.status}`)}</Badge></a>
-            )) : <div className="empty">{t("home.noChats")}<a className="btn" href="#/chat/new">{t("home.startChat")}</a></div>}
-          </Card>
-        </div>
+            <PixelArt className="best-ledge" rows={LEDGE} />
+            {top.length > 0 && <a className="best-all" href="#/jobs/saved">{t("home.allJobs")}</a>}
+          </div>
+          {top.length ? top.map((j) => (
+            <a key={j.key} className="best-row" href="#/jobs/saved">
+              <span className="score-chip">{j.score}</span>
+              {/* Each line keeps to the page's side; the words inside it run in their own language's direction. */}
+              <span className="row-text">
+                <strong><bdi dir="auto">{j.title}</bdi></strong>
+                <small><bdi dir="auto">{[j.company, j.location].filter(Boolean).join(", ")}</bdi></small>
+              </span>
+              <Icon name="next" />
+            </a>
+          )) : <Empty text={t("home.noJobs")} href="#/jobs" label={t("home.toJobs")} />}
+        </section>
       </div>
     </>
   );

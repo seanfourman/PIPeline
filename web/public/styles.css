@@ -79,6 +79,20 @@ legend { padding: 0; }
 :focus-visible { outline: 3px solid var(--cta); outline-offset: 2px; }
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 
+/* Scrollbars as square blocks like the pixel art: a quiet grey bar on the page's colour, with a gap round it,
+   that takes the forest colour under the pointer and darkens while dragged. Chromium browsers draw these; Firefox
+   has no such parts, so it gets a thin bar in the same colours. */
+:root { --scroll-thumb: color-mix(in srgb, var(--ink-3) 55%, var(--bg)); }
+::-webkit-scrollbar { width: 12px; height: 12px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--bg); }
+/* Two of the banner's pixel blocks wide, inside the gap. */
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border: 2px solid var(--bg); border-radius: 0; }
+::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+::-webkit-scrollbar-thumb:active { background: var(--primary-edge); }
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) var(--bg); }
+}
+
 /* Frame. The sidebar is laid out like a social site's: the logo, one list of big icons and words with a round
    highlight, a round main button, and the account at the foot, on the page's own colour. */
 .shell { display: grid; grid-template-columns: 275px minmax(0, 1fr); height: 100%; }
@@ -224,14 +238,14 @@ textarea { resize: vertical; width: 100%; }
 
 /* Home. The banner is the one place in the app in pixel art: the login's forest at rest, the next step on a
    board like the login's, and the journey along the ground, in blocks of --px and the pixel font. */
-.home { gap: 20px; }
 /* A one-block outline in --ring-c with stepped corners. Declared on each element so its own --ring-c is used. */
-.hero, .hero * { --ring: 0 calc(var(--px) * -1) 0 0 var(--ring-c), 0 var(--px) 0 0 var(--ring-c), calc(var(--px) * -1) 0 0 0 var(--ring-c), var(--px) 0 0 0 var(--ring-c); }
+.hero, .hero *, .stats *, .btn.pixel { --ring: 0 calc(var(--px) * -1) 0 0 var(--ring-c), 0 var(--px) 0 0 var(--ring-c), calc(var(--px) * -1) 0 0 0 var(--ring-c), var(--px) 0 0 0 var(--ring-c); }
 /* The banner runs edge to edge beside the menu, from the top of the page. The board stands in its middle, its
-   words centred, and the journey lines up with the page's column below (1100 pixels at most, 38 in from its sides). */
+   words centred, and the journey lines up with the page's column below (1100 pixels at most, 38 in from its sides).
+   Under the journey the forest dissolves into the page in pixel blocks, over --fade, painted with the forest. */
 .hero {
-  --ring-c: var(--edge); --column: max(38px, calc((100% - 1100px) / 2 + 38px));
-  position: relative; height: 470px; overflow: hidden; background: var(--hero-sky);
+  --ring-c: var(--edge); --column: max(38px, calc((100% - 1100px) / 2 + 38px)); --fade: 128px;
+  position: relative; height: calc(470px + var(--fade)); overflow: hidden; background: var(--hero-sky);
 }
 .hero-forest { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .hero-card {
@@ -241,34 +255,75 @@ textarea { resize: vertical; width: 100%; }
 .hero-hi { color: var(--board-ink-2); font-size: 15px; }
 .hero-card h1 { font-family: var(--pixel); font-size: 40px; font-weight: 800; line-height: 1.1; }
 .hero-text { color: var(--board-ink-2); font-size: 16.5px; margin-bottom: 12px; }
-/* The banner's button is a pixel block, lit along the top, with a thick edge below that presses in. */
-.hero .btn.cta {
+/* The banner's button is a pixel block, lit along the top, with a thick edge below that presses in; .pixel gives
+   another button the same look (the empty jobs list's). */
+.hero .btn.cta, .btn.pixel {
   --ring-c: var(--edge); min-height: 52px; padding: 6px 26px 10px; border: 0; border-radius: 0; background: var(--cta); color: var(--cta-ink);
   box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--cta-hi), inset 0 calc(var(--px) * -2) 0 0 var(--cta-lo);
   font-family: var(--pixel); font-size: 26px; font-weight: 800; line-height: 1.1; transition: none;
 }
-.hero .btn.cta:active { transform: translateY(var(--px)); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--cta-hi), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo); }
-.stations { position: absolute; inset: auto 0 0 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; padding: 0 calc(var(--column) - 26px) 14px; list-style: none; }
+.hero .btn.cta:active, .btn.pixel:active { transform: translateY(var(--px)); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--cta-hi), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo); }
+.stations { position: absolute; inset: auto 0 var(--fade) 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; padding: 0 calc(var(--column) - 26px) 14px; list-style: none; }
 .station { position: relative; display: flex; justify-content: center; }
 .station + .station::before { content: ""; position: absolute; top: 17px; inset-inline-end: 50%; width: 100%; border-top: var(--px) dashed rgb(255 255 255 / 60%); }
 .station.done + .station::before { border-top: var(--px) solid var(--cta); }
 .station a { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 4px; text-align: center; color: #fff; text-decoration: none; }
-.flag { --ring-c: var(--edge); display: grid; place-items: center; width: 38px; height: 38px; background: var(--edge); color: #fff; font-family: var(--pixel); font-weight: 800; font-size: 24px; box-shadow: var(--ring); }
+.flag { --ring-c: var(--edge); display: grid; place-items: center; width: 38px; height: 38px; background: var(--edge); color: #fff; box-shadow: var(--ring); }
 .station.done .flag { background: var(--cta); color: var(--cta-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo); }
 .station.here .flag { background: #fff; color: var(--cta-ink); --ring-c: var(--cta); }
+/* Up by half the flag's shaded bottom edge, so it sits in the middle of the lit face. */
+.tick { display: block; width: calc(var(--px) * 6); height: auto; margin-bottom: var(--px); }
+.digits { display: block; height: calc(var(--px) * 6); width: auto; }
 /* White words with a hard dark outline, so they read over the grass at any time of day. */
 .station-text strong, .station-text small { text-shadow: 2px 0 var(--edge), -2px 0 var(--edge), 0 2px var(--edge), 0 -2px var(--edge), 2px 2px var(--edge), -2px -2px var(--edge), 2px -2px var(--edge), -2px 2px var(--edge); }
 .station-text strong { display: block; font-family: var(--pixel); font-size: 21px; font-weight: 700; line-height: 1.1; }
 .station-text small { display: block; font-size: 12.5px; color: #fff; }
 .station a:hover strong { text-decoration: underline; }
 .station-pip { position: absolute; bottom: 100%; left: 50%; width: 92px; margin-bottom: -6px; transform: translateX(-50%); z-index: 2; pointer-events: none; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
-.tile { display: flex; flex-direction: column; gap: 2px; color: inherit; text-decoration: none; font-weight: 400; transition: transform 120ms, border-color 120ms; }
-.tile:hover { transform: translateY(-3px); border-color: var(--primary); }
-.tile .num { font-family: var(--head); font-size: 42px; font-weight: 700; line-height: 1.05; }
-.tile .lbl { color: var(--ink-2); font-size: 14.5px; }
-.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
-.two > .card { display: flex; flex-direction: column; gap: 6px; }
+/* Below the banner: the numbers on cards that go with it, then the best jobs out in the open across the column,
+   where only the scores and links take the forest colour. */
+.page.home { padding-top: 6px; gap: 18px; }
+/* The numbers on plain cards in the banner's colours (its parchment by day, its night blue at night) with a
+   one-block pixel outline, a small pixel picture, the number in the journey's digits and the words. */
+.stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; padding: var(--px); }
+.stat { --ring-c: var(--frame); display: flex; align-items: center; gap: 18px; padding: 14px 20px; background: var(--board-panel); color: var(--board-ink); box-shadow: var(--ring); text-decoration: none; font-weight: 400; }
+/* Five screen pixels to each of the picture's and the digits', so the two are drawn in the same size of block. */
+.stat-sign { display: block; flex: none; width: 45px; height: auto; color: var(--board-ink-2); }
+/* The picture keeps its place at the start; the number and words are centred in the rest of the card. */
+.stat-text { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 7px; min-width: 0; text-align: center; }
+.stat .digits { height: 30px; }
+.stat-label { font-family: var(--pixel); font-size: 20px; font-weight: 800; line-height: 1.1; color: var(--board-ink); }
+/* The best jobs: a heading in the middle, in the banner's pixel font, over a pixel line like a cave's mouth, with
+   a link to all of them under it; then a row per job, each with a line under it, as many as there are, so a long
+   list runs on down the page and the page scrolls. */
+.best { display: flex; flex-direction: column; margin-top: 10px; }
+.best-head { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-bottom: 12px; text-align: center; }
+.best-head h2 { font-family: var(--pixel); font-size: 30px; font-weight: 800; line-height: 1.1; }
+/* The banner's block size: 39 blocks wide. */
+.best-ledge { display: block; width: calc(var(--px) * 39); max-width: 100%; height: auto; color: var(--primary); }
+.best-all { color: var(--primary); text-decoration: none; font-size: 15px; font-weight: 500; }
+.best-all:hover { text-decoration: underline; }
+.best-row { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 400; transition: background-color 0.2s ease; }
+.best-row:hover { background: var(--hover); }
+.row-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.row-text strong, .row-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-text strong { font-size: 15.5px; font-weight: 700; }
+.row-text small { color: var(--ink-2); font-size: 13.5px; }
+.score-chip { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--primary); color: var(--primary-ink); font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.best-row .icon-next { color: var(--ink-3); }
+[dir="rtl"] .icon-next { transform: scaleX(-1); }
+.best-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 28px; color: var(--ink-2); text-align: center; }
+/* The button as far under the words as Pip is under the heading's line: the heading's 12 and this 32. */
+.best-empty p { margin-bottom: 32px; }
+/* Three of the screen's pixels to each of Pip's, in grey, dimmed into the page's colour. */
+.best-pip { width: 111px; filter: grayscale(1); opacity: 0.55; }
+@media (max-width: 860px) {
+  .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 520px) {
+  .stat { flex-direction: column; align-items: flex-start; gap: 10px; padding: 14px 16px; }
+  .stat-text { align-self: stretch; }
+}
 .score { font-family: var(--head); font-weight: 700; font-variant-numeric: tabular-nums; font-size: 22px; min-width: 42px; text-align: center; color: var(--primary); }
 
 /* Jobs */
@@ -548,7 +603,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
   .toast { bottom: 16px; }
   .page { padding: 20px 16px 100px; }
   h1 { font-size: 27px; }
-  .hero { height: auto; display: flex; flex-direction: column; background: var(--board-panel); }
+  .hero { --fade: 0px; height: auto; display: flex; flex-direction: column; background: var(--board-panel); }
   .hero .hero-forest { position: relative; height: 170px; }
   .hero-card { position: relative; z-index: 1; inset: auto; width: auto; margin: -36px 12px 0; padding: 26px 24px; }
   .hero-card h1 { font-size: 32px; }

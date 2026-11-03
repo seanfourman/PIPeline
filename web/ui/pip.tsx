@@ -112,6 +112,41 @@ const BACK_LEAP = blocks([
   "...D...D...",
 ]);
 
+// Asleep, for a list with nothing in it yet: lying flat with its eyes shut, its back curving down from behind
+// the ears and out to a big round rump, its tail along its front, and three Zs rising off its back, each bigger
+// than the last. It doesn't move, and the page shows it in grey.
+// Single pixels from rows of palette letters, from (x, y); a dot draws nothing.
+const art = (x: number, y: number, rows: string[]): Px[] =>
+  rows.flatMap((row, dy) => [...row].flatMap((ch, dx): Px[] => (ch === "." ? [] : [[x + dx, y + dy, C[ch]]])));
+const ASLEEP: Px[] = [
+  ...blocks([
+    "...............",
+    ".D.......D.....",
+    ".OD.....DO.....",
+    ".OOOOOOOOOOOO..",
+    ".OOOOOOOOOOOOO.",
+    ".OOOOOOOOOOOOOO",
+    ".OOOWKWOOOOOOOO",
+    ".OWWWWWWOOOOOOO",
+    "WWOOOOOOOOOOOOO",
+  ]),
+  // The rump, a quarter of an ellipse: how far right each row reaches, from the top of the back down to the ground.
+  ...[25, 26, 28, 29, 30, 30, 31, 31, 31, 32, 32, 32].flatMap((to, i) => Array.from({ length: to - 19 }, (_, k): Px => [20 + k, 5 + i, C.O])),
+  // Closed lids, curving down.
+  ...art(5, 9, ["K..K....K..K", ".KK......KK."]),
+  ...art(22, 0, ["GGGG", "..G.", ".G..", "GGGG"]),
+  ...art(26, -6, ["GGGGG", "...G.", "..G..", ".G...", "GGGGG"]),
+  ...art(31, -13, ["GGGGGG", "....G.", "...G..", "..G...", ".G....", "GGGGGG"]),
+];
+
+export function PipAsleep({ className = "" }: { className?: string }) {
+  return (
+    <svg className={`pip pip-asleep ${className}`} viewBox="0 -13 37 30" shapeRendering="crispEdges" aria-hidden="true">
+      <Pixels px={ASLEEP} />
+    </svg>
+  );
+}
+
 export type Pixel = Px;
 
 // The fox as a list of pixels, for drawing on a canvas: the same sprite the app shows.
@@ -140,7 +175,10 @@ const MARK = [
   ".....XXXXX.....",
   "......XXX......",
 ];
-export const MARK_PATH = MARK.map((row, y) => [...row.matchAll(/X+/g)].map((m) => `M${m.index} ${y}h${m[0].length}v1h-${m[0].length}z`).join("")).join("");
+// One SVG path for a one-colour drawing in rows of X (filled) and dot (empty), one unit per cell.
+export const pixelPath = (rows: string[]) =>
+  rows.map((row, y) => [...row.matchAll(/X+/g)].map((m) => `M${m.index} ${y}h${m[0].length}v1h-${m[0].length}z`).join("")).join("");
+export const MARK_PATH = pixelPath(MARK);
 
 export function PipMark({ className = "" }: { className?: string }) {
   return (
