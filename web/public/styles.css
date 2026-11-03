@@ -79,19 +79,29 @@ legend { padding: 0; }
 :focus-visible { outline: 3px solid var(--cta); outline-offset: 2px; }
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 
-/* Scrollbars as square blocks like the pixel art: a quiet grey bar on the page's colour, with a gap round it,
-   that takes the forest colour under the pointer and darkens while dragged. Chromium browsers draw these; Firefox
-   has no such parts, so it gets a thin bar in the same colours. */
+/* Scrollbars: a quiet grey bar, round at both ends, on nothing (no track behind it), that takes the forest colour
+   under the pointer and darkens while dragged. Chromium browsers draw these; Firefox has no such parts, so it gets
+   a thin bar in the same colours. */
 :root { --scroll-thumb: color-mix(in srgb, var(--ink-3) 55%, var(--bg)); }
 ::-webkit-scrollbar { width: 12px; height: 12px; }
-::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: var(--bg); }
-/* Two of the banner's pixel blocks wide, inside the gap. */
-::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border: 2px solid var(--bg); border-radius: 0; }
-::-webkit-scrollbar-thumb:hover { background: var(--primary); }
-::-webkit-scrollbar-thumb:active { background: var(--primary-edge); }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+/* 8 pixels wide inside a clear 2-pixel margin, the margin left out of its colour. */
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); background-clip: padding-box; border: 2px solid transparent; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background-color: var(--primary); }
+::-webkit-scrollbar-thumb:active { background-color: var(--primary-edge); }
 @supports not selector(::-webkit-scrollbar) {
-  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) var(--bg); }
+  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
 }
+/* The page itself has no strip for a bar beside it: its bar (PageScroll in app.tsx) floats over its edge instead,
+   the same round bar, 8 pixels wide in a 14-pixel band that is easier to catch. */
+main { scrollbar-width: none; }
+main::-webkit-scrollbar { display: none; }
+.page-frame { position: relative; min-width: 0; min-height: 0; }
+.page-frame > main { height: 100%; }
+.page-scroll { position: absolute; z-index: 30; inset-inline-end: 0; width: 14px; touch-action: none; }
+.page-scroll::before { content: ""; position: absolute; inset: 0 3px; border-radius: 999px; background: var(--scroll-thumb); transition: background-color 0.2s ease; }
+.page-scroll:hover::before { background: var(--primary); }
+.page-scroll.dragging::before { background: var(--primary-edge); }
 
 /* Frame. The sidebar is laid out like a social site's: the logo, one list of big icons and words with a round
    highlight, a round main button, and the account at the foot, on the page's own colour. */
@@ -239,13 +249,16 @@ textarea { resize: vertical; width: 100%; }
 /* Home. The banner is the one place in the app in pixel art: the login's forest at rest, the next step on a
    board like the login's, and the journey along the ground, in blocks of --px and the pixel font. */
 /* A one-block outline in --ring-c with stepped corners. Declared on each element so its own --ring-c is used. */
-.hero, .hero *, .stats *, .btn.pixel { --ring: 0 calc(var(--px) * -1) 0 0 var(--ring-c), 0 var(--px) 0 0 var(--ring-c), calc(var(--px) * -1) 0 0 0 var(--ring-c), var(--px) 0 0 0 var(--ring-c); }
+.hero, .hero *, .stats *, .btn.pixel, .bookcase, .bookcase * { --ring: 0 calc(var(--px) * -1) 0 0 var(--ring-c), 0 var(--px) 0 0 var(--ring-c), calc(var(--px) * -1) 0 0 0 var(--ring-c), var(--px) 0 0 0 var(--ring-c); }
 /* The banner runs edge to edge beside the menu, from the top of the page. The board stands in its middle, its
    words centred, and the journey lines up with the page's column below (1100 pixels at most, 38 in from its sides).
    Under the journey the forest dissolves into the page in pixel blocks, over --fade, painted with the forest. */
 .hero {
   --ring-c: var(--edge); --column: max(38px, calc((100% - 1100px) / 2 + 38px)); --fade: 128px;
-  position: relative; height: calc(470px + var(--fade)); overflow: hidden; background: var(--hero-sky);
+  position: relative; height: calc(470px + var(--fade)); overflow: hidden;
+  /* Behind the forest: its sky at the top and the page's colour at the bottom, where the forest dissolves into
+     the page, so where a scaled screen leaves part of a pixel uncovered at either edge, nothing shows. */
+  background: linear-gradient(var(--hero-sky) 50%, var(--bg) 50%);
 }
 .hero-forest { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .hero-card {
@@ -294,8 +307,7 @@ textarea { resize: vertical; width: 100%; }
 .stat .digits { height: 30px; }
 .stat-label { font-family: var(--pixel); font-size: 20px; font-weight: 800; line-height: 1.1; color: var(--board-ink); }
 /* The best jobs: a heading in the middle, in the banner's pixel font, over a pixel line like a cave's mouth, with
-   a link to all of them under it; then a row per job, each with a line under it, as many as there are, so a long
-   list runs on down the page and the page scrolls. */
+   a link to all of them under it; then the jobs on shelves. */
 .best { display: flex; flex-direction: column; margin-top: 10px; }
 .best-head { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-bottom: 12px; text-align: center; }
 .best-head h2 { font-family: var(--pixel); font-size: 30px; font-weight: 800; line-height: 1.1; }
@@ -303,20 +315,49 @@ textarea { resize: vertical; width: 100%; }
 .best-ledge { display: block; width: calc(var(--px) * 39); max-width: 100%; height: auto; color: var(--primary); }
 .best-all { color: var(--primary); text-decoration: none; font-size: 15px; font-weight: 500; }
 .best-all:hover { text-decoration: underline; }
-.best-row { display: flex; align-items: center; gap: 14px; padding: 12px 4px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 400; transition: background-color 0.2s ease; }
-.best-row:hover { background: var(--hover); }
-.row-text { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
-.row-text strong, .row-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-text strong { font-size: 15.5px; font-weight: 700; }
-.row-text small { color: var(--ink-2); font-size: 13.5px; }
-.score-chip { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border-radius: 12px; background: var(--primary); color: var(--primary-ink); font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.best-row .icon-next { color: var(--ink-3); }
-[dir="rtl"] .icon-next { transform: scaleX(-1); }
-.best-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 32px 28px; color: var(--ink-2); text-align: center; }
-/* The button as far under the words as Pip is under the heading's line: the heading's 12 and this 32. */
-.best-empty p { margin-bottom: 32px; }
-/* Three of the screen's pixels to each of Pip's, in grey, dimmed into the page's colour. */
-.best-pip { width: 111px; filter: grayscale(1); opacity: 0.55; }
+/* The jobs on shelves, like a bookcase in the banner's wood (its stone at night): a board on top, a post each
+   side standing on little feet, and a plank under each row of squares; the bookcase grows down the page with the
+   jobs. A plank is lit along its top and shaded along its bottom, a post down its sides. */
+.bookcase { --ring-c: var(--edge); --post: 16px; position: relative; margin-top: 6px; padding-inline: var(--post); }
+.bookcase::before, .bookcase::after {
+  content: ""; position: absolute; top: 0; bottom: calc(var(--px) * -2); width: var(--post); background: var(--frame);
+  box-shadow: var(--ring), inset var(--px) 0 0 0 var(--frame-hi), inset calc(var(--px) * -1) 0 0 0 var(--frame-lo);
+}
+.bookcase::before { inset-inline-start: 0; }
+.bookcase::after { inset-inline-end: 0; }
+.shelf-plank { height: 16px; background: var(--frame); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--frame-hi), inset 0 calc(var(--px) * -1) 0 0 var(--frame-lo); }
+.bookcase > .shelf-plank { position: relative; z-index: 1; margin-inline: calc(var(--post) * -1); }
+.shelf { padding-top: 14px; }
+.shelf-places { display: grid; gap: 14px; padding-inline: 14px; }
+/* A square's outline is a paler wood than the bookcase's, so the squares stand apart from it. */
+.item {
+  --ring-c: color-mix(in srgb, var(--frame) 55%, var(--board-panel)); aspect-ratio: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px 14px; overflow: hidden;
+  background: var(--board-panel); color: var(--board-ink); box-shadow: var(--ring); text-decoration: none; font-weight: 400;
+}
+.item-score { align-self: flex-start; display: grid; place-items: center; min-width: 40px; height: 32px; padding: 0 8px 2px; margin-bottom: 6px; background: var(--primary); color: var(--primary-ink); box-shadow: inset 0 calc(var(--px) * -1) 0 0 var(--primary-edge); }
+/* Three screen pixels to each of the digits'. */
+.item-score .digits { height: 18px; }
+.item-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: 15px; font-weight: 700; line-height: 1.3; }
+.item-company, .item-place { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--board-ink-2); font-size: 13.5px; }
+.item-place { margin-top: auto; font-size: 13px; }
+/* An empty place, as big as a square, and what sits in it, three screen pixels to each of theirs. The cobweb fills
+   the corner by the end post under the plank above; the spider hangs from that plank; dust and the mushroom sit
+   on the shelf. */
+.place { position: relative; aspect-ratio: 1; }
+.prop { position: absolute; display: block; height: auto; color: color-mix(in srgb, var(--ink-3) 85%, var(--bg)); }
+.prop-web { top: -14px; inset-inline-end: -14px; width: 51px; }
+:root[dir="ltr"] .prop-web { transform: scaleX(-1); }
+.prop-spider { top: -14px; left: calc(50% - 10px); width: 21px; }
+.prop-dust { bottom: 0; inset-inline-start: 14%; width: 48px; }
+.prop-mushroom { bottom: 0; inset-inline-end: 22%; width: 33px; }
+.shelf-pip { position: absolute; bottom: 0; left: calc(50% - 55px); width: 111px; filter: grayscale(1); opacity: 0.55; }
+.best-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 36px 28px 8px; color: var(--ink-2); text-align: center; }
+.best-empty p { margin-bottom: 20px; }
+/* On a phone the squares are too narrow for their words, so they grow as tall as they need. */
+@media (max-width: 520px) {
+  .item, .place { aspect-ratio: auto; min-height: 150px; }
+  .item-title { -webkit-line-clamp: 4; }
+}
 @media (max-width: 860px) {
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

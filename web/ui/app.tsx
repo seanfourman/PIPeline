@@ -122,6 +122,58 @@ function Toast() {
   );
 }
 
+// The page's scrollbar, drawn over the page rather than in a strip beside it, so nothing frames the banner: a round
+// grey bar on the side the browser's own would be on (the left in Hebrew), the forest colour under the pointer,
+// and draggable. The wheel, keys and touch scroll the page as ever; the browser's bar is hidden (styles.css).
+// It stands in the same frame as the page, at the frame's end edge, so only its height and how far down it is
+// are worked out here.
+function PageScroll({ target }: { target: React.RefObject<HTMLElement> }) {
+  const [bar, setBar] = useState<{ top: number; height: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const drag = useRef<{ y: number; scroll: number } | null>(null);
+  useEffect(() => {
+    const el = target.current;
+    if (!el) return;
+    const measure = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight <= clientHeight + 1) return setBar(null);
+      const height = Math.max(40, (clientHeight * clientHeight) / scrollHeight);
+      setBar({ top: (scrollTop / (scrollHeight - clientHeight)) * (clientHeight - height), height });
+    };
+    // The page's height changes when what is in it does, and what is in it changes with each screen.
+    const sizes = new ResizeObserver(measure);
+    const watch = () => {
+      sizes.disconnect();
+      sizes.observe(el);
+      for (const child of el.children) sizes.observe(child);
+    };
+    const screens = new MutationObserver(watch);
+    watch();
+    screens.observe(el, { childList: true });
+    el.addEventListener("scroll", measure, { passive: true });
+    addEventListener("resize", measure);
+    return () => { sizes.disconnect(); screens.disconnect(); el.removeEventListener("scroll", measure); removeEventListener("resize", measure); };
+  }, [target]);
+  if (!bar) return null;
+  const down = (e: React.PointerEvent<HTMLDivElement>) => {
+    drag.current = { y: e.clientY, scroll: target.current!.scrollTop };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    setDragging(true);
+  };
+  const move = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = target.current;
+    if (!el || !drag.current) return;
+    el.scrollTop = drag.current.scroll + ((e.clientY - drag.current.y) / (el.clientHeight - bar.height)) * (el.scrollHeight - el.clientHeight);
+  };
+  const up = () => { drag.current = null; setDragging(false); };
+  return (
+    <div
+      className={`page-scroll ${dragging ? "dragging" : ""}`} aria-hidden="true" style={{ top: bar.top, height: bar.height }}
+      onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up}
+    />
+  );
+}
+
 function Screen() {
   const { view, arg, s } = useApp();
   switch (view) {
@@ -160,6 +212,7 @@ export function App() {
   const [theme, setTheme] = useState(() => stored("theme") ?? "");
   const [news, setNews] = useState<News>(null);
   const newsTimer = useRef<ReturnType<typeof setTimeout>>();
+  const page = useRef<HTMLElement>(null);
   const draft = useRef("");
   const prefersDark = useMemo(() => matchMedia("(prefers-color-scheme: dark)"), []);
   const [systemDark, setSystemDark] = useState(prefersDark.matches);
@@ -269,7 +322,10 @@ export function App() {
       {auth === "in" && (
         <div className={`shell ${booted && loaded ? "entering" : "waiting"}`} aria-busy={!(booted && loaded)}>
           <Sidebar />
-          <main id="main" tabIndex={-1}><Screen /></main>
+          <div className="page-frame">
+            <main id="main" ref={page} tabIndex={-1}><Screen /></main>
+            <PageScroll target={page} />
+          </div>
           <Toast />
         </div>
       )}

@@ -1,7 +1,7 @@
-import React, { useLayoutEffect, useRef } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import { companionLine, useApp, type AppState } from "../app";
 import { paintStill } from "../intro";
-import { Btn, Icon } from "../kit";
+import { Btn } from "../kit";
 import { Pip, PipAsleep, pixelPath } from "../pip";
 
 // Small one-colour drawings in the banner's pixel blocks rather than a font's or an icon set's: the tick on a
@@ -173,14 +173,105 @@ function Hero() {
   );
 }
 
-// Nothing here yet: Pip asleep over the empty list.
-const Empty = ({ text, href, label }: { text: string; href: string; label: string }) => (
-  <div className="best-empty">
-    <PipAsleep className="best-pip" />
-    <p>{text}</p>
-    <a className="btn pixel" href={href}>{label}</a>
-  </div>
+// ---------- the shelves ----------
+
+// A drawing in several colours: each letter of the rows is one of `colors`, a dot draws nothing.
+const Sprite = ({ rows, colors, className }: { rows: string[]; colors: Record<string, string>; className: string }) => (
+  <svg className={className} viewBox={`0 0 ${rows[0].length} ${rows.length}`} shapeRendering="crispEdges" aria-hidden="true">
+    {Object.entries(colors).map(([ch, fill]) => (
+      <path key={ch} d={pixelPath(rows.map((row) => [...row].map((c) => (c === ch ? "X" : ".")).join("")))} fill={fill} />
+    ))}
+  </svg>
 );
+
+// What sits in a shelf's empty places. The cobweb is drawn for a top left corner and turned round as needed.
+const WEB = [
+  "XXXXXXXXXXXXXXXXX", "X.XX..X....X....X", "XX..XXX....X....X", "XX...XXX..X....X.", "X.X.X...XXX....X.",
+  "X.XX......X....X.", "XXXX.....X.XX.X..", "X..X....X....XX..", "X...X..X.....X...", "X...X.X.....X....",
+  "X..XXX.....X.....", "XXX...X...X......", "X.....X..X.......", "X......XX........", "X.....XX.........",
+  "X..XXX...........", "XXX..............",
+];
+const SPIDER = [
+  "...G...", "...G...", "...G...", "...G...", "...G...", "...G...", "...G...", "...G...", "...G...", "...G...",
+  "X..X..X", ".XXXXX.", "XXEXEXX", "XXXXXXX", ".XXXXX.", "X.X.X.X",
+];
+const DUST = ["....X.....X.....", "..XXXX...XXXX...", ".XXXXXX.XXXXXXX.", "XX.XX.XXX.XX.XXX", "XXXXXXXXXXXXXXXX", ".XXXXXX..XXXXXX."];
+const MUSHROOM = ["...cccc....", ".cccsccccc.", "ccssccccscc", "cccccccccc.", "....tt.....", "...tttt....", "..tttttt..."];
+type Prop = "web" | "spider" | "dust" | "mushroom";
+// The place beside the shelf's end post gets the cobweb; the others take these in turn.
+const LITTER: Prop[] = ["dust", "spider", "mushroom"];
+
+const PropArt = ({ kind }: { kind: Prop }) => {
+  if (kind === "web") return <Sprite className="prop prop-web" rows={WEB} colors={{ X: "currentColor" }} />;
+  // A grey-purple spider, seen on a white page and a black one alike.
+  if (kind === "spider") return <Sprite className="prop prop-spider" rows={SPIDER} colors={{ G: "currentColor", X: "#5A5870", E: "#FFFFFF" }} />;
+  if (kind === "dust") return <Sprite className="prop prop-dust" rows={DUST} colors={{ X: "currentColor" }} />;
+  return <Sprite className="prop prop-mushroom" rows={MUSHROOM} colors={{ c: "#D94A3A", s: "#FFFFFF", t: "#F3E6CF" }} />;
+};
+
+// How many squares fit across a shelf: as many as are at least ITEM_MIN wide, and never fewer than two.
+const ITEM_MIN = 180;
+function useColumns() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(4);
+  useLayoutEffect(() => {
+    const el = ref.current!;
+    const fit = () => setCols(Math.max(2, Math.floor(el.clientWidth / ITEM_MIN)));
+    fit();
+    const watch = new ResizeObserver(fit);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  return [ref, cols] as const;
+}
+
+type Job = Record<string, any>;
+type Place = { job: Job } | { prop: Prop } | { pip: true };
+
+// The best jobs as squares on wooden shelves, like a bookcase: a board on top, a post each side, a shelf under
+// each row. The last shelf's empty places hold a cobweb, a spider, dust or a mushroom; with no jobs at all there
+// is one empty shelf with Pip asleep on it.
+function Shelves({ jobs }: { jobs: Job[] }) {
+  const [ref, cols] = useColumns();
+  const count = Math.max(cols, Math.ceil(jobs.length / cols) * cols);
+  const places: Place[] = Array.from({ length: count }, (_, i) => {
+    if (i < jobs.length) return { job: jobs[i] };
+    if (i === count - 1) return { prop: "web" };
+    return { prop: LITTER[(i - jobs.length) % LITTER.length] };
+  });
+  if (!jobs.length) places[Math.floor((cols - 1) / 2)] = { pip: true };
+  const rows = Array.from({ length: count / cols }, (_, r) => places.slice(r * cols, r * cols + cols));
+  return (
+    <div className="bookcase">
+      <div className="shelf-plank" />
+      <div className="shelves" ref={ref}>
+        {rows.map((row, r) => (
+          <div className="shelf" key={r}>
+            <div className="shelf-places" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+              {row.map((place, i) => ("job" in place ? <Item key={i} job={place.job} /> : (
+                <div key={i} className="place">{"pip" in place ? <PipAsleep className="shelf-pip" /> : <PropArt kind={place.prop} />}</div>
+              )))}
+            </div>
+            <div className="shelf-plank" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// One job as a square on the shelf: its score in a lit pixel flag, the title, the company, the place.
+function Item({ job }: { job: Job }) {
+  return (
+    <a className="item" href="#/jobs/saved" aria-label={`${job.score}: ${job.title}, ${job.company}`}>
+      <span className="item-score"><Digits n={job.score} /></span>
+      {/* Each line keeps to the page's side; the words inside it run in their own language's direction. */}
+      <strong className="item-title"><bdi dir="auto">{job.title}</bdi></strong>
+      <span className="item-company"><bdi dir="auto">{job.company}</bdi></span>
+      {job.location && <span className="item-place"><bdi dir="auto">{job.location}</bdi></span>}
+    </a>
+  );
+}
 
 export function Home() {
   const { s, t } = useApp();
@@ -213,17 +304,13 @@ export function Home() {
             <PixelArt className="best-ledge" rows={LEDGE} />
             {top.length > 0 && <a className="best-all" href="#/jobs/saved">{t("home.allJobs")}</a>}
           </div>
-          {top.length ? top.map((j) => (
-            <a key={j.key} className="best-row" href="#/jobs/saved">
-              <span className="score-chip">{j.score}</span>
-              {/* Each line keeps to the page's side; the words inside it run in their own language's direction. */}
-              <span className="row-text">
-                <strong><bdi dir="auto">{j.title}</bdi></strong>
-                <small><bdi dir="auto">{[j.company, j.location].filter(Boolean).join(", ")}</bdi></small>
-              </span>
-              <Icon name="next" />
-            </a>
-          )) : <Empty text={t("home.noJobs")} href="#/jobs" label={t("home.toJobs")} />}
+          <Shelves jobs={top} />
+          {!top.length && (
+            <div className="best-empty">
+              <p>{t("home.noJobs")}</p>
+              <a className="btn pixel" href="#/jobs">{t("home.toJobs")}</a>
+            </div>
+          )}
         </section>
       </div>
     </>

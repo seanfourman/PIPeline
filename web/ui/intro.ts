@@ -29,6 +29,8 @@ const GROUND = 2;
 const FOX_Z = 15;
 // How far in front of the camera Pip first shows up.
 const FOX_NEAR = 2.8;
+// Seconds for each of the three steps of Pip's paws going up over its eyes, or down again.
+const PAW_STEP = 0.07;
 const T ={ part: 0.55, parted: 1.65, foxIn: 1.45, foxStop: 3.05, gather: 3.3, card: 3.95, jump: 4.45, land: 5.05, end: 6.2 };
 
 let seed = 7;
@@ -543,13 +545,13 @@ function drawBoard(g: Ctx, box: DOMRect, b: number, p: Palette, t: number) {
 // ---------- the fox, from the app's own sprite ----------
 
 const spriteCache = new Map<string, HTMLCanvasElement>();
-function sprite(view: "front" | "back" | "leap", mood: Mood, frame: "a" | "b", blink: boolean) {
-  const key = `${view}/${mood}/${frame}/${blink}`;
+function sprite(view: "front" | "back" | "leap", mood: Mood, frame: "a" | "b", blink: boolean, paws = 0) {
+  const key = `${view}/${mood}/${frame}/${blink}/${paws}`;
   let c = spriteCache.get(key);
   if (!c) {
     c = canvas(22, 21);
     const g = c.getContext("2d")!;
-    for (const [x, y, color] of foxPixels(view, mood, frame, blink) as Pixel[]) {
+    for (const [x, y, color] of foxPixels(view, mood, frame, blink, paws) as Pixel[]) {
       g.fillStyle = color;
       g.fillRect(x, y + 1, 1, 1);
     }
@@ -725,6 +727,15 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
   let cardShown = false;
   let landed = false;
   let reaction: { kind: Reaction; at: number; wait?: { x: number; y: number } } | null = null;
+  // The paws over the eyes go up, or down, a step every PAW_STEP seconds from the step they were at when the
+  // password field took or lost the focus.
+  let covering = false;
+  let coverFrom = 0;
+  let coverAt = 0;
+  const pawStep = (now: number) => {
+    const steps = Math.floor((now - coverAt) / PAW_STEP) + 1;
+    return covering ? Math.min(3, coverFrom + steps) : Math.max(0, coverFrom - steps);
+  };
   let jumpFrom: { x: number; y: number } | null = null;
   let frame = 0;
 
@@ -901,6 +912,10 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
         mood = since < 0.8 ? "happy" : Math.sin(t * 0.45) > 0.85 ? "wave" : "idle";
         if (since < 0.25) y += 1;
       }
+      // Paws over the eyes while the password is typed, with no wave or sparkles under them; they drop at once
+      // when the password is right.
+      const paws = k >= 1 && reaction?.kind !== "right" ? pawStep(t) : 0;
+      if (paws) mood = "idle";
       if (reaction) {
         const since = t - reaction.at;
         if (reaction.kind === "right") {
@@ -927,7 +942,7 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
       }
       const frameName = Math.floor(t * 4) % 2 ? "b" : "a";
       // On the form's grid of screen pixels, so it stands squarely on the board.
-      drawFox(fxx, x, y, 1, sprite("front", mood, frameName, mood !== "happy" && (t % 3.7) < 0.13), scale);
+      drawFox(fxx, x, y, 1, sprite("front", mood, frameName, mood !== "happy" && (t % 3.7) < 0.13, paws), scale);
     }
 
     // The leaves of a change between day and night, over everything, the form too.
@@ -943,6 +958,13 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
       offset += T.end - clock;
     },
     react(kind: Reaction) { reaction = { kind, at: clock }; },
+    // Whether Pip covers its eyes, for while the password field has the focus.
+    cover(on: boolean) {
+      if (on === covering) return;
+      coverFrom = pawStep(clock);
+      covering = on;
+      coverAt = clock;
+    },
     // Morning in the light theme, night in the dark one; the forest keeps its shape. The change happens under
     // closing leaves, except with reduced motion and under the opening leaves, where it is at once.
     setNight(night: boolean) {

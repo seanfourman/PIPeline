@@ -110,7 +110,11 @@ export function Login({ onDone, intro }: { onDone: () => void; intro: boolean })
             <input ref={userBox} type="text" autoComplete="username" dir="ltr" value={user} onChange={(e) => setUser(e.target.value)} required />
           </Field>
           <Field label={t("login.password")}>
-            <input type="password" autoComplete="current-password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            {/* Pip covers its eyes while the password is typed. */}
+            <input
+              type="password" autoComplete="current-password" dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required
+              onFocus={() => scene.current?.cover(true)} onBlur={() => scene.current?.cover(false)}
+            />
           </Field>
           {error && <p className="error-line" role="alert">{error}</p>}
           <Btn kind="primary" type="submit" className="login-submit" disabled={busy}>{t("login.submit")}</Btn>

@@ -52,6 +52,20 @@ const alert: Px[] = [[10, -2, C.A], [11, -2, C.A], [10, -1, C.A], [11, -1, C.A],
 const sparkA = at([[0, 1, "Y"], [10, 4, "Y"]]);
 const sparkB = at([[10, 1, "Y"], [0, 4, "Y"]]);
 const dots = (n: number) => at(([[3, 1, "G"], [5, 1, "G"], [7, 1, "G"]] as [number, number, string][]).slice(0, n));
+// Single pixels from rows of palette letters, from (x, y); a dot draws nothing.
+const art = (x: number, y: number, rows: string[]): Px[] =>
+  rows.flatMap((row, dy) => [...row].flatMap((ch, dx): Px[] => (ch === "." ? [] : [[x + dx, y + dy, C[ch]]])));
+// Not looking, while a password is typed: the front legs rise over the cream chest, each ending in a round dark
+// pad like the feet and the ear tips, in three steps: 1 at the chest, 2 at the cheeks, 3 over the eyes, which are
+// then hidden, with a blush beside the paws.
+const PAD = [".DDDD.", "DDDDDD", "DDDDDD", ".DDDD."];
+const PAD_TOP = [0, 13, 10, 7];
+function frontPaws(step: number): Px[] {
+  const top = PAD_TOP[step];
+  const leg = (x0: number) => art(x0 + 1, top + 3, Array.from({ length: 17 - (top + 3) }, () => "OOOO"));
+  const paws = [4, 12].flatMap((x0) => [...leg(x0), ...art(x0, top, PAD)]);
+  return step === 3 ? [...paws, ...art(3, 11, ["P", "P"]), ...art(18, 11, ["P", "P"])] : paws;
+}
 
 // Joins neighbouring pixels of one colour into a single rectangle, so a sprite stays a few dozen nodes.
 function Pixels({ px: list, className, transform }: { px: Px[]; className?: string; transform?: string }) {
@@ -115,9 +129,6 @@ const BACK_LEAP = blocks([
 // Asleep, for a list with nothing in it yet: lying flat with its eyes shut, its back curving down from behind
 // the ears and out to a big round rump, its tail along its front, and three Zs rising off its back, each bigger
 // than the last. It doesn't move, and the page shows it in grey.
-// Single pixels from rows of palette letters, from (x, y); a dot draws nothing.
-const art = (x: number, y: number, rows: string[]): Px[] =>
-  rows.flatMap((row, dy) => [...row].flatMap((ch, dx): Px[] => (ch === "." ? [] : [[x + dx, y + dy, C[ch]]])));
 const ASLEEP: Px[] = [
   ...blocks([
     "...............",
@@ -149,13 +160,14 @@ export function PipAsleep({ className = "" }: { className?: string }) {
 
 export type Pixel = Px;
 
-// The fox as a list of pixels, for drawing on a canvas: the same sprite the app shows.
-export function foxPixels(view: "front" | "back" | "leap", mood: Mood = "idle", frame: "a" | "b" = "a", blink = false): Px[] {
+// The fox as a list of pixels, for drawing on a canvas: the same sprite the app shows. paws is how far the front
+// paws are lifted to cover the eyes, 0 to 3 (see frontPaws).
+export function foxPixels(view: "front" | "back" | "leap", mood: Mood = "idle", frame: "a" | "b" = "a", blink = false, paws = 0): Px[] {
   if (view === "back") return BACK;
   if (view === "leap") return BACK_LEAP;
   const m = MOODS[mood];
-  const eyes = m.eyes === "happy" ? eyesHappy : blink ? eyesShut : eyesOpen;
-  return [...FRONT, ...m.still, ...eyes, ...((frame === "a" ? m.a : m.b) ?? [])];
+  const eyes = paws === 3 ? [] : m.eyes === "happy" ? eyesHappy : blink ? eyesShut : eyesOpen;
+  return [...FRONT, ...m.still, ...eyes, ...((frame === "a" ? m.a : m.b) ?? []), ...(paws ? frontPaws(paws) : [])];
 }
 
 // The logo: Pip's head in one colour, the text colour around it. Big pointed ears, happy ^ ^ eyes cut out,
