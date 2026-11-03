@@ -45,6 +45,8 @@ const camAt = (t: number) => {
   return { x: lerp(0.6, 0, k), y: lerp(1.5, 0.45, ease(t / 3.6)), z: lerp(-2.4, 4.4, k) };
 };
 const CAM_END = camAt(99);
+// The widest picture, width to height, whose sides the near plants frame as they are; wider, they move out.
+const PEEK = 3;
 
 // ---------- the colours of the two times of day ----------
 
@@ -232,90 +234,131 @@ function paintSky(W: number, H: number, p: Palette) {
   return c;
 }
 
-function paintForest(f: number, p: Palette): Layer[] {
+// minWidth is the width, in low-resolution pixels, the forest must fill with the camera at rest: 0 on the login,
+// the banner's width on the home page. A layer narrower than that is painted wider, with as many more trees,
+// plants and leaves, so the forest runs to both edges and stays as thick. With 0, every layer is as it always was.
+function paintForest(f: number, p: Palette, minWidth = 0): Layer[] {
   seed = 11;
   const layers: Layer[] = [];
+  // How many times its usual width a layer at depth z must be.
+  const widen = (w: number, z: number) => Math.max(1, (minWidth * 1.04) / (w * (f / (z - CAM_END.z))));
+  const many = (n: number, k: number) => Math.round(n * k);
+  // Things kept to the sides of a clear middle: fx is where a thing sits on a layer of the usual width, up to
+  // `edge` from either end; a wider layer spreads them over its wider sides and keeps the middle as it was.
+  const aside = (fx: number, edge: number, k: number) => {
+    const reach = 0.5 - (0.5 - edge) / k;
+    return fx < 0.5 ? (fx / edge) * reach : 1 - ((1 - fx) / edge) * reach;
+  };
+  // Things in the middle stay in the same middle however wide the layer.
+  const centre = (fx: number, k: number) => 0.5 + (fx - 0.5) / k;
 
   // Far trees in pale mist.
-  layers.push(layer(170, 28, 50, f, (g, W, H, u) => {
-    for (let i = 0; i < 38; i++) tree(g, rnd() * W, H - 1, Math.max(1, (0.9 + rnd() * 1.3) * u), (14 + rnd() * 14) * u, (rnd() - 0.5) * 0.04, [pick(p.far), p.farRim, p.farShade]);
-    dither(g, 0, H - 6 * u, W, 2, p.mist);
-    rect(g, 0, H - 6 * u + 2, W, 6 * u, p.mist);
-  }, GROUND + 0.6));
+  {
+    const k = widen(170, 50);
+    layers.push(layer(170 * k, 28, 50, f, (g, W, H, u) => {
+      for (let i = 0; i < many(38, k); i++) tree(g, rnd() * W, H - 1, Math.max(1, (0.9 + rnd() * 1.3) * u), (14 + rnd() * 14) * u, (rnd() - 0.5) * 0.04, [pick(p.far), p.farRim, p.farShade]);
+      dither(g, 0, H - 6 * u, W, 2, p.mist);
+      rect(g, 0, H - 6 * u + 2, W, 6 * u, p.mist);
+    }, GROUND + 0.6));
+  }
 
-  // Shafts of light: dithered stripes falling through the canopy.
-  layers.push(layer(90, 30, 32, f, (g, W, H, u) => {
-    for (let i = 0; i < 3; i++) {
-      const x = W * (0.3 + rnd() * 0.4);
-      const width = Math.max(4, (1.2 + rnd()) * u);
-      for (let y = 0; y < H; y++) {
-        const drift = (y / H) * u * 6;
-        for (let k = (y % 2); k < width; k += 2) rect(g, x + drift + k, y, 1, 1, p.shaft);
+  // Shafts of light: dithered stripes falling through the canopy, over the clearing.
+  {
+    const k = widen(90, 32);
+    layers.push(layer(90 * k, 30, 32, f, (g, W, H, u) => {
+      for (let i = 0; i < 3; i++) {
+        const x = W * centre(0.3 + rnd() * 0.4, k);
+        const width = Math.max(4, (1.2 + rnd()) * u);
+        for (let y = 0; y < H; y++) {
+          const drift = (y / H) * u * 6;
+          for (let s = (y % 2); s < width; s += 2) rect(g, x + drift + s, y, 1, 1, p.shaft);
+        }
       }
-    }
-  }));
+    }));
+  }
 
   // Big trees framing the clearing, plants at their feet, the canopy above.
-  layers.push(layer(84, 28, 25, f, (g, W, H, u) => {
-    const line = ground(g, W, H, u, 1.2, p.backGround);
-    for (let i = 0; i < 8; i++) stone(g, rnd() * W, line + 2, (2 + rnd() * 4) * u, (0.5 + rnd() * 0.8) * u, p.stone);
-    for (let i = 0; i < 10; i++) {
-      const x = W * (rnd() < 0.5 ? 0.02 + rnd() * 0.36 : 0.62 + rnd() * 0.36);
-      tree(g, x, line + 1, (0.4 + rnd() * 0.5) * u, H * 0.95, (rnd() - 0.5) * 0.05, p.thin);
-    }
-    for (const s of [0.04, 0.17, 0.3, 0.7, 0.81, 0.95]) {
-      tree(g, W * s + (rnd() - 0.5) * u * 3, line + 1, (0.8 + rnd() * 1.2) * u, H * 0.95, (rnd() - 0.5) * 0.06, p.trunk);
-    }
-    for (let i = 0; i < 22; i++) plant(g, W * rnd(), line + 1, (1.2 + rnd() * 2) * u, 2.4, pick(p.backPlants), p.backVein);
-    const canopyTop = H * 0.3;
-    const canopyBottom = H * 0.56;
-    for (let i = 0; i < 420; i++) {
-      const x = rnd() * W;
-      const middle = Math.abs(x / W - 0.5) < 0.12;
-      const y = canopyTop + rnd() * (canopyBottom - canopyTop) * (middle ? 0.35 : 1);
-      leaf(g, x, y, (1.4 + rnd() * 2.4) * u, (0.6 + rnd() * 0.6) * u, rnd() * Math.PI * 2, rnd() > 0.82 ? p.canopy[0] : p.canopy[1]);
-    }
-    for (let i = 0; i < 20; i++) {
-      const x = Math.round(rnd() * W);
-      const len = (2 + rnd() * 6) * u;
-      rect(g, x, canopyBottom - u, 1, len, p.vine[0]);
-      // Small leaves along it, on alternate sides.
-      for (let y = 3; y < len - 2; y += 4) rect(g, x + ((y >> 2) % 2 ? 1 : -1), canopyBottom - u + y, 1, 2, p.vine[1]);
-      rect(g, x - 1, canopyBottom - u + len, 3, 2, p.vine[2]);
-    }
-    for (let i = 0; i < 160; i++) grass(g, rnd() * W, line + rnd() * 3, u * 0.5, p.backGrass[0], p.backGrass[1]);
-  }, GROUND + 1.2));
+  {
+    const k = widen(84, 25);
+    layers.push(layer(84 * k, 28, 25, f, (g, W, H, u) => {
+      const line = ground(g, W, H, u, 1.2, p.backGround);
+      for (let i = 0; i < many(8, k); i++) stone(g, rnd() * W, line + 2, (2 + rnd() * 4) * u, (0.5 + rnd() * 0.8) * u, p.stone);
+      for (let i = 0; i < many(10, k); i++) {
+        const x = W * aside(rnd() < 0.5 ? 0.02 + rnd() * 0.36 : 0.62 + rnd() * 0.36, 0.38, k);
+        tree(g, x, line + 1, (0.4 + rnd() * 0.5) * u, H * 0.95, (rnd() - 0.5) * 0.05, p.thin);
+      }
+      for (const s of [0.04, 0.17, 0.3, 0.7, 0.81, 0.95]) {
+        tree(g, W * aside(s, 0.38, k) + (rnd() - 0.5) * u * 3, line + 1, (0.8 + rnd() * 1.2) * u, H * 0.95, (rnd() - 0.5) * 0.06, p.trunk);
+      }
+      // More of the big trunks on a wider layer, out in its wider sides.
+      for (let i = 0; i < many(6, k) - 6; i++) {
+        const x = W * aside(rnd() < 0.5 ? rnd() * 0.38 : 0.62 + rnd() * 0.38, 0.38, k);
+        tree(g, x, line + 1, (0.8 + rnd() * 1.2) * u, H * 0.95, (rnd() - 0.5) * 0.06, p.trunk);
+      }
+      for (let i = 0; i < many(22, k); i++) plant(g, W * rnd(), line + 1, (1.2 + rnd() * 2) * u, 2.4, pick(p.backPlants), p.backVein);
+      const canopyTop = H * 0.3;
+      const canopyBottom = H * 0.56;
+      for (let i = 0; i < many(420, k); i++) {
+        const x = rnd() * W;
+        const middle = Math.abs(x / W - 0.5) < 0.12 / k;
+        const y = canopyTop + rnd() * (canopyBottom - canopyTop) * (middle ? 0.35 : 1);
+        leaf(g, x, y, (1.4 + rnd() * 2.4) * u, (0.6 + rnd() * 0.6) * u, rnd() * Math.PI * 2, rnd() > 0.82 ? p.canopy[0] : p.canopy[1]);
+      }
+      for (let i = 0; i < many(20, k); i++) {
+        const x = Math.round(rnd() * W);
+        const len = (2 + rnd() * 6) * u;
+        rect(g, x, canopyBottom - u, 1, len, p.vine[0]);
+        // Small leaves along it, on alternate sides.
+        for (let y = 3; y < len - 2; y += 4) rect(g, x + ((y >> 2) % 2 ? 1 : -1), canopyBottom - u + y, 1, 2, p.vine[1]);
+        rect(g, x - 1, canopyBottom - u + len, 3, 2, p.vine[2]);
+      }
+      for (let i = 0; i < many(160, k); i++) grass(g, rnd() * W, line + rnd() * 3, u * 0.5, p.backGrass[0], p.backGrass[1]);
+    }, GROUND + 1.2));
+  }
 
   // The clearing floor, where Pip stops.
-  layers.push(layer(64, 8, 16.5, f, (g, W, H, u) => {
-    const line = ground(g, W, H, u, 3, p.clearGround);
-    for (let i = 0; i < 16; i++) stone(g, rnd() * W, line + u * (0.2 + rnd() * 1.4), u * (0.3 + rnd() * 0.5), u * (0.2 + rnd() * 0.3), p.stone);
-    for (let i = 0; i < 12; i++) plant(g, W * (rnd() < 0.5 ? rnd() * 0.3 : 0.7 + rnd() * 0.3), line + 2, (0.8 + rnd() * 1.1) * u, 2.4, pick(p.clearPlants), p.clearVein, 5);
-    for (let i = 0; i < 520; i++) grass(g, rnd() * W, line + u * rnd() * 2.6, u * (0.2 + rnd() * 0.35), pick(p.clearGrass), pick(p.clearTips));
-    for (let i = 0; i < 26; i++) flower(g, rnd() * W, line + u * rnd() * 1.8, u * 0.12, p.flower);
-    for (let i = 0; i < 12; i++) mushroom(g, rnd() * W, line + u * (0.2 + rnd() * 1.2), u * (0.1 + rnd() * 0.06), p.mushroom);
-  }, GROUND + 3));
+  {
+    const k = widen(64, 16.5);
+    layers.push(layer(64 * k, 8, 16.5, f, (g, W, H, u) => {
+      const line = ground(g, W, H, u, 3, p.clearGround);
+      for (let i = 0; i < many(16, k); i++) stone(g, rnd() * W, line + u * (0.2 + rnd() * 1.4), u * (0.3 + rnd() * 0.5), u * (0.2 + rnd() * 0.3), p.stone);
+      for (let i = 0; i < many(12, k); i++) plant(g, W * aside(rnd() < 0.5 ? rnd() * 0.3 : 0.7 + rnd() * 0.3, 0.3, k), line + 2, (0.8 + rnd() * 1.1) * u, 2.4, pick(p.clearPlants), p.clearVein, 5);
+      for (let i = 0; i < many(520, k); i++) grass(g, rnd() * W, line + u * rnd() * 2.6, u * (0.2 + rnd() * 0.35), pick(p.clearGrass), pick(p.clearTips));
+      for (let i = 0; i < many(26, k); i++) flower(g, rnd() * W, line + u * rnd() * 1.8, u * 0.12, p.flower);
+      for (let i = 0; i < many(12, k); i++) mushroom(g, rnd() * W, line + u * (0.2 + rnd() * 1.2), u * (0.1 + rnd() * 0.06), p.mushroom);
+    }, GROUND + 3));
+  }
 
   // The floor between the clearing and the camera.
-  layers.push(layer(40, 13, 10.5, f, (g, W, H, u) => {
-    const line = ground(g, W, H, u, 8.5, p.midGround);
-    for (let i = 0; i < 10; i++) stone(g, rnd() * W, line + u * (0.3 + rnd() * 3.5), u * (0.4 + rnd() * 0.6), u * (0.25 + rnd() * 0.35), p.stone);
-    for (let i = 0; i < 12; i++) plant(g, rnd() * W, line + u * (0.2 + rnd() * 3), (0.9 + rnd() * 1.2) * u, 1.8, p.midPlant[0], p.midPlant[1], 5);
-    for (let i = 0; i < 520; i++) grass(g, rnd() * W, line + u * rnd() * 4.2, u * (0.3 + rnd() * 0.4), p.midGrass[0], rnd() > 0.75 ? p.midGrass[1] : undefined);
-    for (let i = 0; i < 10; i++) flower(g, rnd() * W, line + u * rnd() * 3, u * 0.12, p.flower);
-    for (let i = 0; i < 6; i++) mushroom(g, rnd() * W, line + u * (0.5 + rnd() * 3), u * (0.12 + rnd() * 0.05), p.mushroom);
-  }, GROUND + 8.5));
+  {
+    const k = widen(40, 10.5);
+    layers.push(layer(40 * k, 13, 10.5, f, (g, W, H, u) => {
+      const line = ground(g, W, H, u, 8.5, p.midGround);
+      for (let i = 0; i < many(10, k); i++) stone(g, rnd() * W, line + u * (0.3 + rnd() * 3.5), u * (0.4 + rnd() * 0.6), u * (0.25 + rnd() * 0.35), p.stone);
+      for (let i = 0; i < many(12, k); i++) plant(g, rnd() * W, line + u * (0.2 + rnd() * 3), (0.9 + rnd() * 1.2) * u, 1.8, p.midPlant[0], p.midPlant[1], 5);
+      for (let i = 0; i < many(520, k); i++) grass(g, rnd() * W, line + u * rnd() * 4.2, u * (0.3 + rnd() * 0.4), p.midGrass[0], rnd() > 0.75 ? p.midGrass[1] : undefined);
+      for (let i = 0; i < many(10, k); i++) flower(g, rnd() * W, line + u * rnd() * 3, u * 0.12, p.flower);
+      for (let i = 0; i < many(6, k); i++) mushroom(g, rnd() * W, line + u * (0.5 + rnd() * 3), u * (0.12 + rnd() * 0.05), p.mushroom);
+    }, GROUND + 8.5));
+  }
 
-  // Near plants at the sides, and dark grass across the bottom.
-  layers.push(layer(28, 14, 7, f, (g, W, H, u) => {
-    const line = ground(g, W, H, u, 7, p.nearGround);
-    const side = (from: number, to: number) => {
-      for (let i = 0; i < 8; i++) plant(g, W * (from + rnd() * (to - from)), line + u * rnd(), (2 + rnd() * 2.4) * u, 2.6, pick(p.nearPlants), p.nearVein, 7);
-    };
-    side(0, 0.28);
-    side(0.72, 1);
-    for (let i = 0; i < 380; i++) grass(g, rnd() * W, line + u * rnd() * 3, u * (0.12 + rnd() * 0.18), p.nearGrass[0], rnd() > 0.85 ? p.nearGrass[1] : undefined);
-  }, GROUND + 7));
+  // Near plants at the sides, and dark grass across the bottom. On a picture wider than PEEK to 1 the plants
+  // move out with its two ends, so on a wide banner too they only peek in at the corners, not fill its sides.
+  {
+    const k = widen(28, 7);
+    // f is 0.82 of the picture's height.
+    const out = Math.max(0, (minWidth - (PEEK * f) / 0.82) / 2) / (f / (7 - CAM_END.z));
+    layers.push(layer(28 * k + 2 * out, 14, 7, f, (g, W, H, u) => {
+      const line = ground(g, W, H, u, 7, p.nearGround);
+      const inner = W - 2 * out * u;
+      const side = (from: number, to: number, shift: number) => {
+        for (let i = 0; i < many(8, k); i++) plant(g, inner * aside(from + rnd() * (to - from), 0.28, k) + shift, line + u * rnd(), (2 + rnd() * 2.4) * u, 2.6, pick(p.nearPlants), p.nearVein, 7);
+      };
+      side(0, 0.28, 0);
+      side(0.72, 1, 2 * out * u);
+      for (let i = 0; i < many(380, (k * W) / inner); i++) grass(g, rnd() * W, line + u * rnd() * 3, u * (0.12 + rnd() * 0.18), p.nearGrass[0], rnd() > 0.85 ? p.nearGrass[1] : undefined);
+    }, GROUND + 7));
+  }
 
   return layers;
 }
@@ -361,11 +404,11 @@ function paintCurtain(W: number, H: number, p: Palette): Sheet[] {
 
 const MOON_SPOTS = [[-2, -2], [-3, -1], [1, 2], [2, 1], [2, -3], [-1, 3]];
 
-// The sun or the moon high over the clearing, up and left of the shafts of light: a disc with a dithered
-// ring round it.
-function drawSkyLight(g: Ctx, W: number, H: number, p: Palette) {
+// The sun or the moon high over the clearing, up and left of the shafts of light unless `at` moves it: a
+// disc with a dithered ring round it.
+function drawSkyLight(g: Ctx, W: number, H: number, p: Palette, at = 0.3) {
   const { body, core, halo, spots } = p.light;
-  const cx = Math.round(W * 0.3);
+  const cx = Math.round(W * at);
   const cy = Math.round(H * 0.13);
   for (let j = -10; j <= 10; j++) {
     for (let i = -10; i <= 10; i++) {
@@ -519,6 +562,41 @@ function sprite(view: "front" | "back" | "leap", mood: Mood, frame: "a" | "b", b
 function drawFox(g: Ctx, x: number, y: number, size: number, img: HTMLCanvasElement, grid = 1) {
   const snap = (v: number) => Math.round(v * grid) / grid;
   g.drawImage(img, snap(x - 11 * size), snap(y - 20 * size), 22 * size, 21 * size);
+}
+
+// ---------- the forest at rest, for the home page ----------
+
+// Painted forests by size and time of day, so moving between pages or themes does not paint them again.
+const stills = new Map<string, { layers: Layer[]; sky: HTMLCanvasElement }>();
+
+// The clearing as it is once the camera stops, drawn into a canvas of any size in the same pixels as the login:
+// the home page's banner. sunAt places the sun or moon across the width, clear of what covers the banner.
+export function paintStill(c: HTMLCanvasElement, night: boolean, sunAt = 0.3) {
+  const scale = Math.max(2, Math.round(c.clientHeight / 225));
+  const W = Math.max(1, Math.ceil(c.clientWidth / scale));
+  const H = Math.max(1, Math.ceil(c.clientHeight / scale));
+  const p = night ? NIGHT : MORNING;
+  const key = `${W}x${H}/${night}`;
+  let still = stills.get(key);
+  if (!still) {
+    if (stills.size >= 4) stills.delete(stills.keys().next().value!);
+    still = { layers: paintForest(H * 0.82, p, W), sky: paintSky(W, H, p) };
+    stills.set(key, still);
+  }
+  c.width = W * scale;
+  c.height = H * scale;
+  const g = c.getContext("2d")!;
+  g.setTransform(scale, 0, 0, scale, 0, 0);
+  g.imageSmoothingEnabled = false;
+  g.drawImage(still.sky, 0, 0);
+  drawSkyLight(g, W, H, p, sunAt);
+  const f = H * 0.82;
+  for (const L of [...still.layers].sort((a, b) => b.z - a.z)) {
+    const s = f / (L.z - CAM_END.z);
+    const w = Math.round(L.w * s);
+    const h = Math.round(L.h * s);
+    g.drawImage(L.img, Math.round(W / 2 - CAM_END.x * s - w / 2), Math.round(H * 0.46 + (L.y - CAM_END.y) * s - h), w, h);
+  }
 }
 
 // ---------- the scene ----------

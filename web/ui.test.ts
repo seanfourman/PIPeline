@@ -2,8 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { buildInterface } from "./build";
 import { DICTS, translate } from "./ui/i18n";
+import { Pip } from "./ui/pip";
 
 const paths = (value: unknown, prefix = ""): string[] =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -39,6 +42,11 @@ describe("the interface", () => {
     const js = readFileSync(files.find((f) => f.endsWith(".js"))!, "utf8");
     expect(js.length).toBeGreaterThan(1000);
     expect(js).not.toMatch(/\beval\(|new Function\(/);
+  });
+
+  test("shows the same Pip on the loading screen as in the app", () => {
+    const html = readFileSync(path.join(import.meta.dir, "public", "index.html"), "utf8");
+    expect(html).toContain(renderToStaticMarkup(createElement(Pip, { mood: "happy", className: "boot-pip" })));
   });
 
   test("never puts text in as HTML, because postings and agent replies are untrusted", () => {

@@ -239,7 +239,7 @@ export function Files() {
             <React.Fragment key={g.title}>
               <h3 className="file-group">{t(`files.groups.${g.title}`)}</h3>
               {g.files.map((f) => (
-                <button key={f} type="button" className="file-link" dir="ltr" title={f} aria-current={open === f ? "true" : undefined} onClick={() => setOpen(f)}>{f.split("/").pop()}</button>
+                <button key={f} type="button" className="file-link" dir="ltr" aria-current={open === f ? "true" : undefined} onClick={() => setOpen(f)}>{f.split("/").pop()}</button>
               ))}
             </React.Fragment>
           ))}

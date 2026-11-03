@@ -16,7 +16,7 @@ function JobRow({ job, saved }: { job: Job; saved?: boolean }) {
   return (
     <article className="job">
       <div className="job-main">
-        {saved && <div className="score" title={t("jobs.priority")}>{job.score ?? "–"}</div>}
+        {saved && <div className="score">{job.score ?? "–"}</div>}
         <div>
           <div className="job-title" dir="auto">{job.title}</div>
           <div className="job-meta" dir="auto">{[job.company, job.location, job.date].filter(Boolean).join(" · ")}</div>
@@ -39,7 +39,12 @@ function Saved() {
   const jobs = s.jobs.filter((j) => j.tier !== "far" && j.status !== "skipped" && j.status !== "expired")
     .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || String(b.date).localeCompare(String(a.date)));
   if (!jobs.length) return <Card className="empty">{t("jobs.savedEmpty")}<Btn kind="primary" onClick={() => start("/job-scraper")}>{t("jobs.runSmart")}</Btn></Card>;
-  return <Card className="joblist">{jobs.map((j) => <JobRow key={j.key} job={j as Job} saved />)}</Card>;
+  return (
+    <>
+      <p className="note">{t("jobs.priority")}</p>
+      <Card className="joblist">{jobs.map((j) => <JobRow key={j.key} job={j as Job} saved />)}</Card>
+    </>
+  );
 }
 
 function Quick() {

@@ -1,8 +1,35 @@
-import React from "react";
+import React, { useLayoutEffect, useRef } from "react";
 import { companionLine, friendlyTitle, useApp, type AppState } from "../app";
+import { paintStill } from "../intro";
 import { Badge, Btn, Card } from "../kit";
 import { Pip } from "../pip";
-import { Scene } from "../scene";
+
+// The login's forest, at rest, behind the home page's card: morning or night with the theme, repainted when
+// the banner changes size. The sun or moon sits off to the side, clear of the card in the middle.
+function Forest() {
+  const { dark } = useApp();
+  const ref = useRef<HTMLCanvasElement>(null);
+  // Painted before the banner is first on screen, so it never shows as bare sky.
+  useLayoutEffect(() => {
+    const c = ref.current!;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const paint = () => paintStill(c, dark, 0.15);
+    paint();
+    let size = "";
+    const watch = new ResizeObserver(() => {
+      const next = `${c.clientWidth}x${c.clientHeight}`;
+      if (next === size) return;
+      const firstTime = !size;
+      size = next;
+      if (firstTime) return;
+      clearTimeout(timer);
+      timer = setTimeout(paint, 150);
+    });
+    watch.observe(c);
+    return () => { clearTimeout(timer); watch.disconnect(); };
+  }, [dark]);
+  return <canvas ref={ref} className="hero-forest" aria-hidden="true" />;
+}
 
 const SENT = ["applied", "rejected", "no_response", "no response", "withdrawn", "interview", "offer", "hired", "offer_declined", "offer declined"];
 const INTERVIEW = ["interview", "offer", "hired", "offer_declined", "offer declined"];
@@ -65,7 +92,7 @@ function Hero() {
   const mood = finished ? "happy" : line.mood === "idle" ? "wave" : line.mood;
   return (
     <section className="hero">
-      <Scene />
+      <Forest />
       <div className="hero-card">
         <p className="hero-hi">{settingsName ? t("home.hi", { name: settingsName }) : t("home.hiNoName")} {t("home.intro")}</p>
         <h1 dir="auto">{next.title}</h1>
@@ -97,29 +124,32 @@ export function Home() {
   const top = s.jobs.filter((j) => j.score !== null && j.tier !== "far").sort((a, b) => b.score - a.score).slice(0, 5);
   const fresh = s.jobs.filter((j) => j.status === "new").length;
   const tile = (n: number, label: string, href: string) => <a className="card tile" href={href}><span className="num">{n}</span><span className="lbl">{label}</span></a>;
+  // The banner runs the whole width beside the menu; the rest sits in the page's column below it.
   return (
-    <div className="page home">
+    <>
       <Hero />
-      <div className="tiles">
-        {tile(st.sent, t("home.tiles.sent"), "#/apps")}
-        {tile(st.interview, t("home.tiles.interview"), "#/apps")}
-        {tile(st.offer, t("home.tiles.offer"), "#/apps")}
-        {tile(fresh, t("home.tiles.fresh"), "#/jobs/saved")}
+      <div className="page home">
+        <div className="tiles">
+          {tile(st.sent, t("home.tiles.sent"), "#/apps")}
+          {tile(st.interview, t("home.tiles.interview"), "#/apps")}
+          {tile(st.offer, t("home.tiles.offer"), "#/apps")}
+          {tile(fresh, t("home.tiles.fresh"), "#/jobs/saved")}
+        </div>
+        <div className="two">
+          <Card>
+            <h2>{t("home.topJobs")}</h2>
+            {top.length ? top.map((j) => (
+              <a key={j.key} className="list-link" href="#/jobs/saved"><span className="ellipsis" dir="auto">{j.title}, {j.company}</span><strong className="score">{j.score}</strong></a>
+            )) : <div className="empty">{t("home.noJobs")}<a className="btn" href="#/jobs">{t("home.toJobs")}</a></div>}
+          </Card>
+          <Card>
+            <h2>{t("home.recent")}</h2>
+            {s.sessions.length ? s.sessions.slice(0, 4).map((c) => (
+              <a key={c.id} className="list-link" href={`#/chat/${c.id}`}><span className="ellipsis" dir="auto">{friendlyTitle(c.title, t)}</span><Badge tone={SESSION_TONE[c.status]}>{t(`session.${c.status}`)}</Badge></a>
+            )) : <div className="empty">{t("home.noChats")}<a className="btn" href="#/chat/new">{t("home.startChat")}</a></div>}
+          </Card>
+        </div>
       </div>
-      <div className="two">
-        <Card>
-          <h2>{t("home.topJobs")}</h2>
-          {top.length ? top.map((j) => (
-            <a key={j.key} className="list-link" href="#/jobs/saved"><span className="ellipsis" dir="auto">{j.title}, {j.company}</span><strong className="score">{j.score}</strong></a>
-          )) : <div className="empty">{t("home.noJobs")}<a className="btn" href="#/jobs">{t("home.toJobs")}</a></div>}
-        </Card>
-        <Card>
-          <h2>{t("home.recent")}</h2>
-          {s.sessions.length ? s.sessions.slice(0, 4).map((c) => (
-            <a key={c.id} className="list-link" href={`#/chat/${c.id}`}><span className="ellipsis" dir="auto">{friendlyTitle(c.title, t)}</span><Badge tone={SESSION_TONE[c.status]}>{t(`session.${c.status}`)}</Badge></a>
-          )) : <div className="empty">{t("home.noChats")}<a className="btn" href="#/chat/new">{t("home.startChat")}</a></div>}
-        </Card>
-      </div>
-    </div>
+    </>
   );
 }

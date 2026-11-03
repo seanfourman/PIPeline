@@ -162,6 +162,8 @@ const he = {
   },
   settings: {
     title: "הגדרות", sub: "איפה ומה לחפש. ההגדרות חלות גם על הדירוג וההגשה.", saved: "נשמר. שיחות חדשות יעבדו לפי ההגדרות האלה.",
+    display: "תצוגה", displayNote: "משתנה מיד, בלי לשמור.", uiLanguage: "שפה", uiTheme: "מצב תצוגה",
+    themeLight: "בהיר", themeDark: "כהה", themeSystem: "לפי המחשב",
     markets: "איפה לחפש", marketsNote: "עד 3 שווקים, כדי שכל חיפוש יישאר קטן.", noMarket: "עוד לא נבחרה מדינה.",
     country: "בחר מדינה", city: "עיר באנגלית, לא חובה", addRemote: "הוסף עבודה מרחוק", remote: "מרחוק מכל מקום",
     areas: "אזורים", areasNote: "המשרות מסומנות לפי האזור, ואזור לא רלוונטי מוסתר. כתוב את השם כפי שהוא מופיע במשרות, בדרך כלל באנגלית.",
@@ -366,6 +368,8 @@ const en: Dict = {
   },
   settings: {
     title: "Settings", sub: "Where and what to search. These also apply to ranking and applying.", saved: "Saved. New conversations follow these settings.",
+    display: "Display", displayNote: "Changes at once, no need to save.", uiLanguage: "Language", uiTheme: "Theme",
+    themeLight: "Light", themeDark: "Dark", themeSystem: "Same as the computer",
     markets: "Where to search", marketsNote: "Up to 3 markets, so every search stays small.", noMarket: "No country chosen yet.",
     country: "Choose a country", city: "City in English, optional", addRemote: "Add remote work", remote: "Remote from anywhere",
     areas: "Areas", areasNote: "Jobs are marked by area, and areas marked not relevant are hidden. Type the name as it appears in postings, usually in English.",

@@ -1,5 +1,6 @@
 // Shared building blocks. Text from postings and from the agent always goes in as text, never as HTML.
 import React from "react";
+import { createLucideIcon, FileText, Folder, LayoutGrid, ListChecks, LogOut, MessageCircle, Moon, Plus, Search, Settings, Sun, User, type LucideIcon } from "lucide-react";
 import { translate, type Lang } from "./i18n";
 
 export type ApiError = Error & { code?: string; params?: Record<string, string | number>; status?: number };
@@ -148,21 +149,20 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
   return <div className={className} dir={dir}>{blocks}</div>;
 }
 
-const LINE_ICONS: Record<string, string> = {
-  home: "M3 11l9-8 9 8M5 9.5V20h14V9.5M10 20v-6h4v6",
-  jobs: "M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.3-4.3",
-  apps: "M7 3h8l4 4v14H7zM15 3v4h4M10 12h6M10 16h6",
-  chat: "M4 5h16v11H9l-5 4z",
-  profile: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c1-4 4-6 8-6s7 2 8 6",
-  settings: "M4 7h9M17 7h3M4 17h3M11 17h9M15 5v4M9 15v4",
-  rules: "M10 6h10M10 12h10M10 18h10M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2",
-  tools: "M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z",
-  files: "M3 6h6l2 2h10v11H3z",
-  sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
-  moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
-  logout: "M9 4H5v16h4M15 8l4 4-4 4M19 12H9",
+// Lucide's house without the line under the door, so the door opens onto the ground. Walls and door are one
+// outline, so when filled the door stays open in the background colour.
+const House = createLucideIcon("house-open", [
+  ["path", { d: "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2h-4v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8H5a2 2 0 0 1-2-2z", key: "walls" }],
+]);
+
+// Icons from Lucide, an open icon set (ISC licence); only these are bundled.
+const ICONS: Record<string, LucideIcon> = {
+  home: House, jobs: Search, apps: FileText, chat: MessageCircle, profile: User, settings: Settings,
+  rules: ListChecks, tools: LayoutGrid, files: Folder, plus: Plus, sun: Sun, moon: Moon, logout: LogOut,
 };
 
-export const Icon = ({ name }: { name: string }) => (
-  <svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><path d={LINE_ICONS[name]} /></svg>
-);
+// filled is for the page you are on: the shape filled in, its inner lines cut out (see .icon.filled in the CSS).
+export const Icon = ({ name, filled = false }: { name: string; filled?: boolean }) => {
+  const Glyph = ICONS[name];
+  return <Glyph className={`icon icon-${name}${filled ? " filled" : ""}`} aria-hidden="true" />;
+};

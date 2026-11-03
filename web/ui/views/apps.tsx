@@ -10,7 +10,7 @@ function Ats({ ats }: { ats: { score: number | null; missing: string[]; problems
   if (!ats) return <td>–</td>;
   const gaps = ats.problems.length ? ats.problems : ats.missing;
   return (
-    <td title={t("apps.atsTip")}>
+    <td>
       <strong className="ats-score">{ats.score ?? "–"}</strong>
       {gaps.length > 0 && <div className="note" dir="ltr">{ats.problems.length ? t("apps.problem") : t("apps.missing")}: {gaps.join(", ")}</div>}
     </td>
@@ -80,6 +80,7 @@ export function Apps() {
               })}
             </tbody>
           </table>
+          <p className="note table-note">{t("apps.atsTip")}</p>
         </Card>
       ) : (
         <Card className="empty">{t("apps.empty")}<a className="btn primary" href="#/jobs">{t("apps.find")}</a></Card>

@@ -1,8 +1,8 @@
-// The frame: shared state, language, theme, the sidebar with Pip, and which screen shows.
+// The frame: shared state, language, theme, the sidebar, Pip's notices, and which screen shows.
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { translate, type Lang } from "./i18n";
 import { api, errorText, Icon, type ApiError } from "./kit";
-import { Pip, type Mood } from "./pip";
+import { Pip, PipMark, type Mood } from "./pip";
 import { Apps } from "./views/apps";
 import { Chat } from "./views/chat";
 import { Editor, Files, Profile, Rules, Tools } from "./views/docs";
@@ -21,7 +21,8 @@ type News = { text: string; mood: Mood } | null;
 type Ctx = {
   s: AppState; loaded: boolean; refresh: () => Promise<void>;
   lang: Lang; setLang: (l: Lang) => void; t: (key: string, params?: Record<string, string | number>) => any; err: (e: unknown) => string;
-  dark: boolean; toggleTheme: () => void;
+  // theme is "light", "dark", or "" to follow the computer.
+  dark: boolean; toggleTheme: () => void; theme: string; setTheme: (mode: string) => void;
   view: string; arg?: string;
   say: (text: string, mood?: Mood, ms?: number) => void; news: News;
   start: (prompt: string, model?: string) => Promise<void>;
@@ -63,47 +64,37 @@ export function friendlyTitle(title: string, t: Ctx["t"]) {
   return detail ? `${name}: ${detail}` : name;
 }
 
-const NAV: [string | null, [string, string][]][] = [
-  [null, [["dash", "home"], ["jobs", "jobs"], ["apps", "apps"], ["chat", "chat"]]],
-  ["you", [["profile", "profile"], ["settings", "settings"]]],
-  ["advanced", [["rules", "rules"], ["tools", "tools"], ["files", "files"]]],
+// One flat list, like a social site's sidebar; the order still runs from daily use to the advanced pages.
+const NAV: [string, string][] = [
+  ["dash", "home"], ["jobs", "jobs"], ["apps", "apps"], ["chat", "chat"],
+  ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"],
 ];
 
+// The sidebar. Language and theme live on the settings page; the foot is the account, with a button to log out.
 function Sidebar() {
-  const { s, t, view, lang, setLang, dark, toggleTheme, logout } = useApp();
+  const { s, t, view, logout } = useApp();
   const current = view === "cv" || view === "letter" ? "files" : view;
   const waiting = s.sessions.filter((x) => x.status === "waiting").length;
+  const name = String(s.settings.displayName ?? "").trim() || "admin";
   return (
     <nav className="side" aria-label={t("nav.main")}>
-      <a className="brand" href="#/dash">
-        <Pip mood="idle" className="brand-pip" />
-        <span className="brand-text"><strong>{t("brand.name")}</strong><small>{t("brand.tagline")}</small></span>
-      </a>
+      <a className="brand" href="#/dash" aria-label={t("brand.name")}><PipMark /></a>
       <div className="nav">
-        {NAV.map(([group, items]) => (
-          <React.Fragment key={group ?? "main"}>
-            {group && <div className="nav-group">{t(`nav.${group}`)}</div>}
-            {items.map(([id, icon]) => (
-              <a key={id} href={`#/${id}`} aria-current={current === id ? "page" : undefined}>
-                <Icon name={icon} /><span>{t(`nav.${id === "dash" ? "home" : id}`)}</span>
-                {id === "chat" && waiting > 0 && <span className="count" aria-label={t("nav.waiting", { n: waiting })}>{waiting}</span>}
-              </a>
-            ))}
-          </React.Fragment>
+        {NAV.map(([id, icon]) => (
+          <a key={id} href={`#/${id}`} aria-current={current === id ? "page" : undefined}>
+            <span className="nav-icon">
+              <Icon name={icon} filled={current === id} />
+              {id === "chat" && waiting > 0 && <span className="count" aria-label={t("nav.waiting", { n: waiting })}>{waiting}</span>}
+            </span>
+            <span className="nav-label">{t(`nav.${id === "dash" ? "home" : id}`)}</span>
+          </a>
         ))}
       </div>
-      <PipDock />
-      <div className="side-foot">
-        <div className="lang" role="group" aria-label={t("nav.language")}>
-          <button type="button" aria-pressed={lang === "he"} onClick={() => setLang("he")}>עברית</button>
-          <button type="button" aria-pressed={lang === "en"} onClick={() => setLang("en")}>English</button>
-        </div>
-        <button type="button" className="theme" onClick={toggleTheme} aria-label={dark ? t("nav.light") : t("nav.dark")} title={dark ? t("nav.light") : t("nav.dark")}>
-          <Icon name={dark ? "sun" : "moon"} />
-        </button>
-        <button type="button" className="theme" onClick={logout} aria-label={t("login.logout")} title={t("login.logout")}>
-          <Icon name="logout" />
-        </button>
+      <a className="btn post" href="#/chat/new" aria-label={t("chat.new")}><Icon name="plus" /><span>{t("chat.new")}</span></a>
+      <div className="account">
+        <span className="avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
+        <span className="account-name ellipsis">{name}</span>
+        <button type="button" className="account-out" onClick={logout} aria-label={t("login.logout")}><Icon name="logout" /></button>
       </div>
     </nav>
   );
@@ -118,22 +109,15 @@ export function companionLine(s: AppState, view: string, t: Ctx["t"]): { text: s
   return { text: typeof line === "string" && !line.startsWith("pip.") ? line : "", mood: "idle" };
 }
 
-function PipDock() {
-  const { s, t, view, news, say } = useApp();
-  if (view === "dash") return <div className="pip-dock" />;
-  const line = news ? { ...news, news: true } : companionLine(s, view, t);
-  const hello = t("pip.hello") as string[];
+// What Pip says after something you did (saved, built, a status changed), in a small notice at the bottom of
+// the screen that goes away on its own.
+function Toast() {
+  const { news } = useApp();
+  if (!news) return null;
   return (
-    <div className={`pip-dock ${line.news ? "has-news" : ""}`}>
-      {line.text && (
-        <div className="bubble" role="status" dir="auto">
-          {line.text}
-          {"href" in line && line.href && !location.hash.startsWith(line.href) && <a href={line.href}>{line.action}</a>}
-        </div>
-      )}
-      <button type="button" className="pip-button" aria-label={t("pip.name")} onClick={() => say(hello[Math.floor(Math.random() * hello.length)], "wave", 4000)}>
-        <Pip mood={line.mood} />
-      </button>
+    <div className="toast" role="status" dir="auto">
+      <Pip mood={news.mood} className="toast-pip" />
+      <span>{news.text}</span>
     </div>
   );
 }
@@ -154,9 +138,20 @@ function Screen() {
   }
 }
 
+// The page shows once its fonts are in, Hebrew and Latin alike, so nothing first shows in a stand-in font;
+// if they take longer than FONT_WAIT_MS it shows anyway.
+const FONTS = ["16px Rubik", "800 16px Handjet"];
+const FONT_WAIT_MS = 3000;
+// The loading screen (in index.html) stays at least this long from the page opening, so Pip gets to hop and
+// leave its trail rather than flash by.
+const BOOT_MIN_MS = 1000;
+
 export function App() {
   const [s, setS] = useState<AppState>(EMPTY);
   const [loaded, setLoaded] = useState(false);
+  const [fontsReady, setFontsReady] = useState(false);
+  // Whether the loading screen has gone. It shows only when the page opens, not after logging in or out.
+  const [booted, setBooted] = useState(false);
   const [auth, setAuth] = useState<"unknown" | "in" | "out">("unknown");
   // The forest run plays when the page opens, not after a logout.
   const [intro, setIntro] = useState(true);
@@ -174,6 +169,25 @@ export function App() {
     setS(next);
     setLoaded(true);
   }, []);
+
+  useEffect(() => {
+    const done = () => setFontsReady(true);
+    Promise.allSettled(FONTS.map((font) => document.fonts.load(font, "Pip פיפ"))).then(done);
+    const timer = setTimeout(done, FONT_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const ready = fontsReady && (auth === "out" || (auth === "in" && loaded));
+  useEffect(() => {
+    if (!ready || booted) return;
+    const timer = setTimeout(() => {
+      setBooted(true);
+      const boot = document.getElementById("boot");
+      boot?.classList.add("done");
+      setTimeout(() => boot?.remove(), 400);
+    }, Math.max(0, BOOT_MIN_MS - performance.now()));
+    return () => clearTimeout(timer);
+  }, [ready, booted]);
 
   useEffect(() => {
     api<{ loggedIn: boolean }>("me").then((me) => setAuth(me.loggedIn ? "in" : "out")).catch(() => setAuth("out"));
@@ -216,8 +230,12 @@ export function App() {
 
   const dark = theme === "dark" || (!theme && systemDark);
   const ctx: Ctx = {
-    s, loaded, refresh, lang, t, view, arg, news, draft, dark,
+    s, loaded, refresh, lang, t, view, arg, news, draft, dark, theme,
     err: (e) => errorText(e as ApiError, lang),
+    setTheme: (mode) => {
+      setTheme(mode);
+      store("theme", mode);
+    },
     setLang: (l) => {
       setLangState(l);
       store("lang", l);
@@ -246,11 +264,13 @@ export function App() {
 
   return (
     <AppContext.Provider value={ctx}>
-      {auth === "out" && <Login intro={intro} onDone={() => { setRoute(readHash()); setAuth("in"); }} />}
+      {auth === "out" && booted && <Login intro={intro} onDone={() => { setRoute(readHash()); setAuth("in"); }} />}
+      {/* Laid out but hidden until the state is in too, so the first thing shown is the real page; then it fades in. */}
       {auth === "in" && (
-        <div className="shell entering">
+        <div className={`shell ${booted && loaded ? "entering" : "waiting"}`} aria-busy={!(booted && loaded)}>
           <Sidebar />
           <main id="main" tabIndex={-1}><Screen /></main>
+          <Toast />
         </div>
       )}
     </AppContext.Provider>

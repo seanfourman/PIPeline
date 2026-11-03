@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useApp } from "../app";
 import { AREA_NAMES_EN, type Lang } from "../i18n";
-import { api, Btn, Card, External, Field, Page, Spinner } from "../kit";
+import { api, Btn, Card, External, Field, Icon, Page, Spinner } from "../kit";
 
 const COUNTRY_CODES = "AD AE AF AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BJ BN BO BR BS BT BW BY BZ CA CD CF CG CH CI CL CM CN CO CR CU CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FR GA GB GD GE GH GM GN GQ GR GT GW GY HK HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KG KH KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MK ML MM MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NZ OM PA PE PG PH PK PL PR PS PT PY QA RO RS RU RW SA SC SD SE SG SI SK SL SN SO SR SV SY SZ TD TG TH TJ TM TN TR TT TW TZ UA UG US UY UZ VE VN YE ZA ZM ZW".split(" ");
 const TIERS = ["near", "ok", "edge", "far"];
@@ -68,7 +68,7 @@ function Runner() {
 }
 
 export function Settings() {
-  const { s, t, lang, err, say, refresh } = useApp();
+  const { s, t, lang, setLang, theme, setTheme, err, say, refresh } = useApp();
   const [draft, setDraft] = useState(() => structuredClone(s.settings));
   const [status, setStatus] = useState<[string, boolean]>(["", false]);
   const [country, setCountry] = useState("");
@@ -107,6 +107,28 @@ export function Settings() {
 
   return (
     <Page title={t("settings.title")} sub={t("settings.sub")} actions={<Btn kind="primary" onClick={save}>{t("common.save")}</Btn>}>
+      {/* Language and theme apply at once and stay in this browser, so they need no saving. */}
+      <Card className="stack">
+        <h2>{t("settings.display")}</h2>
+        <p className="note">{t("settings.displayNote")}</p>
+        <div className="fields">
+          <div className="field">
+            <span className="field-label">{t("settings.uiLanguage")}</span>
+            <div className="segmented" role="group" aria-label={t("settings.uiLanguage")}>
+              <button type="button" lang="he" aria-pressed={lang === "he"} onClick={() => setLang("he")}>עברית</button>
+              <button type="button" lang="en" aria-pressed={lang === "en"} onClick={() => setLang("en")}>English</button>
+            </div>
+          </div>
+          <div className="field">
+            <span className="field-label">{t("settings.uiTheme")}</span>
+            <div className="segmented" role="group" aria-label={t("settings.uiTheme")}>
+              {([["light", "sun", "themeLight"], ["dark", "moon", "themeDark"], ["", "", "themeSystem"]] as const).map(([mode, icon, key]) => (
+                <button key={key} type="button" aria-pressed={theme === mode} onClick={() => setTheme(mode)}>{icon && <Icon name={icon} />}{t(`settings.${key}`)}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </Card>
       <Card className="stack">
         <h2>{t("settings.markets")}</h2>
         <p className="note">{t("settings.marketsNote")}</p>
