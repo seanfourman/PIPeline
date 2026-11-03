@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildInterface } from "./build";
 import { DICTS, translate } from "./ui/i18n";
-import { Pip } from "./ui/pip";
+import { MARK_PATH, Pip } from "./ui/pip";
 
 const paths = (value: unknown, prefix = ""): string[] =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -47,6 +47,10 @@ describe("the interface", () => {
   test("shows the same Pip on the loading screen as in the app", () => {
     const html = readFileSync(path.join(import.meta.dir, "public", "index.html"), "utf8");
     expect(html).toContain(renderToStaticMarkup(createElement(Pip, { mood: "happy", className: "boot-pip" })));
+  });
+
+  test("has the logo's head as the tab icon", () => {
+    expect(readFileSync(path.join(import.meta.dir, "public", "icon.svg"), "utf8")).toContain(`d="${MARK_PATH}"`);
   });
 
   test("never puts text in as HTML, because postings and agent replies are untrusted", () => {

@@ -538,7 +538,6 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
   .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .side { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 6px 12px; overflow: visible; border-inline-end: 0; border-bottom: 1px solid var(--line); }
   .brand { width: 42px; height: 42px; margin: 0; }
-  .pip-mark { width: 26px; }
   .nav { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; margin: 0; padding-bottom: 2px; }
   .nav a { gap: 8px; padding: 7px 12px; font-size: 15px; white-space: nowrap; }
   .nav .icon { width: 20px; height: 20px; }

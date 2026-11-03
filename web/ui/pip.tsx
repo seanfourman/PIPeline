@@ -123,25 +123,28 @@ export function foxPixels(view: "front" | "back" | "leap", mood: Mood = "idle", 
   return [...FRONT, ...m.still, ...eyes, ...((frame === "a" ? m.a : m.b) ?? [])];
 }
 
-// The logo: a fox head in one colour, the text colour around it. Pointed ears, wide cheeks, a pointed chin, and
-// the eyes cut out.
+// The logo: Pip's head in one colour, the text colour around it. Big pointed ears, happy ^ ^ eyes cut out,
+// cheek fluff out to the sides, and a short snout. The tab icon, public/icon.svg, is the same head in orange.
 const MARK = [
-  "X.........X",
-  "XX.......XX",
-  "XXX.....XXX",
-  "XXXXXXXXXXX",
-  "XXX.XXX.XXX",
-  "XXXXXXXXXXX",
-  ".XXXXXXXXX.",
-  "...XXXXX...",
-  "....XXX....",
-  ".....X.....",
+  "X.............X",
+  "XX...........XX",
+  "XXX.........XXX",
+  "XXXX.......XXXX",
+  ".XXXXXXXXXXXXX.",
+  ".XXXXXXXXXXXXX.",
+  ".XXX.XXXXX.XXX.",
+  "XXX.X.XXX.X.XXX",
+  "XXXXXXXXXXXXXXX",
+  ".XXXXXXXXXXXXX.",
+  "...XXXXXXXXX...",
+  ".....XXXXX.....",
+  "......XXX......",
 ];
-const MARK_PATH = MARK.map((row, y) => [...row.matchAll(/X+/g)].map((m) => `M${m.index} ${y}h${m[0].length}v1h-${m[0].length}z`).join("")).join("");
+export const MARK_PATH = MARK.map((row, y) => [...row.matchAll(/X+/g)].map((m) => `M${m.index} ${y}h${m[0].length}v1h-${m[0].length}z`).join("")).join("");
 
 export function PipMark({ className = "" }: { className?: string }) {
   return (
-    <svg className={`pip-mark ${className}`} viewBox="0 0 11 10" shapeRendering="crispEdges" aria-hidden="true">
+    <svg className={`pip-mark ${className}`} viewBox="0 0 15 13" shapeRendering="crispEdges" aria-hidden="true">
       <path d={MARK_PATH} fill="currentColor" />
     </svg>
   );
