@@ -44,6 +44,9 @@
   --cta-hi: #ffe38a; --cta-lo: #c98a1a; --hero-sky: #86c7e6;
   --board: inset var(--px) var(--px) 0 0 var(--frame-hi), inset calc(var(--px) * -1) calc(var(--px) * -1) 0 0 var(--frame-lo),
     inset 0 0 0 calc(var(--px) * 2) var(--frame), inset 0 0 0 calc(var(--px) * 3) var(--frame-lo);
+  /* The jobs search's rainbow, in a sunny forest's colours: fern, stream, sky, sunlight, autumn leaves, flowers. */
+  --sky-1: #6fc35f; --sky-2: #2fb5a2; --sky-3: #6cbcf0; --sky-4: #ffcc4d; --sky-5: #ff9a5c; --sky-6: #ef86b4;
+  --scroll-thumb: var(--ink-3);
 }
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
@@ -53,6 +56,9 @@
     --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
     --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
     --board-panel: #161a45; --board-ink: #eef0ff; --board-ink-2: #aab3e8; --hero-sky: #0b0a22;
+    /* The night forest's: moss, glowing mushrooms, deep blue, violet, flowers, fireflies. */
+    --sky-1: #3fcf8e; --sky-2: #3fd0e0; --sky-3: #5f6ff0; --sky-4: #b07cff; --sky-5: #ff6fc0; --sky-6: #ffd56b;
+    --scroll-thumb: color-mix(in srgb, var(--ink) 70%, var(--bg));
   }
 }
 :root[data-theme="dark"] {
@@ -62,9 +68,16 @@
   --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
   --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
   --board-panel: #161a45; --board-ink: #eef0ff; --board-ink-2: #aab3e8; --hero-sky: #0b0a22;
+  --sky-1: #3fcf8e; --sky-2: #3fd0e0; --sky-3: #5f6ff0; --sky-4: #b07cff; --sky-5: #ff6fc0; --sky-6: #ffd56b;
+  --scroll-thumb: color-mix(in srgb, var(--ink) 70%, var(--bg));
 }
 
 * { box-sizing: border-box; }
+/* Pictures can't be selected or dragged off the page. The forest's canvases let the pointer through to the page
+   behind them, none of them takes a click, so a right click on them opens the page's own menu, without "save
+   image" or "copy image". Pip and the pixel drawings are inline SVG, which has no such entries. */
+canvas, svg, img { user-select: none; -webkit-user-drag: none; }
+canvas { pointer-events: none; }
 [hidden] { display: none !important; }
 html, body, #root { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15.5px/1.6 "Rubik", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
@@ -78,30 +91,14 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 legend { padding: 0; }
 :focus-visible { outline: 3px solid var(--cta); outline-offset: 2px; }
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* In Hebrew some icons that point a way are turned round, as the page is: the speech bubble's tail, the search
+   glass's handle, the way out. */
+[dir="rtl"] :is(.icon-chat, .icon-jobs, .icon-logout) { transform: scaleX(-1); }
 
-/* Scrollbars: a quiet grey bar, round at both ends, on nothing (no track behind it), that takes the forest colour
-   under the pointer and darkens while dragged. Chromium browsers draw these; Firefox has no such parts, so it gets
-   a thin bar in the same colours. */
-:root { --scroll-thumb: color-mix(in srgb, var(--ink-3) 55%, var(--bg)); }
-::-webkit-scrollbar { width: 12px; height: 12px; }
-::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
-/* 8 pixels wide inside a clear 2-pixel margin, the margin left out of its colour. */
-::-webkit-scrollbar-thumb { background: var(--scroll-thumb); background-clip: padding-box; border: 2px solid transparent; border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background-color: var(--primary); }
-::-webkit-scrollbar-thumb:active { background-color: var(--primary-edge); }
-@supports not selector(::-webkit-scrollbar) {
-  * { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
-}
-/* The page itself has no strip for a bar beside it: its bar (PageScroll in app.tsx) floats over its edge instead,
-   the same round bar, 8 pixels wide in a 14-pixel band that is easier to catch. */
-main { scrollbar-width: none; }
-main::-webkit-scrollbar { display: none; }
-.page-frame { position: relative; min-width: 0; min-height: 0; }
-.page-frame > main { height: 100%; }
-.page-scroll { position: absolute; z-index: 30; inset-inline-end: 0; width: 14px; touch-action: none; }
-.page-scroll::before { content: ""; position: absolute; inset: 0 3px; border-radius: 999px; background: var(--scroll-thumb); transition: background-color 0.2s ease; }
-.page-scroll:hover::before { background: var(--primary); }
-.page-scroll.dragging::before { background: var(--primary-edge); }
+/* Scrollbars: the browser's own, given only the colours (--scroll-thumb, with each theme), so Chromium browsers
+   on Windows draw their own smooth arrows and round bar, in a strip a shade off the page's colour. Drawing the
+   bar ourselves (::-webkit-scrollbar) loses those arrows, and once scrollbar-color is set Chromium ignores it. */
+:root { scrollbar-color: var(--scroll-thumb) color-mix(in srgb, var(--ink) 6%, var(--bg)); }
 
 /* Frame. The sidebar is laid out like a social site's: the logo, one list of big icons and words with a round
    highlight, a round main button, and the account at the foot, on the page's own colour. */
@@ -249,7 +246,7 @@ textarea { resize: vertical; width: 100%; }
 /* Home. The banner is the one place in the app in pixel art: the login's forest at rest, the next step on a
    board like the login's, and the journey along the ground, in blocks of --px and the pixel font. */
 /* A one-block outline in --ring-c with stepped corners. Declared on each element so its own --ring-c is used. */
-.hero, .hero *, .stats *, .btn.pixel, .bookcase, .bookcase * { --ring: 0 calc(var(--px) * -1) 0 0 var(--ring-c), 0 var(--px) 0 0 var(--ring-c), calc(var(--px) * -1) 0 0 0 var(--ring-c), var(--px) 0 0 0 var(--ring-c); }
+.hero, .hero *, .stats *, .btn.pixel, .shelves * { --ring: 0 calc(var(--px) * -1) 0 0 var(--ring-c), 0 var(--px) 0 0 var(--ring-c), calc(var(--px) * -1) 0 0 0 var(--ring-c), var(--px) 0 0 0 var(--ring-c); }
 /* The banner runs edge to edge beside the menu, from the top of the page. The board stands in its middle, its
    words centred, and the journey lines up with the page's column below (1100 pixels at most, 38 in from its sides).
    Under the journey the forest dissolves into the page in pixel blocks, over --fade, painted with the forest. */
@@ -279,7 +276,10 @@ textarea { resize: vertical; width: 100%; }
 .stations { position: absolute; inset: auto 0 var(--fade) 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; padding: 0 calc(var(--column) - 26px) 14px; list-style: none; }
 .station { position: relative; display: flex; justify-content: center; }
 .station + .station::before { content: ""; position: absolute; top: 17px; inset-inline-end: 50%; width: 100%; border-top: var(--px) dashed rgb(255 255 255 / 60%); }
-.station.done + .station::before { border-top: var(--px) solid var(--cta); }
+/* The way to a stage, filled in over the dashes once the stage before it is passed, from that stage's side.
+   When Pip walks on, it fills in under Pip as it hops (useWalk in ui/views/home.tsx). */
+.station + .station::after { content: ""; position: absolute; top: 17px; inset-inline-start: -50%; width: 0; height: var(--px); background: var(--cta); }
+.station.done + .station::after { width: 100%; }
 .station a { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 0 4px; text-align: center; color: #fff; text-decoration: none; }
 .flag { --ring-c: var(--edge); display: grid; place-items: center; width: 38px; height: 38px; background: var(--edge); color: #fff; box-shadow: var(--ring); }
 .station.done .flag { background: var(--cta); color: var(--cta-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo); }
@@ -292,7 +292,10 @@ textarea { resize: vertical; width: 100%; }
 .station-text strong { display: block; font-family: var(--pixel); font-size: 21px; font-weight: 700; line-height: 1.1; }
 .station-text small { display: block; font-size: 12.5px; color: #fff; }
 .station a:hover strong { text-decoration: underline; }
-.station-pip { position: absolute; bottom: 100%; left: 50%; width: 92px; margin-bottom: -6px; transform: translateX(-50%); z-index: 2; pointer-events: none; }
+/* Pip stands on the stage's sign, its feet on the sign's outline, three screen pixels to each of its own so
+   they stay sharp. It doesn't bob there, which would sink its feet into the sign. */
+.station-pip { position: absolute; bottom: calc(100% + var(--px)); left: 50%; width: 66px; transform: translateX(-50%); z-index: 2; pointer-events: none; }
+.station-pip:not(.pip-happy) .pip-bob { animation: none; }
 /* Below the banner: the numbers on cards that go with it, then the best jobs out in the open across the column,
    where only the scores and links take the forest colour. */
 .page.home { padding-top: 6px; gap: 18px; }
@@ -315,47 +318,51 @@ textarea { resize: vertical; width: 100%; }
 .best-ledge { display: block; width: calc(var(--px) * 39); max-width: 100%; height: auto; color: var(--primary); }
 .best-all { color: var(--primary); text-decoration: none; font-size: 15px; font-weight: 500; }
 .best-all:hover { text-decoration: underline; }
-/* The jobs on shelves, like a bookcase in the banner's wood (its stone at night): a board on top, a post each
-   side standing on little feet, and a plank under each row of squares; the bookcase grows down the page with the
-   jobs. A plank is lit along its top and shaded along its bottom, a post down its sides. */
-.bookcase { --ring-c: var(--edge); --post: 16px; position: relative; margin-top: 6px; padding-inline: var(--post); }
-.bookcase::before, .bookcase::after {
-  content: ""; position: absolute; top: 0; bottom: calc(var(--px) * -2); width: var(--post); background: var(--frame);
-  box-shadow: var(--ring), inset var(--px) 0 0 0 var(--frame-hi), inset calc(var(--px) * -1) 0 0 0 var(--frame-lo);
+/* The jobs on shelves with no sides: a plank under each row of squares, as many as the jobs need, in the banner's
+   wood by day and its blue at night, lit along its top and shaded along its bottom. */
+.shelves { display: flex; flex-direction: column; gap: 26px; margin-top: 6px; }
+.shelf { position: relative; }
+.shelf-places { display: grid; gap: 14px; padding-inline: 18px; }
+.shelf-plank {
+  --ring-c: var(--edge); height: 16px; background: var(--frame);
+  box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--frame-hi), inset 0 calc(var(--px) * -1) 0 0 var(--frame-lo);
 }
-.bookcase::before { inset-inline-start: 0; }
-.bookcase::after { inset-inline-end: 0; }
-.shelf-plank { height: 16px; background: var(--frame); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--frame-hi), inset 0 calc(var(--px) * -1) 0 0 var(--frame-lo); }
-.bookcase > .shelf-plank { position: relative; z-index: 1; margin-inline: calc(var(--post) * -1); }
-.shelf { padding-top: 14px; }
-.shelf-places { display: grid; gap: 14px; padding-inline: 14px; }
-/* A square's outline is a paler wood than the bookcase's, so the squares stand apart from it. */
+/* The cobweb hangs under the last shelf's end, its corner where the plank meets the end; three screen pixels to
+   each of its. */
+.shelf-web { position: absolute; top: calc(100% + var(--px)); inset-inline-end: 0; display: block; width: 51px; height: auto; color: color-mix(in srgb, var(--ink-3) 85%, var(--bg)); }
+:root[dir="ltr"] .shelf-web { transform: scaleX(-1); }
+/* A square's outline is a paler wood than the shelf's, so the squares stand apart from it. */
+/* Everything on a square sits together in its middle. */
 .item {
-  --ring-c: color-mix(in srgb, var(--frame) 55%, var(--board-panel)); aspect-ratio: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px 14px; overflow: hidden;
+  --ring-c: color-mix(in srgb, var(--frame) 55%, var(--board-panel)); aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; min-width: 0; padding: 14px; overflow: hidden; text-align: center;
   background: var(--board-panel); color: var(--board-ink); box-shadow: var(--ring); text-decoration: none; font-weight: 400;
 }
-.item-score { align-self: flex-start; display: grid; place-items: center; min-width: 40px; height: 32px; padding: 0 8px 2px; margin-bottom: 6px; background: var(--primary); color: var(--primary-ink); box-shadow: inset 0 calc(var(--px) * -1) 0 0 var(--primary-edge); }
+/* The score's badge has the banner's stepped pixel corners and a darker bottom edge. */
+.item-score {
+  --ring-c: var(--primary); display: grid; place-items: center; min-width: 44px; height: 34px; padding: 0 10px 4px; margin-bottom: 8px;
+  background: var(--primary); color: var(--primary-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--primary-edge);
+}
 /* Three screen pixels to each of the digits'. */
 .item-score .digits { height: 18px; }
-.item-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: 15px; font-weight: 700; line-height: 1.3; }
-.item-company, .item-place { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--board-ink-2); font-size: 13.5px; }
-.item-place { margin-top: auto; font-size: 13px; }
-/* An empty place, as big as a square, and what sits in it, three screen pixels to each of theirs. The cobweb fills
-   the corner by the end post under the plank above; the spider hangs from that plank; dust and the mushroom sit
-   on the shelf. */
-.place { position: relative; aspect-ratio: 1; }
-.prop { position: absolute; display: block; height: auto; color: color-mix(in srgb, var(--ink-3) 85%, var(--bg)); }
-.prop-web { top: -14px; inset-inline-end: -14px; width: 51px; }
-:root[dir="ltr"] .prop-web { transform: scaleX(-1); }
-.prop-spider { top: -14px; left: calc(50% - 10px); width: 21px; }
-.prop-dust { bottom: 0; inset-inline-start: 14%; width: 48px; }
-.prop-mushroom { bottom: 0; inset-inline-end: 22%; width: 33px; }
+.item-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 100%; font-size: 15.5px; font-weight: 700; line-height: 1.3; }
+.item-company, .item-place { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--board-ink-2); font-size: 13.5px; }
+.item-place { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+/* Two screen pixels to each of the pin's. */
+.item-pin { flex: none; width: 10px; height: auto; }
+/* An empty place, and what sits in it on the shelf, three screen pixels to each of theirs. On a shelf with jobs it
+   is as tall as their squares; on a shelf with none, only as tall as Pip asleep, so an empty shelf stays low. */
+.place { position: relative; min-height: 92px; }
+.prop { position: absolute; bottom: 0; display: block; height: auto; color: color-mix(in srgb, var(--ink-3) 85%, var(--bg)); }
+.prop-dust { inset-inline-start: 14%; width: 48px; }
+.prop-mushroom { inset-inline-end: 22%; width: 33px; }
+.prop-snail { inset-inline-start: 30%; width: 36px; }
 .shelf-pip { position: absolute; bottom: 0; left: calc(50% - 55px); width: 111px; filter: grayscale(1); opacity: 0.55; }
 .best-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 36px 28px 8px; color: var(--ink-2); text-align: center; }
 .best-empty p { margin-bottom: 20px; }
 /* On a phone the squares are too narrow for their words, so they grow as tall as they need. */
 @media (max-width: 520px) {
-  .item, .place { aspect-ratio: auto; min-height: 150px; }
+  .item { aspect-ratio: auto; min-height: 150px; }
   .item-title { -webkit-line-clamp: 4; }
 }
 @media (max-width: 860px) {
@@ -372,8 +379,94 @@ textarea { resize: vertical; width: 100%; }
 .tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 9px 14px; font: inherit; font-weight: 600; color: var(--ink-2); cursor: pointer; margin-bottom: -1.5px; }
 .tab:hover { color: var(--ink); }
 .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--primary); }
-.searchbar { display: flex; flex-wrap: wrap; gap: 8px; }
-.searchbar input { flex: 1 1 240px; min-width: 0; }
+/* The jobs search, plain like a chat app's first screen (Quick in jobs.tsx): a question, one round box with Pip
+   lying on its top edge, and pills floating under it, each on its own beat, over gradients in Pip's oranges. It stands
+   in the middle of the page, top to bottom (the page's padding is 38 above and 80 below); once a search is asked,
+   it moves up for the results. Whatever of the sky reaches past the page's sides is cut off there. */
+.seek {
+  position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  min-height: calc(100dvh - 118px); padding-top: 42px; overflow-x: clip;
+}
+.seek.asked { justify-content: flex-start; min-height: 0; padding-top: 24px; }
+/* The sky: everything in it is placed from its middle, which sits a little above the search box. */
+.seek-sky { position: absolute; z-index: -1; top: calc(50% - 30px); left: 50%; width: 0; height: 0; pointer-events: none; transition: top 0.4s ease; }
+.seek.asked .seek-sky { top: 130px; }
+.seek-sky > span { position: absolute; left: 0; top: 0; border-radius: 50%; }
+/* The glow in the middle, big, breathing, between moss and stream. */
+.sky-core {
+  width: 900px; height: 560px; margin: -280px 0 0 -450px;
+  background: radial-gradient(closest-side, color-mix(in srgb, color-mix(in srgb, var(--sky-1) 50%, var(--sky-2)) 26%, transparent), transparent 70%);
+  animation: breathe 8s ease-in-out infinite;
+}
+@keyframes breathe { 0%, 100% { opacity: 0.6; transform: scale(0.9, 0.94); } 50% { opacity: 1; transform: scale(1.08, 1.04); } }
+/* Six clouds, one of each rainbow colour, ovals set round the box that drift round their own places, turn, and
+   stretch one way then the other, so the colours keep meeting and changing shape; two also shift a little in hue. */
+.sky-blob { --tint: var(--sky-1); width: 460px; height: 340px; margin: -170px 0 0 -230px; background: radial-gradient(closest-side, color-mix(in srgb, var(--tint) 34%, transparent), transparent); animation: drift 23s ease-in-out infinite; }
+.sky-blob-1 { --tint: var(--sky-1); --dx: -240px; --dy: -40px; }
+.sky-blob-2 { --tint: var(--sky-2); --dx: -100px; --dy: 120px; animation-duration: 27s; animation-delay: -5s; }
+.sky-blob-3 { --tint: var(--sky-3); --dx: 230px; --dy: -70px; animation-duration: 25s; animation-delay: -11s; }
+.sky-blob-4 { --tint: var(--sky-4); --dx: 30px; --dy: -140px; animation: drift 31s ease-in-out infinite reverse, shimmer 14s ease-in-out infinite; }
+.sky-blob-5 { --tint: var(--sky-5); --dx: 220px; --dy: 110px; animation-duration: 29s; animation-delay: -17s; }
+.sky-blob-6 { --tint: var(--sky-6); --dx: -30px; --dy: 40px; animation: drift 35s ease-in-out infinite reverse, shimmer 17s ease-in-out infinite -6s; }
+@keyframes drift {
+  0%, 100% { transform: translate(var(--dx), var(--dy)) rotate(0deg) scale(1, 1); }
+  25% { transform: translate(calc(var(--dx) * 0.4), calc(var(--dy) - 80px)) rotate(28deg) scale(1.3, 0.85); }
+  50% { transform: translate(calc(var(--dx) * -0.3), calc(var(--dy) + 30px)) rotate(-12deg) scale(0.9, 1.2); }
+  75% { transform: translate(calc(var(--dx) * 0.8), calc(var(--dy) + 70px)) rotate(18deg) scale(1.15, 0.95); }
+}
+@keyframes shimmer { 0%, 100% { filter: hue-rotate(0deg); } 50% { filter: hue-rotate(-28deg); } }
+.seek-title { margin-bottom: 30px; font-size: 30px; font-weight: 500; text-align: center; }
+.seek-box {
+  position: relative; display: flex; align-items: center; gap: 6px; width: min(760px, 100%); min-height: 60px; padding: 7px 8px; padding-inline-start: 24px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); box-shadow: 0 6px 24px rgb(0 0 0 / 6%); transition: border-color 0.2s ease;
+}
+.seek-box:focus-within { border-color: var(--primary); }
+.seek-box input, .seek-box input:hover, .seek-box input:focus { flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; box-shadow: none; font-size: 16.5px; }
+/* Without the browser's blue clearing cross. */
+.seek-box input::-webkit-search-cancel-button { display: none; }
+/* The hint in the middle of the whole box: its line is indented at the start by as much room as the two buttons
+   take at the end (6 + 44 + 6 + 44 + 8 pixels, less the box's 24 at the start). Only the hint moves; the caret,
+   and the words typed, stay at the start, by the language. */
+.seek-box input::placeholder { text-align: center; text-indent: 84px; }
+/* A phone's box is too narrow to give that room away: the hint keeps to the middle of the space it has, a little
+   smaller, so the longest role fits. */
+@media (max-width: 520px) {
+  .seek-box { padding-inline-start: 16px; }
+  .seek-box input::placeholder { text-indent: 0; font-size: 14px; }
+}
+/* Pip lies on the box's top edge near its start (the right in Hebrew), three screen pixels to each of its, on the
+   edge rather than in it, its head toward the box's middle. */
+.seek-pip { position: absolute; bottom: calc(100% + 1px); inset-inline-start: 36px; width: 99px; pointer-events: none; }
+:root[dir="ltr"] .seek-pip { transform: scaleX(-1); }
+.seek-icon, .seek-go { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer; }
+.seek-icon { background: none; color: var(--ink-2); transition: background-color 0.2s ease, color 0.2s ease; }
+.seek-icon:hover, .seek-icon[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
+.seek-go { background: var(--primary); color: var(--primary-ink); transition: opacity 0.2s ease; }
+.seek-go:disabled { opacity: 0.4; cursor: default; }
+/* The menu opens under the box's end, as wide as a column of fields. */
+.seek-menu { position: relative; }
+.seek-panel {
+  position: absolute; z-index: 20; top: calc(100% + 14px); inset-inline-end: -52px; width: 330px; display: flex; flex-direction: column; gap: 12px; padding: 16px;
+  border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 14px 40px rgb(0 0 0 / 16%);
+}
+.seek-panel select { width: 100%; }
+.seek-where { color: var(--ink-2); font-size: 14px; }
+.seek-more { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 13.5px; }
+.seek-action { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 0; border-radius: 12px; background: none; color: var(--ink); font: inherit; text-align: start; cursor: pointer; transition: background-color 0.2s ease; }
+.seek-action:hover { background: var(--hover); }
+.seek-action strong { font-weight: 600; }
+.seek-action small { color: var(--ink-2); font-size: 13px; line-height: 1.4; }
+.seek-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 760px; }
+.seek-pill {
+  padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14.5px; cursor: pointer;
+  animation: float 4.6s ease-in-out infinite; transition: border-color 0.2s ease, color 0.2s ease;
+}
+.seek-pill:hover { border-color: var(--primary); color: var(--primary); }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.seek-saved { font-size: 14px; }
+.seek-note { color: var(--ink-2); text-align: center; }
+.seek-status { justify-content: center; }
+.seek-results { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 10px; }
 .joblist { padding: 0; overflow: hidden; }
 .job { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 16px 20px; }
 .job + .job { border-top: 1px solid var(--line); }
@@ -507,7 +600,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .login-top { position: absolute; top: 0; left: 0; right: 0; z-index: 4; display: flex; align-items: center; gap: 12px; padding: 16px 20px; }
 .login-top .row { gap: 12px; }
 /* The top buttons in the same pixel style: square, with a stepped dark edge. */
-.login-top .lang, .login-top .theme, .skip {
+.login-top .lang, .login-top .theme {
   border-radius: 0; background: var(--chip); color: var(--chip-ink);
   box-shadow: 0 calc(var(--px) * -1) 0 0 var(--board-line), 0 var(--px) 0 0 var(--board-line), calc(var(--px) * -1) 0 0 0 var(--board-line), var(--px) 0 0 0 var(--board-line);
 }
@@ -520,9 +613,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .login-top .lang[data-on="he"]::before { transform: translateX(100%); }
 .login-top .lang button { position: relative; padding: 6px 12px; border-radius: 0; color: var(--chip-ink); }
 .login-top .lang button[aria-pressed="true"] { background: none; color: #fff; }
-.login-top .theme:hover, .login-top .lang button:hover, .skip:hover { color: #fff; }
-.skip { border: 0; padding: 9px 14px; font: inherit; font-weight: 600; cursor: pointer; }
-.skip:hover { background: var(--chip-on); }
+.login-top .theme:hover, .login-top .lang button:hover { color: #fff; }
 .login-stage { position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; padding: 90px 16px 40px; }
 /* The form has no background of its own: it stands on the board the intro draws behind it. The padding
    keeps the text clear of the board's frame, which is five blocks deep. */
@@ -570,7 +661,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
    shapes come out dashed or dotted. It is narrow, so it runs larger than the rest of the site.
    Last in the block, so it wins over the fonts set above. */
 .login-card h1, .login-card .sub, .login-card .field-label, .login-card .error-line, .login-card .login-submit,
-.login-top .lang button, .login-top .skip {
+.login-top .lang button {
   font-family: "Handjet", var(--head); font-variation-settings: "ELSH" 2; font-weight: 700; line-height: 1.15;
 }
 .login-card h1 { font-size: 46px; font-weight: 800; }
@@ -578,7 +669,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .login-card .field-label { font-size: 21px; }
 .login-card .error-line { font-size: 20px; }
 .login-card .login-submit { font-size: 27px; font-weight: 800; }
-.login-top .lang button, .login-top .skip { font-size: 20px; }
+.login-top .lang button { font-size: 20px; }
 .shell.waiting { visibility: hidden; }
 .shell.entering { animation: enter 0.45s ease-out; }
 @keyframes enter { from { opacity: 0; transform: scale(0.985); } }
@@ -611,7 +702,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 @keyframes boot-paw { 0% { opacity: 1; } 60% { opacity: 0.14; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot * { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
   .pip-a { opacity: 1; }
 }
@@ -651,14 +742,16 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
   .stations { position: static; grid-template-columns: minmax(0, 1fr); padding: 14px 22px 18px; }
   .station { justify-content: flex-start; height: 62px; }
   .station + .station::before { top: -24px; inset-inline-end: auto; inset-inline-start: 17px; width: 0; height: 26px; border-top: 0; border-inline-start: var(--px) dashed var(--frame-hi); }
-  .station.done + .station::before { border-top: 0; border-inline-start: var(--px) solid var(--cta); }
+  .station + .station::after { top: -24px; inset-inline-start: 17px; width: var(--px); height: 0; }
+  .station.done + .station::after { width: var(--px); height: 26px; }
   .station a { flex-direction: row; gap: 12px; color: var(--board-ink); text-align: start; }
   .station-text strong, .station-text small { text-shadow: none; }
   .station-text small { color: var(--board-ink-2); }
   .flag { background: var(--board-panel); color: var(--board-ink-2); --ring-c: var(--frame); }
-  .station-pip { bottom: auto; left: auto; top: 50%; inset-inline-end: 0; width: 64px; margin: 0; transform: translateY(-50%); }
-  .searchbar input { flex-basis: 100%; }
-  .searchbar select { flex: 1 1 40%; min-width: 0; }
+  .station-pip { bottom: auto; left: auto; top: 50%; inset-inline-end: 0; transform: translateY(-50%); }
+  .seek { min-height: calc(100dvh - 230px); }
+  .seek-title { font-size: 24px; }
+  .seek-panel { width: calc(100vw - 32px); }
   .table-wrap table { min-width: 820px; }
   .chat { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .threads { max-height: 110px; border-inline-end: 0; border-bottom: 1px solid var(--line); }

@@ -11,7 +11,6 @@ const FLIP_MS = 180;
 export function Login({ onDone, intro }: { onDone: () => void; intro: boolean }) {
   const { t, lang, setLang, dark, toggleTheme } = useApp();
   const [shown, setShown] = useState(false);
-  const [landed, setLanded] = useState(false);
   const [user, setUser] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -41,7 +40,6 @@ export function Login({ onDone, intro }: { onDone: () => void; intro: boolean })
       card: () => card.current?.getBoundingClientRect() ?? null,
       shown: () => card.current?.classList.contains("show") ?? false,
       onCardShow: () => setShown(true),
-      onLanded: () => setLanded(true),
       onSwap: setNightShown,
     });
     return () => scene.current?.destroy();
@@ -99,7 +97,6 @@ export function Login({ onDone, intro }: { onDone: () => void; intro: boolean })
             <button type="button" lang="en" aria-pressed={showing === "en"} onClick={() => pickLang("en")}>English</button>
             <button type="button" lang="he" aria-pressed={showing === "he"} onClick={() => pickLang("he")}>עברית</button>
           </div>
-          {!landed && <button type="button" className="skip" onClick={() => scene.current?.skip()}>{t("login.skip")}</button>}
         </div>
       </header>
       <main className="login-stage">

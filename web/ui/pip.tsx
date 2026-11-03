@@ -126,10 +126,9 @@ const BACK_LEAP = blocks([
   "...D...D...",
 ]);
 
-// Asleep, for a list with nothing in it yet: lying flat with its eyes shut, its back curving down from behind
-// the ears and out to a big round rump, its tail along its front, and three Zs rising off its back, each bigger
-// than the last. It doesn't move, and the page shows it in grey.
-const ASLEEP: Px[] = [
+// Lying flat: its back curving down from behind the ears and out to a big round rump, its tail along its front.
+// The eyes are left out, for the two that lie like this to add.
+const LYING: Px[] = [
   ...blocks([
     "...............",
     ".D.......D.....",
@@ -143,7 +142,12 @@ const ASLEEP: Px[] = [
   ]),
   // The rump, a quarter of an ellipse: how far right each row reaches, from the top of the back down to the ground.
   ...[25, 26, 28, 29, 30, 30, 31, 31, 31, 32, 32, 32].flatMap((to, i) => Array.from({ length: to - 19 }, (_, k): Px => [20 + k, 5 + i, C.O])),
-  // Closed lids, curving down.
+];
+
+// Asleep, for a list with nothing in it yet: lying flat with its lids shut, curving down, and three Zs rising off
+// its back, each bigger than the last. It doesn't move, and the page shows it in grey.
+const ASLEEP: Px[] = [
+  ...LYING,
   ...art(5, 9, ["K..K....K..K", ".KK......KK."]),
   ...art(22, 0, ["GGGG", "..G.", ".G..", "GGGG"]),
   ...art(26, -6, ["GGGGG", "...G.", "..G..", ".G...", "GGGGG"]),
@@ -154,6 +158,18 @@ export function PipAsleep({ className = "" }: { className?: string }) {
   return (
     <svg className={`pip pip-asleep ${className}`} viewBox="0 -13 37 30" shapeRendering="crispEdges" aria-hidden="true">
       <Pixels px={ASLEEP} />
+    </svg>
+  );
+}
+
+// Lying awake, in its colours, the eyes open and now and then blinking (pip-open and pip-shut in the CSS): for
+// lounging on the top of something, like the jobs page's search box.
+export function PipLying({ className = "" }: { className?: string }) {
+  return (
+    <svg className={`pip pip-lying ${className}`} viewBox="0 1 33 16" shapeRendering="crispEdges" aria-hidden="true">
+      <Pixels px={LYING} />
+      <Pixels px={eyesOpen} className="pip-open" />
+      <Pixels px={eyesShut} className="pip-shut" />
     </svg>
   );
 }

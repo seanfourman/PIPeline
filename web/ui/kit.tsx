@@ -1,7 +1,8 @@
 // Shared building blocks. Text from postings and from the agent always goes in as text, never as HTML.
 import React from "react";
 import {
-  createLucideIcon, FileText, Folder, LayoutGrid, ListChecks, LogOut, MessageCircle, Moon, Plus, Search, Settings, Sun, User, type LucideIcon,
+  createLucideIcon, FileText, Folder, LayoutGrid, ListChecks, LogOut, MessageCircle, Moon, Plus, Search, Settings, SlidersHorizontal, Sun, User,
+  type LucideIcon,
 } from "lucide-react";
 import { translate, type Lang } from "./i18n";
 
@@ -160,7 +161,7 @@ const House = createLucideIcon("house-open", [
 // Icons from Lucide, an open icon set (ISC licence); only these are bundled.
 const ICONS: Record<string, LucideIcon> = {
   home: House, jobs: Search, apps: FileText, chat: MessageCircle, profile: User, settings: Settings,
-  rules: ListChecks, tools: LayoutGrid, files: Folder, plus: Plus, sun: Sun, moon: Moon, logout: LogOut,
+  rules: ListChecks, tools: LayoutGrid, files: Folder, plus: Plus, sun: Sun, moon: Moon, logout: LogOut, filters: SlidersHorizontal,
 };
 
 // filled is for the page you are on: the shape filled in, its inner lines cut out (see .icon.filled in the CSS).

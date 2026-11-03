@@ -15,7 +15,7 @@ export type Reaction = "wrong" | "right" | "off";
 // scene has changed to night or day, so the form's colours change at the same moment.
 export type IntroOptions = {
   play: boolean; calm: boolean; night: boolean; card: () => Card; shown: () => boolean;
-  onCardShow: () => void; onLanded: () => void; onSwap: (night: boolean) => void;
+  onCardShow: () => void; onSwap: (night: boolean) => void;
 };
 
 // Pip's jump off the board when the language changes, in seconds from the click: down on the ground by
@@ -896,7 +896,6 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
         mood = "happy";
       } else if (!landed) {
         landed = true;
-        opts.onLanded();
         // Paint the other time of day and its leaves while nothing is happening, one at a time, so the first
         // switch starts at once.
         const other = world.pal === NIGHT ? MORNING : NIGHT;
