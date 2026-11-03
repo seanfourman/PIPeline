@@ -16,7 +16,7 @@ The language button sets the conversation language too, through the saved settin
 
 ## Settings
 
-The settings screen chooses up to 3 markets (any country, an optional city, or remote), the area tiers, work mode, seniority, relocation, role shortcuts, salary, fields of interest, how to treat student positions, and the daily run. They are stored in `web/data/settings.json`.
+The settings screen chooses up to 3 markets (any country, an optional city, or remote), the area tiers, work mode, seniority, relocation, roles (picked from a ready-made list by field in `roles.ts`, each searched with the experience level added, or typed in by hand; `/setup` picks them with `bun run web/pick-roles.ts`), salary, fields of interest, how to treat student positions, and the daily run. They are stored in `web/data/settings.json`.
 
 Saving also rewrites the `WEB-SETTINGS` block in `CLAUDE.md` and `search-queries.md`, so `/job-scraper`, `/rank` and `/apply` follow the same choices in new conversations.
 

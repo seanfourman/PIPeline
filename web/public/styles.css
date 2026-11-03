@@ -206,6 +206,17 @@ textarea { resize: vertical; width: 100%; }
 .tag-x { background: none; border: 0; padding: 0 3px; color: var(--ink-2); font: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
 .tag-x:hover { color: var(--bad); }
 .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+/* The roles to choose from, by field: a round button each, outlined, filled in the forest colour with a tick once
+   chosen. */
+.role-field { display: flex; flex-direction: column; gap: 8px; }
+.role-field-name { font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.role-pick {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border: 1px solid var(--line); border-radius: 999px;
+  background: none; color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+.role-pick:hover { border-color: var(--ink-3); }
+.role-pick[aria-pressed="true"] { border-color: var(--primary); background: var(--primary); color: var(--primary-ink); }
+.role-pick[aria-pressed="true"]::before { content: "✓"; font-weight: 700; }
 .chip { background: var(--surface); border: 1.5px solid var(--line); border-radius: 999px; padding: 4px 14px; font: inherit; font-size: 14px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
 .chip:hover { border-color: var(--primary); color: var(--primary); }
 .list-link { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 400; }
@@ -442,34 +453,43 @@ textarea { resize: vertical; width: 100%; }
    edge rather than in it, its head toward the box's middle. */
 .seek-pip { position: absolute; bottom: calc(100% + 1px); inset-inline-start: 36px; width: 99px; pointer-events: none; }
 :root[dir="ltr"] .seek-pip { transform: scaleX(-1); }
-/* At the box's end: the search settings, the sparkles, and the search button's place, closed while the box is
-   empty. Once something is typed the place opens, pushing the other two in, and the button flies in from past
-   the end (--out: which way that is), spinning into place; it flies back out when the box is emptied. */
+/* At the box's end: the search settings, the sparkles, and the search button's place. The row reaches the box's
+   inner edge, top, bottom and end, and the place, round at its end like the box, shows only what is inside it:
+   while the box is empty, just the end's padding. Once something is typed the place opens at once and the button
+   rolls in from past the end (--out: which way that is), along a straight line, seen only inside the box, while
+   the other two slide over to make room (in jobs.tsx). The place opens at once, not over the roll, so the input,
+   and its caret, keep still. Emptied, the button goes at once (rolling out of a place already closed would leave
+   a sliver at the edge) and the other two slide back over its place. */
 .seek-box { --out: 1; }
 :root[dir="rtl"] .seek-box { --out: -1; }
-.seek-tools { display: flex; align-items: center; gap: 6px; }
+.seek-tools { display: flex; align-items: center; gap: 6px; align-self: stretch; margin-block: -7px; margin-inline-end: -8px; }
 .seek-icon, .seek-go, .seek-ai { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer; }
 .seek-icon { background: none; color: var(--ink-2); transition: background-color 0.2s ease, color 0.2s ease; }
 .seek-icon:hover, .seek-icon[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
-.seek-go-slot { position: relative; flex: none; width: 0; height: 44px; margin-inline-start: -6px; transition: width 0.35s ease, margin 0.35s ease; }
-.seek-box.typing .seek-go-slot { width: 44px; margin-inline-start: 0; }
-.seek-go {
-  position: absolute; top: 0; inset-inline-end: 0; background: var(--primary); color: var(--primary-ink);
-  opacity: 0; pointer-events: none; translate: calc(var(--out) * 64px) -18px; rotate: calc(var(--out) * 220deg); scale: 0.4;
-  transition: translate 0.5s cubic-bezier(0.2, 1.4, 0.4, 1), rotate 0.5s cubic-bezier(0.2, 1.4, 0.4, 1), scale 0.5s cubic-bezier(0.2, 1.4, 0.4, 1), opacity 0.2s ease;
+.seek-go-slot {
+  position: relative; flex: none; align-self: stretch; width: 8px; margin-inline-start: -6px; overflow: hidden; pointer-events: none;
+  border-start-end-radius: 999px; border-end-end-radius: 999px;
 }
-.seek-box.typing .seek-go { opacity: 1; pointer-events: auto; translate: 0 0; rotate: 0deg; scale: 1; }
+.seek-box.typing .seek-go-slot { width: 52px; margin-inline-start: 0; }
+/* Rolling: a turn of 135 degrees over the 52 pixels, about what a 44-pixel wheel turns. */
+.seek-go {
+  position: absolute; top: 7px; inset-inline-end: 8px; background: var(--primary); color: var(--primary-ink);
+  translate: calc(var(--out) * 52px) 0; rotate: calc(var(--out) * 135deg);
+}
+.seek-box.typing .seek-go {
+  pointer-events: auto; translate: 0 0; rotate: 0deg;
+  transition: translate 0.45s cubic-bezier(0.22, 0.8, 0.3, 1), rotate 0.45s cubic-bezier(0.22, 0.8, 0.3, 1);
+}
 .seek-box.typing .seek-go:disabled { opacity: 0.4; cursor: default; }
 /* The sparkles: a round button in the forest rainbow, its colours always turning round it like a chroma, with a
    soft glow of the same colours about it, brighter under the pointer and while its menu is open. */
 @property --chroma { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .seek-ai {
-  position: relative; isolation: isolate; color: #fff; transition: scale 0.25s ease;
+  position: relative; isolation: isolate; color: #fff;
   background: conic-gradient(from var(--chroma), var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3));
   animation: chroma 5s linear infinite;
 }
 .seek-ai::before { content: ""; position: absolute; z-index: -1; inset: -3px; border-radius: inherit; background: inherit; filter: blur(9px); opacity: 0.55; transition: opacity 0.25s ease; }
-.seek-ai:hover, .seek-ai[aria-expanded="true"] { scale: 1.06; }
 .seek-ai:hover::before, .seek-ai[aria-expanded="true"]::before { opacity: 0.95; }
 .seek-ai .icon { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
 @keyframes chroma { to { --chroma: 360deg; } }
@@ -486,24 +506,24 @@ textarea { resize: vertical; width: 100%; }
 .seek-action strong { font-weight: 600; }
 .seek-action small { color: var(--ink-2); font-size: 13px; line-height: 1.4; }
 /* The roles, tossed under the box: each at its own small tilt and a little off its place (--tilt, --nx and --ny,
-   from its words; see toss in jobs.tsx), floating on its own beat, and straightening and growing under the
-   pointer. In liquid glass: the sky shows through blurred and brighter, inside a bright rim, with a shine along
-   the top and a glow along the bottom inside. */
-.seek-pills { display: flex; flex-wrap: wrap; justify-content: center; gap: 26px 22px; max-width: 880px; padding-top: 12px; }
+   from its words; see toss in jobs.tsx; --spread shrinks the nudge where there's less room), floating on its own
+   beat, and straightening under the pointer. In liquid glass: the sky shows through blurred and brighter, inside
+   a bright rim, with a shine along the top and a glow along the bottom inside. */
+.seek-pills { --spread: 1; display: flex; flex-wrap: wrap; justify-content: center; gap: 40px 36px; max-width: 980px; padding-top: 16px; }
 .seek-pill {
   position: relative; padding: 9px 18px; border: 0; border-radius: 999px; color: var(--ink); font: inherit; font-size: 14.5px; cursor: pointer;
   background: linear-gradient(160deg, var(--glass-top), var(--glass-bottom));
   backdrop-filter: blur(14px) saturate(180%);
   box-shadow: inset 0 0 0 1px var(--glass-rim), inset 0 1px 1px var(--glass-shine), inset 0 -10px 16px -12px var(--glass-shine),
     0 0 0 1px rgb(0 0 0 / 4%), 0 8px 24px rgb(0 0 0 / 9%);
-  rotate: var(--tilt, 0deg); translate: var(--nx, 0) var(--ny, 0);
+  rotate: var(--tilt, 0deg); translate: calc(var(--nx, 0px) * var(--spread)) calc(var(--ny, 0px) * var(--spread));
   animation: float 4.6s ease-in-out infinite;
-  transition: rotate 0.45s cubic-bezier(0.3, 1.6, 0.5, 1), scale 0.45s cubic-bezier(0.3, 1.6, 0.5, 1), color 0.2s ease;
+  transition: rotate 0.45s cubic-bezier(0.3, 1.6, 0.5, 1), color 0.2s ease;
 }
 .seek-pill::before { content: ""; position: absolute; z-index: -1; inset: 1px 1px auto; height: 70%; border-radius: 999px; background: radial-gradient(ellipse 60% 70% at 50% 0%, var(--glass-shine), transparent); opacity: 0.6; pointer-events: none; }
-.seek-pill:hover { rotate: 0deg; scale: 1.08; color: var(--primary); }
+.seek-pill:hover { rotate: 0deg; color: var(--primary); }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
-@media (max-width: 520px) { .seek-pills { gap: 20px 14px; } }
+@media (max-width: 520px) { .seek-pills { --spread: 0.5; gap: 22px 16px; } }
 .seek-note { color: var(--ink-2); text-align: center; }
 .seek-status { justify-content: center; }
 .seek-results { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 10px; }

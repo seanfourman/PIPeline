@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { linkedinPlace, saveSettings, syncWorkspace, validateSettings } from "./settings";
+import { linkedinPlace, pickRoles, saveSettings, syncWorkspace, validateSettings } from "./settings";
 
 function tempRepo() {
   const repo = mkdtempSync(path.join(os.tmpdir(), "job-settings-"));
@@ -69,6 +69,48 @@ describe("validateSettings", () => {
     const bad = validateSettings({ salaryMin: -5, salaryMax: "lots", studentJobs: "maybe", automation: { email: "nope", maxPerDay: "x", runAt: "25:00" } });
     expect([bad.salaryMin, bad.salaryMax, bad.studentJobs]).toEqual([0, 0, "normal"]);
     expect(bad.automation).toEqual({ enabled: false, email: "", maxPerDay: 3, runAt: "09:00", minScore: 60 });
+  });
+});
+
+describe("roles", () => {
+  test("a role from the list searches at the level set", () => {
+    const at = (seniority: string) => validateSettings({ seniority, roles: [{ id: "backend" }, { id: "graduate" }] }).roles;
+    expect(at("junior")).toEqual([
+      { id: "backend", label: "Backend", query: "Junior Backend Developer" },
+      { id: "graduate", label: "Graduates", query: "Graduate Software Engineer" },
+    ]);
+    expect(at("senior")[0].query).toBe("Senior Backend Developer");
+    expect(at("any")[0].query).toBe("Backend Developer");
+    expect(at("middle")[0].query).toBe("Backend Developer");
+    // A graduate position is a level of its own, so it stays the same.
+    expect(at("senior")[1].query).toBe("Graduate Software Engineer");
+  });
+
+  test("a role saved before the list, that is one from it at this level, becomes that one", () => {
+    const s = validateSettings({
+      seniority: "junior",
+      roles: [{ label: "בוגרים", query: "Graduate Software Engineer" }, { label: "Backend", query: "junior backend developer" }, { label: "Automation", query: "QA Automation Junior" }],
+    });
+    expect(s.roles.map((r) => r.id)).toEqual(["graduate", "backend", undefined]);
+    expect(s.roles[2]).toEqual({ label: "Automation", query: "QA Automation Junior" });
+  });
+
+  test("drops what it cannot use, and the same search twice", () => {
+    const s = validateSettings({ roles: [{ id: "no-such-role" }, { id: "nope", query: "Data Platform Engineer" }, { id: "qa" }, { query: "qa engineer" }] });
+    expect(s.roles).toEqual([{ label: "Data Platform Engineer", query: "Data Platform Engineer" }, { id: "qa", label: "QA", query: "QA Engineer" }]);
+  });
+
+  test("/setup's pick replaces the list's roles and keeps the ones typed in", () => {
+    const before = validateSettings({ seniority: "any", roles: [{ id: "frontend" }, { query: "Data Platform Engineer" }] });
+    const after = pickRoles(before, ["ml", "python", "made-up"], "junior");
+    expect(after.seniority).toBe("junior");
+    expect(after.roles.map((r) => r.query)).toEqual(["Junior Machine Learning Engineer", "Junior Python Developer", "Data Platform Engineer"]);
+  });
+
+  test("the agent is told the searches with their level", () => {
+    const repo = tempRepo();
+    syncWorkspace(validateSettings({ seniority: "junior", roles: [{ id: "dataeng" }, { query: "Data Platform Engineer" }] }), repo);
+    expect(readFileSync(path.join(repo, "CLAUDE.md"), "utf8")).toContain("**Role focus:** Junior Data Engineer; Data Platform Engineer");
   });
 });
 

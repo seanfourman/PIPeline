@@ -397,6 +397,14 @@ Replace all placeholder tokens in the search queries file with the user's actual
   - Priority 3: Adjacent roles they could pivot into
   - Priority 4: Broader roles (wider net)
 
+### 10. Choose the website's roles
+The web interface shows a role list as quick-search buttons on its jobs page, and the smart search looks for exactly those roles. Fill it from the same direction as the search queries:
+- Run `bun run web/pick-roles.ts --list` to see the ready-made roles, by field, each with an id.
+- Choose the ones that fit the candidate, usually 6 to 12, their strongest direction first: the order is the order of the buttons.
+- Set the experience level from the profile: `junior` for a recent graduate or up to about two years, `middle`, `senior`, or `any` when unsure. The level is added to each role's search on its own (a junior's `backend` searches "Junior Backend Developer"), so choose plain roles rather than writing the level into them. `graduate` and `student` are levels of their own.
+- Run `bun run web/pick-roles.ts --level <level> <id> <id> ...`. It replaces the roles chosen from the list before, keeps any the candidate typed in on the settings screen, and updates the search settings in `CLAUDE.md` and `search-queries.md`.
+- A title the candidate wants that is not on the list goes in on the settings screen, under Roles. Tell them so.
+
 ---
 
 ## Step 4: Confirm & Next Steps
@@ -414,6 +422,7 @@ Present a summary:
 > - `.claude/skills/job-application-assistant/07-interview-prep.md` - STAR examples from your experience
 > - `cv/main_example.tex` - Your LaTeX CV template
 > - `.claude/skills/job-scraper/search-queries.md` - Job search queries for `/scrape`
+> - The website's roles and experience level - the quick-search buttons on the jobs page, and what the smart search looks for (change them in Settings, under Roles)
 >
 > **Privacy note:** the files above now contain your personal data and are *tracked by git*.
 > A GitHub fork of the template is always public (forks of public repos cannot be made

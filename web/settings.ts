@@ -1,6 +1,7 @@
 // Search settings: which markets and areas to search, and how to tell the agent about them.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { fromList, listedRole, matchListed, type Role } from "./roles";
 
 export type Tier = "near" | "ok" | "edge" | "far";
 export type Area = { name: string; places: string[]; tier: Tier };
@@ -13,7 +14,7 @@ export type Settings = {
   workMode: "any" | "remote" | "hybrid" | "onsite";
   seniority: "any" | "junior" | "middle" | "senior";
   relocate: boolean;
-  roles: { label: string; query: string }[];
+  roles: Role[];
   salaryMin: number;
   salaryMax: number;
   salaryCurrency: string;
@@ -30,7 +31,7 @@ const SETTINGS_FILE = path.join(import.meta.dir, "data", "settings.json");
 
 export const EMPTY_SETTINGS: Settings = {
   displayName: "", home: "", markets: [], areas: [], workMode: "any", seniority: "any", relocate: false,
-  roles: [{ label: "Software Engineer", query: "Software Engineer" }],
+  roles: [{ id: "software", label: "Software", query: "Software Engineer" }],
   salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he",
   automation: { enabled: false, email: "", maxPerDay: 3, runAt: "09:00", minScore: 60 },
 };
@@ -68,12 +69,19 @@ export function validateSettings(input: any): Settings {
     const places = (Array.isArray(a?.places) ? a.places : [name]).slice(0, 40).map((p: unknown) => clean(p).toLowerCase()).filter(Boolean);
     return name && places.length && TIERS.includes(a?.tier) ? [{ name, places, tier: a.tier }] : [];
   });
-  const roles = (Array.isArray(input?.roles) ? input.roles : []).slice(0, 30).flatMap((r: any) => {
-    const query = clean(r?.query ?? r, 120);
-    return query ? [{ label: clean(r?.label, 40) || query, query }] : [];
-  });
   const pick = <T extends string>(value: unknown, options: readonly T[]): T =>
     options.includes(value as T) ? (value as T) : options[0];
+  const seniority = pick(input?.seniority, ["any", "junior", "middle", "senior"] as const);
+  // A role from the ready-made list is rebuilt from it, so its search always carries the level set here.
+  const seen = new Set<string>();
+  const roles = (Array.isArray(input?.roles) ? input.roles : []).slice(0, 30).flatMap((r: any): Role[] => {
+    const query = clean(typeof r === "string" ? r : r?.query, 120);
+    const listed = listedRole(r?.id) ?? matchListed(query, seniority);
+    const role = listed ? fromList(listed, seniority) : query ? { label: clean(r?.label, 40) || query, query } : null;
+    if (!role || seen.has(role.query.toLowerCase())) return [];
+    seen.add(role.query.toLowerCase());
+    return [role];
+  });
   const salary = [wholeNumber(input?.salaryMin, 10_000_000), wholeNumber(input?.salaryMax, 10_000_000)];
   const [salaryMin, salaryMax] = salary[0] && salary[1] ? salary.sort((a, b) => a - b) : salary;
   const email = clean(input?.automation?.email, 120);
@@ -84,7 +92,7 @@ export function validateSettings(input: any): Settings {
     markets,
     areas,
     workMode: pick(input?.workMode, ["any", "remote", "hybrid", "onsite"] as const),
-    seniority: pick(input?.seniority, ["any", "junior", "middle", "senior"] as const),
+    seniority,
     relocate: input?.relocate === true,
     roles,
     salaryMin,
@@ -101,6 +109,14 @@ export function validateSettings(input: any): Settings {
       minScore: wholeNumber(input?.automation?.minScore, 100) || 60,
     },
   };
+}
+
+// The roles /setup chooses from the list (pick-roles.ts), in its order, at a level if it gives one. They replace
+// those chosen from the list before; any typed in by hand stay, after them.
+export function pickRoles(settings: Settings, ids: string[], level?: Settings["seniority"]): Settings {
+  const seniority = level ?? settings.seniority;
+  const own = settings.roles.filter((r) => !listedRole(r.id));
+  return validateSettings({ ...settings, seniority, roles: [...ids.flatMap((id) => listedRole(id) ? [{ id }] : []), ...own] });
 }
 
 export function loadSettings(file = SETTINGS_FILE): Settings {

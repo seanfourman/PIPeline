@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useApp } from "../app";
 import { AREA_NAMES_EN, type Lang } from "../i18n";
 import { api, Btn, Card, External, Field, Icon, Page, Spinner } from "../kit";
+import { fromList, listedRole, matchListed, ROLE_FIELDS, roleQuery } from "../../roles";
 
 const COUNTRY_CODES = "AD AE AF AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BJ BN BO BR BS BT BW BY BZ CA CD CF CG CH CI CL CM CN CO CR CU CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FR GA GB GD GE GH GM GN GQ GR GT GW GY HK HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KG KH KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MK ML MM MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NZ OM PA PE PG PH PK PL PR PS PT PY QA RO RS RU RW SA SC SD SE SG SI SK SL SN SO SR SV SY SZ TD TG TH TJ TM TN TR TT TW TZ UA UG US UY UZ VE VN YE ZA ZM ZW".split(" ");
 const TIERS = ["near", "ok", "edge", "far"];
@@ -88,6 +89,7 @@ export function Settings() {
   const presetNames = new Set(presets.map((p: any) => p.name));
   const custom = draft.areas.filter((a: any) => !presetNames.has(a.name));
   const full = draft.markets.length >= 3;
+  const ownRoles = draft.roles.filter((r: any) => !listedRole(r.id));
 
   const save = async () => {
     try {
@@ -202,32 +204,63 @@ export function Settings() {
             <select value={draft.workMode} onChange={(e) => set("workMode", e.target.value)}>{["any", "remote", "hybrid", "onsite"].map((v) => <option key={v} value={v}>{t(`modes.${v}`)}</option>)}</select>
           </Field>
           <Field label={t("settings.seniority")} hint={t("settings.seniorityHint")}>
-            <select value={draft.seniority} onChange={(e) => set("seniority", e.target.value)}>{["any", "junior", "middle", "senior"].map((v) => <option key={v} value={v}>{t(`settings.levels.${v}`)}</option>)}</select>
+            <select value={draft.seniority} onChange={(e) => update((d) => {
+              d.seniority = e.target.value;
+              d.roles = d.roles.map((r: any) => (listedRole(r.id) ? fromList(listedRole(r.id)!, d.seniority) : r));
+            })}>{["any", "junior", "middle", "senior"].map((v) => <option key={v} value={v}>{t(`settings.levels.${v}`)}</option>)}</select>
           </Field>
         </div>
         <label className="check"><input type="checkbox" checked={draft.relocate} onChange={(e) => set("relocate", e.target.checked)} />{t("settings.relocate")}</label>
       </Card>
 
+      {/* Roles from the ready-made list, by field, chosen with a click; the search adds the level to each (roles.ts).
+          Below them, any typed in by hand. */}
       <Card className="stack">
         <h2>{t("settings.roles")}</h2>
         <p className="note">{t("settings.rolesNote")}</p>
-        <div className="chips">
-          {draft.roles.map((r: any) => (
-            <span key={r.query} className="tag" dir="auto">{r.label}
-              <button type="button" className="tag-x" aria-label={`${t("common.remove")} ${r.label}`} onClick={() => update((d) => { d.roles = d.roles.filter((x: any) => x.query !== r.query); })}>×</button>
-            </span>
-          ))}
+        {ROLE_FIELDS.map((field) => (
+          <div key={field.id} className="role-field">
+            <h3 className="role-field-name">{field[lang]}</h3>
+            <div className="chips">
+              {field.roles.map((r) => {
+                const on = draft.roles.some((x: any) => x.id === r.id);
+                return (
+                  <button key={r.id} type="button" className="role-pick" dir="auto" aria-pressed={on} onClick={() => update((d) => {
+                    d.roles = on ? d.roles.filter((x: any) => x.id !== r.id) : [...d.roles, fromList(r, d.seniority)];
+                  })}>{r[lang]}</button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <div className="role-field">
+          <h3 className="role-field-name">{t("settings.ownRoles")}</h3>
+          {ownRoles.length > 0 && (
+            <div className="chips">
+              {ownRoles.map((r: any) => (
+                <span key={r.query} className="tag" dir="auto">{r.label}
+                  <button type="button" className="tag-x" aria-label={`${t("common.remove")} ${r.label}`} onClick={() => update((d) => { d.roles = d.roles.filter((x: any) => x.query !== r.query); })}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <form className="row" onSubmit={(e) => {
           e.preventDefault();
           const query = roleInput.trim();
           if (!query) return;
-          update((d) => { d.roles.push({ label: query, query }); });
+          // A title that is one from the list, at this level, is chosen there instead.
+          const listed = matchListed(query, draft.seniority);
+          update((d) => {
+            if (d.roles.some((x: any) => x.query.toLowerCase() === query.toLowerCase() || (listed && x.id === listed.id))) return;
+            d.roles.push(listed ? fromList(listed, d.seniority) : { label: query, query });
+          });
           setRoleInput("");
         }}>
           <input type="text" placeholder={t("settings.role")} aria-label={t("settings.role")} dir="auto" value={roleInput} onChange={(e) => setRoleInput(e.target.value)} />
           <Btn type="submit">{t("settings.addRole")}</Btn>
         </form>
+        <p className="note">{t("settings.rolesLevel", { example: roleQuery(listedRole("backend")!, draft.seniority) })}</p>
       </Card>
 
       <Card className="stack">

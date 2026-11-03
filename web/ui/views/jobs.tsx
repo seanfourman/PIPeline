@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../app";
 import { api, Badge, Btn, Card, External, Icon, Page, safeUrl, Spinner } from "../kit";
 import { PipLying } from "../pip";
+import { roleLabel } from "../../roles";
 import { areaName, marketLabel } from "./settings";
 
 type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; verdict?: string; status?: string };
@@ -93,7 +94,7 @@ function toss(text: string) {
   let h = 2166136261;
   for (const ch of text) h = Math.imul(h ^ ch.codePointAt(0)!, 16777619);
   const part = (shift: number) => (((h >>> shift) & 255) / 255) * 2 - 1;
-  return { "--tilt": `${(part(0) * 6).toFixed(1)}deg`, "--nx": `${Math.round(part(8) * 9)}px`, "--ny": `${Math.round(part(16) * 6)}px` };
+  return { "--tilt": `${(part(0) * 6).toFixed(1)}deg`, "--nx": `${Math.round(part(8) * 14)}px`, "--ny": `${Math.round(part(16) * 10)}px` };
 }
 
 // The search, plain like a chat app's first screen: a question, one round box with Pip lying on its top edge,
@@ -111,6 +112,18 @@ function Quick() {
   const [q, setQ] = useState(search.q ?? "");
   const typing = q.trim() !== "";
   const toggle = (which: "filters" | "ai") => setMenu(menu === which ? "" : which);
+  // When the search button's place opens or closes (at once, in the CSS), the settings and the sparkles slide
+  // over by its width, 44 pixels and a gap, rather than jump.
+  const wasTyping = useRef(typing);
+  useLayoutEffect(() => {
+    if (wasTyping.current === typing) return;
+    wasTyping.current = typing;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const out = document.documentElement.dir === "rtl" ? -1 : 1;
+    for (const el of menuBox.current?.querySelectorAll<HTMLElement>(".seek-icon, .seek-ai") ?? []) {
+      el.animate([{ translate: `${(typing ? 50 : -50) * out}px 0` }, { translate: "0 0" }], { duration: 350, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" });
+    }
+  }, [typing]);
   // A menu closes on a click outside the box's end, or on Escape.
   useEffect(() => {
     if (!menu) return;
@@ -220,7 +233,7 @@ function Quick() {
             <button
               key={r.query} type="button" className="seek-pill" dir="auto" onClick={() => run(r.query)}
               style={{ ...toss(r.query), animationDuration: `${4.2 + (i % 3) * 0.7}s`, animationDelay: `${-i * 1.3}s` } as React.CSSProperties}
-            >{r.label}</button>
+            >{roleLabel(r, lang)}</button>
           ))}
         </div>
       )}
