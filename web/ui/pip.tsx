@@ -1,7 +1,7 @@
 // Pip, the companion: an original fox, drawn abstract in big blocks, with a few moods.
 import React from "react";
 
-export type Mood = "idle" | "wave" | "work" | "ask" | "happy" | "worried";
+export type Mood = "idle" | "wave" | "work" | "ask" | "happy" | "worried" | "scared";
 type Px = [number, number, string];
 
 const C: Record<string, string> = {
@@ -55,6 +55,10 @@ const dots = (n: number) => at(([[3, 1, "G"], [5, 1, "G"], [7, 1, "G"]] as [numb
 // Single pixels from rows of palette letters, from (x, y); a dot draws nothing.
 const art = (x: number, y: number, rows: string[]): Px[] =>
   rows.flatMap((row, dy) => [...row].flatMap((ch, dx): Px[] => (ch === "." ? [] : [[x + dx, y + dy, C[ch]]])));
+// Frightened: each eye wide open, a round white with a small pupil, in single pixels where the eyes usually are.
+const eyesWide = [...art(5, 7, [".WW.", "WKKW", "WKKW", ".WW."]), ...art(13, 7, [".WW.", "WKKW", "WKKW", ".WW."])];
+// Lying down and frightened, a drop of sweat by the head and an exclamation mark above it.
+const fright = [...art(0, 3, [".U", "UU", "UU"]), ...art(10, -5, ["AA", "AA", "AA", "..", "AA"])];
 // Not looking, while a password is typed: the front legs rise over the cream chest, each ending in a round dark
 // pad like the feet and the ear tips, in three steps: 1 at the chest, 2 at the cheeks, 3 over the eyes, which are
 // then hidden, with a blush beside the paws.
@@ -90,14 +94,18 @@ function Pixels({ px: list, className, transform }: { px: Px[]; className?: stri
   return <g className={className} transform={transform}>{rects}</g>;
 }
 
-const MOODS: Record<Mood, { still: Px[]; a?: Px[]; b?: Px[]; eyes: "blink" | "happy" }> = {
+// still is drawn all the time, a and b take turns, and mark is drawn on its own (pip-alert), so the page can take
+// it away mid-animation, like the frightened Pip's exclamation mark as he falls.
+const MOODS: Record<Mood, { still: Px[]; a?: Px[]; b?: Px[]; mark?: Px[]; eyes: "blink" | "happy" | "wide" }> = {
   idle: { still: [], eyes: "blink" },
   wave: { still: [], a: pawHigh, b: pawLow, eyes: "blink" },
   work: { still: [], a: dots(2), b: dots(3), eyes: "blink" },
   ask: { still: [], a: alert, b: [], eyes: "blink" },
   happy: { still: blush, a: sparkA, b: sparkB, eyes: "happy" },
   worried: { still: [...mouth, ...sweat], eyes: "blink" },
+  scared: { still: [...mouth, ...sweat], mark: alert, eyes: "wide" },
 };
+const steadyEyes = { happy: eyesHappy, wide: eyesWide } as const;
 
 // From behind, for hopping away from the camera: the tail out to the left, as it is on the right from the front.
 const BACK = blocks([
@@ -163,13 +171,16 @@ export function PipAsleep({ className = "" }: { className?: string }) {
 }
 
 // Lying awake, in its colours, the eyes open and now and then blinking (pip-open and pip-shut in the CSS): for
-// lounging on the top of something, like the jobs page's search box.
-export function PipLying({ className = "" }: { className?: string }) {
+// lounging on the top of something, like the jobs page's search box. Scared, the eyes go wide and the mouth
+// opens, with a drop of sweat and an exclamation mark, and he shivers (pip-scared in the CSS).
+export function PipLying({ className = "", scared = false }: { className?: string; scared?: boolean }) {
   return (
-    <svg className={`pip pip-lying ${className}`} viewBox="0 1 33 16" shapeRendering="crispEdges" aria-hidden="true">
+    <svg className={`pip pip-lying ${scared ? "pip-scared" : ""} ${className}`} viewBox="0 1 33 16" shapeRendering="crispEdges" aria-hidden="true">
       <Pixels px={LYING} />
-      <Pixels px={eyesOpen} className="pip-open" />
-      <Pixels px={eyesShut} className="pip-shut" />
+      {scared ? <Pixels px={[...eyesWide, ...mouth, ...fright]} /> : <>
+        <Pixels px={eyesOpen} className="pip-open" />
+        <Pixels px={eyesShut} className="pip-shut" />
+      </>}
     </svg>
   );
 }
@@ -182,8 +193,8 @@ export function foxPixels(view: "front" | "back" | "leap", mood: Mood = "idle", 
   if (view === "back") return BACK;
   if (view === "leap") return BACK_LEAP;
   const m = MOODS[mood];
-  const eyes = paws === 3 ? [] : m.eyes === "happy" ? eyesHappy : blink ? eyesShut : eyesOpen;
-  return [...FRONT, ...m.still, ...eyes, ...((frame === "a" ? m.a : m.b) ?? []), ...(paws ? frontPaws(paws) : [])];
+  const eyes = paws === 3 ? [] : m.eyes !== "blink" ? steadyEyes[m.eyes] : blink ? eyesShut : eyesOpen;
+  return [...FRONT, ...m.still, ...(m.mark ?? []), ...eyes, ...((frame === "a" ? m.a : m.b) ?? []), ...(paws ? frontPaws(paws) : [])];
 }
 
 // The logo: Pip's head in one colour, the text colour around it. Big pointed ears, happy ^ ^ eyes cut out,
@@ -224,7 +235,8 @@ export function Pip({ mood = "idle", className = "", label }: { mood?: Mood; cla
       <g className="pip-bob">
         <Pixels px={FRONT} />
         <Pixels px={m.still} />
-        {m.eyes === "happy" ? <Pixels px={eyesHappy} /> : <>
+        {m.mark && <Pixels px={m.mark} className="pip-alert" />}
+        {m.eyes !== "blink" ? <Pixels px={steadyEyes[m.eyes]} /> : <>
           <Pixels px={eyesOpen} className="pip-open" />
           <Pixels px={eyesShut} className="pip-shut" />
         </>}

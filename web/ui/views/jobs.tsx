@@ -1,14 +1,15 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../app";
 import { api, Badge, Btn, Card, External, Icon, Page, safeUrl, Spinner } from "../kit";
-import { PipLying } from "../pip";
+import { Pip, PipLying } from "../pip";
 import { roleLabel, type Role } from "../../roles";
 import { areaName, marketLabel } from "./settings";
 
 type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; verdict?: string; status?: string };
 
 // Kept between visits to the screen, so leaving and coming back does not lose the results.
-const search = { q: null as string | null, days: "14", market: "all", mode: "", areas: "relevant", results: null as Job[] | null, failed: [] as string[], busy: false };
+// round counts the searches, so each one's results rise in afresh.
+const search = { q: null as string | null, days: "14", market: "all", mode: "", areas: "relevant", results: null as Job[] | null, failed: [] as string[], busy: false, round: 0 };
 
 export const TIER_TONE: Record<string, string> = { near: "good", ok: "good", edge: "warn", far: "bad", unknown: "" };
 
@@ -32,6 +33,60 @@ function JobRow({ job, saved }: { job: Job; saved?: boolean }) {
         <External url={job.url}>{t("jobs.open")}</External>
         {safeUrl(job.url) && <Btn kind="primary" onClick={() => start(`/apply ${job.url}`)}>{t("jobs.apply")}</Btn>}
       </div>
+    </article>
+  );
+}
+
+// How long ago a job was posted, in words: today, yesterday, so many days or weeks ago; past two months, the date.
+function postedAgo(date: string, t: (key: string, params?: Record<string, string | number>) => string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date ?? "");
+  if (!m) return date ?? "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - new Date(+m[1], +m[2] - 1, +m[3]).getTime()) / 86_400_000);
+  if (days < 0 || days > 60) return date;
+  if (days === 0) return t("jobs.when.today");
+  if (days === 1) return t("jobs.when.yesterday");
+  if (days === 2) return t("jobs.when.twoDays");
+  if (days < 7) return t("jobs.when.days", { n: days });
+  if (days < 14) return t("jobs.when.week");
+  if (days < 21) return t("jobs.when.twoWeeks");
+  return t("jobs.when.weeks", { n: Math.floor(days / 7) });
+}
+
+// One of the forest colours for a company, the same one each time it comes up.
+function tint(name: string) {
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
+  return `var(--sky-${(h % 6) + 1})`;
+}
+
+// A search result, as a plain row like a search engine's: the company's initial on a round tile, the title, the
+// company and place, chips for how long ago it was posted and its area, and two round buttons at its end, to
+// open the posting and to check it and apply. index is its place in the results, for rising in one after another.
+function ResultRow({ job, index }: { job: Job; index: number }) {
+  const { t, s, start } = useApp();
+  const showTier = !(job.tier === "unknown" && !s.settings.areas?.length);
+  const href = safeUrl(job.url);
+  const name = job.company || job.title || "?";
+  const initial = [...name.trim()].find((ch) => /[\p{L}\p{N}]/u.test(ch))?.toUpperCase() ?? "?";
+  return (
+    <article className="result" style={{ "--i": Math.min(index, 12), "--tint": tint(name) } as React.CSSProperties}>
+      <span className="result-mark" aria-hidden="true">{initial}</span>
+      <div className="result-text">
+        <h3 className="result-title">{job.title}</h3>
+        <p className="result-meta">{[job.company, job.location].filter(Boolean).join(" · ")}</p>
+        <div className="result-chips">
+          {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
+          {showTier && <span className={`result-chip ${TIER_TONE[job.tier] ?? ""}`}>{t(`tiers.${job.tier}`)}</span>}
+        </div>
+      </div>
+      {href && (
+        <div className="result-actions">
+          <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}><Icon name="open" /></a>
+          <button type="button" className="result-act primary" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}><Icon name="apply" /></button>
+        </div>
+      )}
     </article>
   );
 }
@@ -232,6 +287,55 @@ function RoleSuggestions({ onPick }: { onPick: (query: string) => void }) {
   );
 }
 
+// How long the search takes to rise to the top, and how long Pip rides up on it, frightened, before he leaps.
+const RISE_MS = 700;
+const SCARED_MS = 330;
+// The search button's roll in or out of the box; matches .seek-go's transition in styles.css.
+const ROLL_MS = 450;
+
+// Pip running away, standing and frightened, from where he lay (x, the middle of his feet, and y, under them):
+// a leap down to the window's bottom, a squash as he lands, then a dash in hops, leaning into it, out past the
+// window's edge on the page's end side, away from the sidebar.
+function EscapingPip({ x, y, onGone }: { x: number; y: number; onGone: () => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current!;
+    const w = el.offsetWidth;
+    const away = document.documentElement.dir === "rtl" ? -1 : 1;
+    const ground = innerHeight - 14 - y;
+    const leap = away * 70;
+    const exit = away < 0 ? -w - x : innerWidth + w - x;
+    const leapMs = 620;
+    const runMs = Math.max(450, Math.abs(exit - leap) / 1.15);
+    const total = leapMs + runMs;
+    const at = (ms: number) => ms / total;
+    const frames: Keyframe[] = [
+      { offset: 0, translate: "0 0", scale: "1 1", rotate: "0deg", easing: "ease-out" },
+      { offset: at(170), translate: `${leap * 0.3}px -56px`, scale: "1 1", rotate: `${away * -6}deg`, easing: "ease-in" },
+      { offset: at(470), translate: `${leap}px ${ground}px`, scale: "1 1", rotate: "0deg" },
+      { offset: at(530), translate: `${leap}px ${ground}px`, scale: "1.2 0.8", rotate: "0deg" },
+      { offset: at(leapMs), translate: `${leap}px ${ground}px`, scale: "1 1", rotate: `${away * 8}deg` },
+    ];
+    // The dash: hops of about a hundred pixels, each up and down again.
+    const hops = Math.max(3, Math.round(Math.abs(exit - leap) / 100));
+    for (let h = 1; h <= hops; h++) {
+      const xAt = (k: number) => leap + (exit - leap) * k;
+      frames.push({ offset: at(leapMs + runMs * (h - 0.5) / hops), translate: `${xAt((h - 0.5) / hops)}px ${ground - 22}px`, scale: "1 1", rotate: `${away * 8}deg` });
+      frames.push({ offset: at(leapMs + runMs * h / hops), translate: `${xAt(h / hops)}px ${ground}px`, scale: "1 1", rotate: `${away * 8}deg` });
+    }
+    const dash = el.animate(frames, { duration: total, fill: "forwards" });
+    dash.finished.then(onGone).catch(() => {});
+    // Halfway down the fall the fright has passed: the exclamation mark goes, at once, as a sprite's would.
+    const mark = el.querySelector(".pip-alert")?.animate([{ opacity: 0 }, { opacity: 0 }], { delay: 320, duration: total, fill: "forwards" });
+    return () => { dash.cancel(); mark?.cancel(); };
+  }, []);
+  return (
+    <div ref={box} className="escape-pip" aria-hidden="true" style={{ left: x - 33, top: y - 63 }}>
+      <Pip mood="scared" />
+    </div>
+  );
+}
+
 // The search, plain like a chat app's first screen: a question, one round box with Pip lying on its top edge,
 // and the first few roles in a row of glass buttons, with a + that unfolds the rest. At the box's end, a menu of where
 // and how to search, and the sparkles, for Pip's two jobs that use Claude; once something is typed, the search
@@ -247,18 +351,31 @@ function Quick() {
   const [q, setQ] = useState(search.q ?? "");
   const typing = q.trim() !== "";
   const toggle = (which: "filters" | "ai") => setMenu(menu === which ? "" : which);
-  // When the search button's place opens or closes (at once, in the CSS), the settings and the sparkles slide
-  // over by its width, 44 pixels and a gap, rather than jump.
-  const wasTyping = useRef(typing);
+  // The search button's place opens at once when something is typed. When the box is emptied it stays open
+  // while the button rolls back out (leaving), and closes after; an empty box has no words beside the caret, so
+  // closing it then moves nothing you can see.
+  const [leaving, setLeaving] = useState(false);
+  const leaveTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(leaveTimer.current), []);
+  const emptied = () => {
+    clearTimeout(leaveTimer.current);
+    setLeaving(true);
+    // A little past the roll, so it has surely ended: the transition starts a frame or so after this.
+    leaveTimer.current = setTimeout(() => setLeaving(false), ROLL_MS + 40);
+  };
+  const slotOpen = typing || leaving;
+  // When the place opens or closes, the settings and the sparkles slide over by its width, 44 pixels and a gap,
+  // rather than jump.
+  const wasOpen = useRef(slotOpen);
   useLayoutEffect(() => {
-    if (wasTyping.current === typing) return;
-    wasTyping.current = typing;
+    if (wasOpen.current === slotOpen) return;
+    wasOpen.current = slotOpen;
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const out = document.documentElement.dir === "rtl" ? -1 : 1;
     for (const el of menuBox.current?.querySelectorAll<HTMLElement>(".seek-icon, .seek-ai") ?? []) {
-      el.animate([{ translate: `${(typing ? 50 : -50) * out}px 0` }, { translate: "0 0" }], { duration: 350, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" });
+      el.animate([{ translate: `${(slotOpen ? 50 : -50) * out}px 0` }, { translate: "0 0" }], { duration: 350, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" });
     }
-  }, [typing]);
+  }, [slotOpen]);
   // A menu closes on a click outside the box's end, or on Escape.
   useEffect(() => {
     if (!menu) return;
@@ -268,6 +385,33 @@ function Quick() {
     addEventListener("keydown", escape);
     return () => { removeEventListener("pointerdown", away); removeEventListener("keydown", escape); };
   }, [menu]);
+  // The first search of a visit: everything rises from the middle of the page to the top (from where the box
+  // was, rise). Pip rides up on the box for a moment, frightened, then leaps off it and runs away (EscapingPip).
+  // He is back on the box the next time the page opens.
+  const page = useRef<HTMLDivElement>(null);
+  const rise = useRef<number | null>(null);
+  const [pip, setPip] = useState<{ phase: "rest" | "scared" | "escape" | "gone"; x?: number; y?: number }>({ phase: "rest" });
+  const asked = search.results !== null || search.busy;
+  useLayoutEffect(() => {
+    const before = rise.current;
+    rise.current = null;
+    const box = page.current?.querySelector<HTMLElement>(".seek-box");
+    if (before === null || !box) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setPip({ phase: "gone" }); return; }
+    const dy = before - box.getBoundingClientRect().top;
+    for (const el of page.current!.querySelectorAll<HTMLElement>(":scope > .seek-title, :scope > .seek-box, :scope > .seek-pills")) {
+      el.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], { duration: RISE_MS, easing: "cubic-bezier(0.45, 0, 0.25, 1)" });
+    }
+  }, [asked]);
+  // A moment of fright on the rising box, then off it, from where he is by then.
+  useEffect(() => {
+    if (pip.phase !== "scared") return;
+    const timer = setTimeout(() => {
+      const lay = page.current?.querySelector(".seek-pip")?.getBoundingClientRect();
+      setPip(lay ? { phase: "escape", x: lay.left + lay.width / 2, y: lay.bottom } : { phase: "gone" });
+    }, SCARED_MS);
+    return () => clearTimeout(timer);
+  }, [pip.phase]);
   const noMarket = !markets.length;
   const hint = useHint(t("jobs.hint"), roles.map((r: any) => String(r.query)));
   search.mode ||= workMode;
@@ -277,9 +421,14 @@ function Quick() {
     : markets.map((m: any) => (m.city ? `${m.city}, ${marketLabel(m, lang, t)}` : marketLabel(m, lang, t))).join(", ") + (excluded.length ? `. ${t("jobs.hidden", { names: excluded.join(", ") })}` : "");
 
   const run = async (query = q) => {
+    if (!asked) {
+      rise.current = page.current?.querySelector(".seek-box")?.getBoundingClientRect().top ?? null;
+      if (pip.phase === "rest") setPip({ phase: "scared" });
+    }
     search.q = query;
     setQ(query);
     search.busy = true;
+    search.round++;
     repaint();
     try {
       const data = await api(`search?q=${encodeURIComponent(query)}&days=${search.days}&market=${search.market}&mode=${search.mode}`);
@@ -301,17 +450,17 @@ function Quick() {
   });
   const hidden = results.length - shown.length;
 
-  const asked = search.results !== null || search.busy;
   return (
-    <div className={`seek ${asked ? "asked" : ""}`}>
+    <div ref={page} className={`seek ${asked ? "asked" : ""}`}>
       <Sky />
+      {pip.phase === "escape" && <EscapingPip x={pip.x!} y={pip.y!} onGone={() => setPip({ phase: "gone" })} />}
       <h1 className="seek-title">{t("jobs.prompt")}</h1>
-      <form className={`seek-box ${typing ? "typing" : ""}`} onSubmit={(e) => { e.preventDefault(); setMenu(""); if (typing) run(); }}>
-        <PipLying className="seek-pip" />
+      <form className={`seek-box ${typing ? "typing" : ""} ${slotOpen ? "slot-open" : ""}`} onSubmit={(e) => { e.preventDefault(); setMenu(""); if (typing) run(); }}>
+        {(pip.phase === "rest" || pip.phase === "scared") && <PipLying className="seek-pip" scared={pip.phase === "scared"} />}
         {/* Empty, the box takes the page's direction, so the hint starts on the page's side; typed words take their own. */}
         <input
           type="search" value={q} placeholder={hint} aria-label={t("jobs.query")} dir={q ? "auto" : undefined} disabled={noMarket}
-          onChange={(e) => { setQ(e.target.value); search.q = e.target.value; }}
+          onChange={(e) => { if (typing && !e.target.value.trim()) emptied(); setQ(e.target.value); search.q = e.target.value; }}
         />
         <div className="seek-tools" ref={menuBox}>
           <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
@@ -367,9 +516,9 @@ function Quick() {
       {search.busy && <div className="row note seek-status" role="status"><Spinner />{t("jobs.searching")}</div>}
       {search.failed.length > 0 && <p className="error-line">{t("jobs.failed", { list: search.failed.join(", ") })}</p>}
       {search.results !== null && !search.busy && (
-        <div className="seek-results">
+        <div key={search.round} className="seek-results">
           <p className="note" role="status">{t("jobs.count", { n: shown.length })}{hidden ? t("jobs.hiddenCount", { n: hidden }) : ""}</p>
-          {shown.length > 0 && <Card className="joblist">{shown.map((j) => <JobRow key={j.id ?? j.url} job={j} />)}</Card>}
+          {shown.length > 0 && <div className="results">{shown.map((j, i) => <ResultRow key={j.id ?? j.url} job={j} index={i} />)}</div>}
         </div>
       )}
     </div>

@@ -97,7 +97,7 @@ legend { padding: 0; }
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
 /* In Hebrew some icons that point a way are turned round, as the page is: the speech bubble's tail, the search
    glass's handle, the way out. */
-[dir="rtl"] :is(.icon-chat, .icon-jobs, .icon-logout) { transform: scaleX(-1); }
+[dir="rtl"] :is(.icon-chat, .icon-jobs, .icon-logout, .icon-open) { transform: scaleX(-1); }
 
 /* Scrollbars: the browser's own, given only the colours (--scroll-thumb, with each theme), so Chromium browsers
    on Windows draw their own smooth arrows and round bar, in a strip a shade off the page's colour. Drawing the
@@ -248,6 +248,12 @@ textarea { resize: vertical; width: 100%; }
 @keyframes pip-b { 0% { opacity: 0; } 50% { opacity: 1; } }
 @keyframes pip-wave-a { 0%, 10%, 20%, 30%, 40% { opacity: 1; } 5%, 15%, 25%, 35% { opacity: 0; } }
 @keyframes pip-wave-b { 0%, 10%, 20%, 30%, 40% { opacity: 0; } 5%, 15%, 25%, 35% { opacity: 1; } }
+/* Scared, Pip shivers: one of his pixels to the side and back, quickly. Lying on the search box he shivers as a
+   whole, standing his body does. */
+.pip-scared .pip-bob { animation: pip-shake 0.16s steps(1) infinite; }
+.seek-pip.pip-scared { animation: pip-shiver 0.16s steps(1) infinite; }
+@keyframes pip-shake { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1px); } }
+@keyframes pip-shiver { 0%, 100% { translate: 0 0; } 50% { translate: 3px 0; } }
 
 /* Pip's notices after something you did, at the bottom of the screen, gone after a few seconds. */
 .toast {
@@ -453,13 +459,17 @@ textarea { resize: vertical; width: 100%; }
    edge rather than in it, its head toward the box's middle. */
 .seek-pip { position: absolute; bottom: calc(100% + 1px); inset-inline-start: 36px; width: 99px; pointer-events: none; }
 :root[dir="ltr"] .seek-pip { transform: scaleX(-1); }
+/* Pip running away from the search (EscapingPip in jobs.tsx), over everything, three screen pixels to his, from
+   the bottom middle so his landing squashes him down onto his feet. */
+.escape-pip { position: fixed; z-index: 60; width: 66px; pointer-events: none; transform-origin: 50% 100%; }
 /* At the box's end: the search settings, the sparkles, and the search button's place. The row reaches the box's
    inner edge, top, bottom and end, and the place, round at its end like the box, shows only what is inside it:
    while the box is empty, just the end's padding. Once something is typed the place opens at once and the button
    rolls in from past the end (--out: which way that is), along a straight line, seen only inside the box, while
    the other two slide over to make room (in jobs.tsx). The place opens at once, not over the roll, so the input,
-   and its caret, keep still. Emptied, the button goes at once (rolling out of a place already closed would leave
-   a sliver at the edge) and the other two slide back over its place. */
+   and its caret, keep still. Emptied, the button rolls back out the way it came, speeding up as it goes, with the
+   place still open (slot-open, kept by jobs.tsx for the roll's length), and only then does the place close and
+   the other two slide back over it. */
 .seek-box { --out: 1; }
 :root[dir="rtl"] .seek-box { --out: -1; }
 .seek-tools { display: flex; align-items: center; gap: 6px; align-self: stretch; margin-block: -7px; margin-inline-end: -8px; }
@@ -470,11 +480,13 @@ textarea { resize: vertical; width: 100%; }
   position: relative; flex: none; align-self: stretch; width: 8px; margin-inline-start: -6px; overflow: hidden; pointer-events: none;
   border-start-end-radius: 999px; border-end-end-radius: 999px;
 }
-.seek-box.typing .seek-go-slot { width: 52px; margin-inline-start: 0; }
-/* Rolling: a turn of 135 degrees over the 52 pixels, about what a 44-pixel wheel turns. */
+.seek-box.slot-open .seek-go-slot { width: 52px; margin-inline-start: 0; }
+/* Rolling: a turn of 135 degrees over the 52 pixels, about what a 44-pixel wheel turns. 0.45s each way, as
+   ROLL_MS in jobs.tsx. */
 .seek-go {
   position: absolute; top: 7px; inset-inline-end: 8px; background: var(--primary); color: var(--primary-ink);
   translate: calc(var(--out) * 52px) 0; rotate: calc(var(--out) * 135deg);
+  transition: translate 0.45s cubic-bezier(0.5, 0, 0.75, 0.2), rotate 0.45s cubic-bezier(0.5, 0, 0.75, 0.2);
 }
 .seek-box.typing .seek-go {
   pointer-events: auto; translate: 0 0; rotate: 0deg;
@@ -573,8 +585,53 @@ textarea { resize: vertical; width: 100%; }
 .role-stack[data-open="true"] .role-fan-item:hover,
 .role-stack[data-open="true"] .role-fan-item:focus-visible { z-index: 1; }
 .seek-note { color: var(--ink-2); text-align: center; }
-.seek-status { justify-content: center; }
-.seek-results { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 10px; }
+.seek-status { justify-content: center; animation: rise-in 0.4s ease both 0.25s; }
+/* The results rise in once they come: the count, the list, and then its rows one after another (--i, the row's
+   place, from jobs.tsx). Each search's results do it afresh. */
+.seek-results { display: flex; flex-direction: column; gap: 10px; width: min(760px, 100%); margin-top: 10px; }
+.seek-results > * { animation: rise-in 0.45s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+.seek-results .result { animation: rise-in 0.45s cubic-bezier(0.22, 0.8, 0.3, 1) both; animation-delay: calc(80ms + var(--i, 0) * 45ms); }
+@keyframes rise-in { from { opacity: 0; translate: 0 18px; } }
+/* The results as a plain list, like a search engine's, as wide as the search box: no box round them, a row each
+   between thin lines, the row lighting up under the pointer (the lines beside it fade so the light isn't cut).
+   On each, the company's initial on a round tile tinted in its forest colour (--tint, from jobs.tsx), the title
+   up to two lines, the company and place, chips, and two round buttons. Titles and places read in their own
+   language's order (plaintext) but line up on the page's side whatever it is: with plaintext, start would follow
+   each title's language, so an English title would sit on the left of a Hebrew page. */
+.results { display: flex; flex-direction: column; }
+.seek-results > .note { padding-inline: 12px; }
+.result { position: relative; display: flex; align-items: flex-start; gap: 14px; padding: 14px 12px; border-radius: 14px; transition: background-color 0.2s ease; }
+.result + .result::before { content: ""; position: absolute; top: 0; inset-inline: 12px; border-top: 1px solid var(--line); transition: opacity 0.2s ease; }
+.result:hover { background: var(--hover); }
+.result:hover::before, .result:hover + .result::before { opacity: 0; }
+.result-mark {
+  flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+  background: color-mix(in srgb, var(--tint) 24%, var(--surface)); color: color-mix(in srgb, var(--tint) 50%, var(--ink));
+  font-family: var(--head); font-size: 18px; font-weight: 700;
+}
+.result-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.result-title {
+  margin: 0; font-size: 16.5px; font-weight: 600; line-height: 1.35; unicode-bidi: plaintext; text-align: start;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden;
+}
+.result-meta { margin: 0; color: var(--ink-2); font-size: 14px; unicode-bidi: plaintext; text-align: start; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[dir="rtl"] :is(.result-title, .result-meta) { text-align: right; }
+:root[dir="ltr"] :is(.result-title, .result-meta) { text-align: left; }
+.result-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.result-chip { padding: 1px 10px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 6%, var(--surface)); color: var(--ink-2); font-size: 12.5px; line-height: 1.7; }
+.result-chip.good { background: color-mix(in srgb, var(--good) 14%, var(--surface)); color: color-mix(in srgb, var(--good) 65%, var(--ink)); }
+.result-chip.warn { background: color-mix(in srgb, var(--warn) 18%, var(--surface)); color: color-mix(in srgb, var(--warn) 55%, var(--ink)); }
+.result-chip.bad { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: color-mix(in srgb, var(--bad) 65%, var(--ink)); }
+.result-actions { flex: none; display: flex; gap: 6px; align-self: center; }
+.result-act {
+  display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 50%;
+  background: var(--surface); color: var(--ink-2); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+}
+.result-act:hover { background: color-mix(in srgb, var(--ink) 7%, var(--surface)); color: var(--ink); }
+.result-act.primary { border-color: transparent; background: var(--primary); color: var(--primary-ink); }
+.result-act.primary:hover { background: var(--primary-edge); color: var(--primary-ink); }
+.result-act .icon { width: 18px; height: 18px; }
+.result-act:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .joblist { padding: 0; overflow: hidden; }
 .job { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 16px 20px; }
 .job + .job { border-top: 1px solid var(--line); }
@@ -810,7 +867,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 @keyframes boot-paw { 0% { opacity: 1; } 60% { opacity: 0.14; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-ai, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-status, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-ai, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
   .pip-a { opacity: 1; }
 }
