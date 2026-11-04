@@ -66,7 +66,7 @@ const he = {
     startTitle: "בוא נמצא משרות", startText: "החיפוש המהיר לא צורך מכסת Claude. החיפוש החכם גם מסנן ושומר.", startLabel: "לחיפוש משרות",
   },
   jobs: {
-    prompt: "מה מחפשים היום?", menu: "איפה ואיך לחפש", ai: "חיפוש ודירוג עם Claude",
+    prompt: "מה מחפשים היום?", menu: "איפה ואיך לחפש", ai: "חיפוש ודירוג עם Claude", moreRoles: "עוד {n}", closeRoles: "סגירת התפקידים הנוספים", otherRoles: "תפקידים נוספים",
     noMarket: "עוד לא נבחר איפה לחפש.", hidden: "מוסתר: {names}", change: "שינוי",
     more: "פיפ יכול גם, במכסת Claude:",
     rank: "דרג משרות חדשות", rankNote: "קורא כל משרה חדשה ברשימה ונותן לה ציון לפי כמה היא מתאימה לך.",
@@ -278,7 +278,7 @@ const en: Dict = {
     startTitle: "Let's find jobs", startText: "Quick search uses no Claude usage. Smart search also filters and saves.", startLabel: "Search for jobs",
   },
   jobs: {
-    prompt: "What are we looking for today?", menu: "Where and how to search", ai: "Search and rank with Claude",
+    prompt: "What are we looking for today?", menu: "Where and how to search", ai: "Search and rank with Claude", moreRoles: "{n} more", closeRoles: "Close additional roles", otherRoles: "Additional roles",
     noMarket: "You haven't chosen where to search yet.", hidden: "Hidden: {names}", change: "Change",
     more: "Pip can also, using your Claude usage:",
     rank: "Rank new jobs", rankNote: "Reads each new job on your list and scores how well it fits you.",

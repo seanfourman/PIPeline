@@ -47,7 +47,7 @@
   /* The jobs search's rainbow, in a sunny forest's colours: fern, stream, sky, sunlight, autumn leaves, flowers. */
   --sky-1: #6fc35f; --sky-2: #2fb5a2; --sky-3: #6cbcf0; --sky-4: #ffcc4d; --sky-5: #ff9a5c; --sky-6: #ef86b4;
   --scroll-thumb: var(--ink-3);
-  /* Liquid glass (the jobs page's pills): its fill from top to bottom, its rim, and its shine. */
+  /* The role buttons catch the moving sky through a translucent fill, a bright rim and a top reflection. */
   --glass-top: rgb(255 255 255 / 62%); --glass-bottom: rgb(255 255 255 / 20%); --glass-rim: rgb(255 255 255 / 75%); --glass-shine: rgb(255 255 255 / 95%);
 }
 @media (prefers-color-scheme: dark) {
@@ -395,7 +395,7 @@ textarea { resize: vertical; width: 100%; }
 .tab:hover { color: var(--ink); }
 .tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--primary); }
 /* The jobs search, plain like a chat app's first screen (Quick in jobs.tsx): a question, one round box with Pip
-   lying on its top edge, and pills floating under it, each on its own beat, over gradients in Pip's oranges. It stands
+   lying on its top edge, and a row of glass roles under it, over a forest rainbow of moving gradients. It stands
    in the middle of the page, top to bottom (the page's padding is 38 above and 80 below); once a search is asked,
    it moves up for the results. Whatever of the sky reaches past the page's sides is cut off there. */
 .seek {
@@ -505,25 +505,73 @@ textarea { resize: vertical; width: 100%; }
 .seek-action:hover { background: var(--hover); }
 .seek-action strong { font-weight: 600; }
 .seek-action small { color: var(--ink-2); font-size: 13px; line-height: 1.4; }
-/* The roles, tossed under the box: each at its own small tilt and a little off its place (--tilt, --nx and --ny,
-   from its words; see toss in jobs.tsx; --spread shrinks the nudge where there's less room), floating on its own
-   beat, and straightening under the pointer. In liquid glass: the sky shows through blurred and brighter, inside
-   a bright rim, with a shine along the top and a glow along the bottom inside. */
-.seek-pills { --spread: 1; display: flex; flex-wrap: wrap; justify-content: center; gap: 40px 36px; max-width: 980px; padding-top: 16px; }
+/* The first roles stay in a straight row. The + releases the rest down an inward-curving fan, without moving
+   the search box, in more than one column when they don't all fit down the window. Each glass label unfolds
+   from the trigger, then folds back in the opposite order. */
+.seek-pills { position: relative; z-index: 4; display: flex; justify-content: center; gap: 8px; max-width: 100%; padding-top: 4px; }
 .seek-pill {
-  position: relative; padding: 9px 18px; border: 0; border-radius: 999px; color: var(--ink); font: inherit; font-size: 14.5px; cursor: pointer;
+  position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-width: 0; padding: 9px 16px; border: 0; border-radius: 999px; color: var(--ink-2); font: inherit; font-size: 14.5px; cursor: pointer;
   background: linear-gradient(160deg, var(--glass-top), var(--glass-bottom));
   backdrop-filter: blur(14px) saturate(180%);
   box-shadow: inset 0 0 0 1px var(--glass-rim), inset 0 1px 1px var(--glass-shine), inset 0 -10px 16px -12px var(--glass-shine),
     0 0 0 1px rgb(0 0 0 / 4%), 0 8px 24px rgb(0 0 0 / 9%);
-  rotate: var(--tilt, 0deg); translate: calc(var(--nx, 0px) * var(--spread)) calc(var(--ny, 0px) * var(--spread));
-  animation: float 4.6s ease-in-out infinite;
-  transition: rotate 0.45s cubic-bezier(0.3, 1.6, 0.5, 1), color 0.2s ease;
+  transition: color 0.2s ease, box-shadow 0.2s ease;
 }
-.seek-pill::before { content: ""; position: absolute; z-index: -1; inset: 1px 1px auto; height: 70%; border-radius: 999px; background: radial-gradient(ellipse 60% 70% at 50% 0%, var(--glass-shine), transparent); opacity: 0.6; pointer-events: none; }
-.seek-pill:hover { rotate: 0deg; color: var(--primary); }
-@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
-@media (max-width: 520px) { .seek-pills { --spread: 0.5; gap: 22px 16px; } }
+.seek-pill::before {
+  content: ""; position: absolute; z-index: -1; inset: 1px 1px auto; height: 70%; border-radius: inherit;
+  background: radial-gradient(ellipse 60% 70% at 50% 0%, var(--glass-shine), transparent); opacity: 0.6; pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+/* Under the pointer the words go from grey to full ink, the glass takes the page's hover shade (a layer under the
+   shine, since a gradient cannot fade) and catches more light: a brighter rim and shine and a deeper shadow. All
+   of it fades in and out. */
+.seek-pill::after {
+  content: ""; position: absolute; z-index: -2; inset: 0; border-radius: inherit; background: var(--hover);
+  opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+}
+.seek-pill:hover {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--glass-shine), inset 0 1px 1px var(--glass-shine), inset 0 -10px 16px -12px var(--glass-shine),
+    0 0 0 1px rgb(0 0 0 / 6%), 0 10px 28px rgb(0 0 0 / 14%);
+}
+.seek-pill:hover::before, .seek-pill:hover::after { opacity: 1; }
+.seek-pill:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.role-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.role-stack { position: relative; flex: none; --fan-side: -1; }
+:root[dir="rtl"] .role-stack { --fan-side: 1; }
+.seek-pill-more { white-space: nowrap; }
+.seek-pill-more .icon { flex: none; width: 16px; height: 16px; transition: rotate 0.3s ease; }
+.role-stack[data-open="true"] .seek-pill-more .icon { rotate: 45deg; }
+/* The fan: columns side by side, the first under the button and the next ones further in (row-reverse puts the
+   first at the inline end), with no scrolling: jobs.tsx puts in each column only what fits above the window's
+   bottom. Every column bends by the same amount on the same row, so the columns move in together and one gap
+   keeps them apart; only the innermost needs room for its bend (--fan-curve). Roles are no wider than
+   --fan-widest, so all the columns fit across. */
+.role-fan {
+  position: absolute; z-index: 6; top: calc(100% + 8px); inset-inline-end: 0; width: max-content;
+  display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 12px;
+  padding-block: 12px 24px; padding-inline: calc(var(--fan-curve) + 8px) 6px;
+  visibility: hidden; pointer-events: none; transition: visibility 0s 0.52s;
+}
+.role-stack[data-open="true"] .role-fan { visibility: visible; pointer-events: auto; transition-delay: 0s; }
+.role-fan-col { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+/* Folded, a role sits back in the button: up by its row, and across by its column's distance (--fan-fold-x). */
+.role-fan-item {
+  flex: none; height: 40px; max-width: var(--fan-widest, 100%); justify-content: flex-start; transform-origin: right top;
+  opacity: 0; transform: translateX(var(--fan-fold-x, 0px)) translateY(var(--fan-fold)) rotate(0deg) scale(0.25); pointer-events: none;
+  /* The fold waits its turn; the hover's colour and shadow do not. */
+  transition: transform 0.34s cubic-bezier(0.22, 0.8, 0.3, 1) var(--fan-out), opacity 0.18s ease var(--fan-out), color 0.2s ease, box-shadow 0.2s ease;
+}
+:root[dir="rtl"] .role-fan-item { transform-origin: left top; }
+.role-stack[data-open="true"] .role-fan-item {
+  opacity: 1; transform: translateX(calc(var(--fan-side) * var(--fan-x))) rotate(calc(var(--fan-side) * var(--fan-angle)));
+  pointer-events: auto;
+  transition: transform 0.34s cubic-bezier(0.22, 0.8, 0.3, 1) var(--fan-in), opacity 0.18s ease var(--fan-in), color 0.2s ease, box-shadow 0.2s ease;
+}
+/* Under the pointer a role in the fan keeps its tilt, and comes up over its neighbours. */
+.role-stack[data-open="true"] .role-fan-item:hover,
+.role-stack[data-open="true"] .role-fan-item:focus-visible { z-index: 1; }
 .seek-note { color: var(--ink-2); text-align: center; }
 .seek-status { justify-content: center; }
 .seek-results { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 10px; }
@@ -762,7 +810,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 @keyframes boot-paw { 0% { opacity: 1; } 60% { opacity: 0.14; } }
 
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-ai, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-ai, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
   .pip-a { opacity: 1; }
 }
