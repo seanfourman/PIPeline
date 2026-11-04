@@ -13,8 +13,14 @@ import { Settings } from "./views/settings";
 
 export type AppState = {
   applications: Record<string, any>[]; jobs: Record<string, any>[]; files: { path: string; modified: number }[];
-  sessions: { id: string; title: string; status: string; createdAt: number; model?: string; access?: string }[];
+  // plain: chat only, answered by the settings' AI (agent.ts); engine: the name of the one that answered last.
+  // agent: "codex" when ChatGPT works in it as an agent, through Codex (codex.ts).
+  sessions: { id: string; title: string; status: string; createdAt: number; model?: string; access?: string; plain?: boolean; engine?: string; agent?: string }[];
   settings: Record<string, any>; presets: Record<string, { name: string; places: string[] }[]>; profileReady: boolean;
+  // Whether a key for ChatGPT (openai) is saved (chatbots.ts); the keys never come here. aiLogins: whether it is
+  // signed in with the account, through Codex (clis.ts).
+  aiKeys: Record<string, boolean>;
+  aiLogins?: Record<string, boolean>;
 };
 
 type News = { text: string; mood: Mood } | null;
@@ -37,7 +43,7 @@ type Ctx = {
 const AppContext = createContext<Ctx>(null as unknown as Ctx);
 export const useApp = () => useContext(AppContext);
 
-const EMPTY: AppState = { applications: [], jobs: [], files: [], sessions: [], settings: { markets: [], areas: [], roles: [], automation: {} }, presets: {}, profileReady: true };
+const EMPTY: AppState = { applications: [], jobs: [], files: [], sessions: [], settings: { markets: [], areas: [], roles: [], automation: {} }, presets: {}, profileReady: true, aiKeys: {} };
 
 // Browser storage only remembers small conveniences, and the page works without it.
 export const stored = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -315,8 +321,12 @@ export function App() {
       setNews({ text, mood });
       newsTimer.current = setTimeout(() => setNews(null), ms);
     },
+    // Ranking the new jobs and the smart search, with nothing more asked, are done by the server with the
+    // settings' AI (ranker.ts, scraper.ts), from whichever button asks for them; with more after them they are
+    // Claude's commands.
     start: async (prompt, model, access, files) => {
-      const session = await api("sessions", { prompt, model, access, files });
+      const own = files?.length ? "" : ({ "/rank": "rank", "/job-scraper": "scrape" } as Record<string, string>)[prompt.trim()] ?? "";
+      const session = own ? await api(own, {}) : await api("sessions", { prompt, model, access, files });
       await refresh();
       location.hash = `#/chat/${session.id}`;
     },

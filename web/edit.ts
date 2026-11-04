@@ -124,6 +124,59 @@ export function setApplicationStatus(input: any, root = REPO, today = new Date()
   writeFileSync(file, next);
 }
 
+const TRACKER_HEADER = "date,company,sector,role,role_type,channel,status,contact_person,fit_rating,notes,cv_file,cover_letter_file,source,deadline";
+// Statuses after which an application is over; a new draft for the same role gets a row of its own beside it.
+const FINAL_STATUSES = ["hired", "rejected", "no_response", "offer_declined", "withdrawn"];
+const csvCell = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v);
+
+export type Draft = {
+  company: string; role: string; fit_rating: number; cv_file: string;
+  sector?: string; role_type?: string; channel?: string; contact_person?: string; source?: string; deadline?: string;
+};
+
+// A drafted application in the tracker, as /apply's Step 6b records one: a new row, unless the same company and role
+// has an open one, which is refreshed and never moved backwards (its status stays; its date moves to today only
+// while it is a draft; "redrafted" joins its notes). A header without the deadline column gets it, and nothing else
+// in the file changes.
+export function recordDraft(draft: Draft, root = REPO, today = new Date().toLocaleDateString("en-CA")): "added" | "updated" {
+  const file = path.join(root, "job_search_tracker.csv");
+  let text = existsSync(file) ? readFileSync(file, "utf8") : `${TRACKER_HEADER}\n`;
+  const crlf = /\r\n/.test(text);
+  const headerEnd = text.search(/\r?\n/);
+  const header = headerEnd < 0 ? text : text.slice(0, headerEnd);
+  if (!header.trim().endsWith(",deadline")) text = `${header.replace(/\s+$/, "")},deadline${text.slice(header.length)}`;
+  const records = cellSpans(text);
+  const value = (span?: [number, number]) => (span ? cellValue(text.slice(span[0], span[1])) : "");
+  const columns = (records[0] ?? []).map((span) => value(span).replace(/^﻿/, "").trim());
+  const at = (name: string) => columns.indexOf(name);
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const open = records.slice(1).find((cells) => same(value(cells[at("company")]), draft.company) && same(value(cells[at("role")]), draft.role)
+    && !FINAL_STATUSES.includes(value(cells[at("status")]).trim().toLowerCase().replace(" ", "_")));
+  if (!open) {
+    const cells: Record<string, string> = {
+      date: today, company: draft.company, sector: draft.sector ?? "", role: draft.role, role_type: draft.role_type ?? "", channel: draft.channel ?? "",
+      status: "drafted", contact_person: draft.contact_person ?? "", fit_rating: String(draft.fit_rating), notes: "", cv_file: draft.cv_file,
+      cover_letter_file: "", source: draft.source ?? "", deadline: draft.deadline ?? "",
+    };
+    const line = columns.map((name) => csvCell(cells[name] ?? "")).join(",");
+    const eol = crlf ? "\r\n" : "\n";
+    writeFileSync(file, `${text.replace(/[\r\n]*$/, "")}${eol}${line}${eol}`);
+    return "added";
+  }
+  const notes = value(open[at("notes")]).trim();
+  const updates: [string, string][] = [
+    ["cv_file", draft.cv_file], ["fit_rating", String(draft.fit_rating)],
+    ...(draft.source ? [["source", draft.source] as [string, string]] : []),
+    // Absence is not a correction: a deadline stays unless this draft found one.
+    ...(draft.deadline ? [["deadline", draft.deadline] as [string, string]] : []),
+    ["notes", notes ? `${notes}; redrafted` : "redrafted"],
+    ...(same(value(open[at("status")]), "drafted") ? [["date", today] as [string, string]] : []),
+  ];
+  const changes = updates.flatMap(([name, v]) => (open[at(name)] ? [[open[at(name)][0], open[at(name)][1], csvCell(v)] as [number, number, string]] : []));
+  writeFileSync(file, changes.sort((a, b) => b[0] - a[0]).reduce((out, [from, to, added]) => out.slice(0, from) + added + out.slice(to), text));
+  return "updated";
+}
+
 // A CV or a cover letter, each with its own folder and file prefix.
 const SOURCES = { cv: { dir: "cv", prefix: "main_" }, letter: { dir: "cover_letters", prefix: "cover_" } };
 export type SourceKind = keyof typeof SOURCES;

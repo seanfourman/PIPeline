@@ -555,6 +555,15 @@ function Quick() {
   const [q, setQ] = useState(search.q ?? "");
   const typing = q.trim() !== "";
   const toggle = (which: "filters" | "ai") => setMenu(menu === which ? "" : which);
+  // The server runs the ranking (ranker.ts, by start in app.tsx) under a conversation of its own, which opens like
+  // any other; why it couldn't start shows on its button.
+  const [ranking, setRanking] = useState(false);
+  const [rankError, setRankError] = useState("");
+  const rank = () => {
+    setRanking(true);
+    setRankError("");
+    start("/rank").catch((e) => setRankError(err(e))).finally(() => setRanking(false));
+  };
   // The search button's place, open while something is typed and while the button rolls back out; the settings
   // and the sparkles slide over as it opens and closes (useGoSlot in kit.tsx).
   const slotOpen = useGoSlot(typing, menuBox, ".seek-icon, .seek-ai");
@@ -706,18 +715,24 @@ function Quick() {
             )}
             {showing("ai") && (
               <div className={`seek-panel seek-ai-panel ${panelClass("ai")}`} role="group" aria-label={t("jobs.ai")}>
-                {/* Claude's mark over the two jobs, and a warning that they use the user's Claude tokens. */}
+                {/* Claude's mark over the two jobs, and a warning about what they cost. The smart search is Claude's
+                    agent; the ranking is done by the server with the settings' AI (ranker.ts). */}
                 <header className="ai-head">
                   <span className="ai-claude"><ClaudeMark /></span>
                   <strong>{t("jobs.aiTitle")}</strong>
                 </header>
                 <p className="ai-warn" role="note"><Icon name="warn" /><span>{t("jobs.aiNote")}</span></p>
-                {([["smart", "/job-scraper"], ["rank", "/rank"]] as const).map(([job, command]) => (
-                  <button key={job} type="button" className="seek-action" onClick={() => start(command)}>
-                    <span className="action-text"><strong>{t(`jobs.${job}`)}</strong><small>{t(`jobs.${job}Note`)}</small></span>
-                    <Icon name="onward" />
-                  </button>
-                ))}
+                <button type="button" className="seek-action" onClick={() => start("/job-scraper")}>
+                  <span className="action-text"><strong>{t("jobs.smart")}</strong><small>{t("jobs.smartNote")}</small></span>
+                  <Icon name="onward" />
+                </button>
+                <button type="button" className="seek-action" disabled={ranking} onClick={rank}>
+                  <span className="action-text">
+                    <strong>{t("jobs.rank")}</strong><small>{t("jobs.rankNote")}</small>
+                    {rankError && <small className="rank-error" role="alert">{rankError}</small>}
+                  </span>
+                  <Icon name="onward" />
+                </button>
               </div>
             )}
           </div>

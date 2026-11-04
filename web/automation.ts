@@ -6,6 +6,7 @@ import path from "node:path";
 import { readAts } from "./data";
 import { REPO } from "./policy";
 import type { Settings } from "./settings";
+import { canSeal, isSealed, seal, unseal } from "./vault";
 
 const STATE_FILE = path.join(import.meta.dir, "data", "automation.json");
 // Outside the project, so a session's free reads of the project cannot reach the password.
@@ -181,19 +182,27 @@ export function createAutomation(deps: Deps) {
   };
 }
 
+// The password is sealed in the file (vault.ts) and opened here; one saved before sealing is sealed now.
 export function readMailAccount(file = MAIL_FILE): { user: string; password: string } | null {
+  let saved: { user?: string; password?: string };
   try {
-    const saved = JSON.parse(readFileSync(file, "utf8"));
-    return saved.user && saved.password ? saved : null;
+    saved = JSON.parse(readFileSync(file, "utf8"));
   } catch {
     return null;
   }
+  if (!saved.user || !saved.password) return null;
+  if (canSeal && !isSealed(saved.password)) writeMail(file, saved.user, seal(saved.password));
+  return { user: saved.user, password: unseal(saved.password) };
 }
 
-export function saveMailAccount(user: string, password: string, file = MAIL_FILE) {
+function writeMail(file: string, user: string, password: string) {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify({ user, password }));
   try { chmodSync(file, 0o600); } catch { /* Windows keeps it in the user's own folder */ }
+}
+
+export function saveMailAccount(user: string, password: string, file = MAIL_FILE) {
+  writeMail(file, user, seal(password));
 }
 
 // The password goes through stdin, never an argument.

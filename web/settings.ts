@@ -21,6 +21,8 @@ export type Settings = {
   fields: string;
   studentJobs: "normal" | "low" | "exclude";
   language: "he" | "en";
+  // The AI the site works with first, the others connected taking over when it fails (ai.ts).
+  aiPrimary: "claude" | "openai";
   // The server runs the automation, so none of this reaches the agent's files.
   automation: { enabled: boolean; email: string; maxPerDay: number; runAt: string; minScore: number };
   // The quick search's own choices on the jobs page, kept from one visit to the next: how recent, which market
@@ -35,7 +37,7 @@ const SETTINGS_FILE = path.join(import.meta.dir, "data", "settings.json");
 export const EMPTY_SETTINGS: Settings = {
   displayName: "", home: "", markets: [], areas: [], workMode: "any", seniority: "any", relocate: false,
   roles: [{ id: "software", label: "Software", query: "Software Engineer" }],
-  salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he",
+  salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he", aiPrimary: "claude",
   automation: { enabled: false, email: "", maxPerDay: 3, runAt: "09:00", minScore: 60 },
   quickSearch: { days: "14", market: "all", mode: "", areas: "relevant" },
 };
@@ -105,6 +107,7 @@ export function validateSettings(input: any): Settings {
     fields: clean(input?.fields, 200),
     studentJobs: pick(input?.studentJobs, ["normal", "low", "exclude"] as const),
     language: pick(input?.language, ["he", "en"] as const),
+    aiPrimary: pick(input?.aiPrimary, ["claude", "openai"] as const),
     automation: {
       enabled: input?.automation?.enabled === true,
       email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "",
@@ -156,7 +159,8 @@ function salaryLine({ salaryMin: min, salaryMax: max, salaryCurrency: currency }
   return `${range} gross a month, depending on the role and the experience it asks for. This is for application forms and interviews, and never goes on a CV. Confirm the number with the candidate before submitting it anywhere`;
 }
 
-function renderBlock(s: Settings) {
+// Also what the ranking tells the model about where the candidate works (ranker.ts).
+export function renderBlock(s: Settings) {
   const names =(tier: Tier) => s.areas.filter((a) => a.tier === tier).map((a) => `${a.name} (${a.places.join(", ")})`).join("; ") || "none set";
   const market = (m: Market) => m.code === REMOTE
     ? `Remote from anywhere (linkedin-search --location "Remote" --remote remote; freehire-search --remote remote)`

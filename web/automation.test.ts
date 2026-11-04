@@ -142,8 +142,14 @@ describe("the mail account", () => {
   test("is read back whole, and missing parts count as no account", () => {
     const file = path.join(mkdtempSync(path.join(os.tmpdir(), "job-mail-")), "sub", "mail.json");
     expect(readMailAccount(file)).toBeNull();
-    saveMailAccount("me@gmail.com", "abcd", file);
-    expect(readMailAccount(file)).toEqual({ user: "me@gmail.com", password: "abcd" });
+    saveMailAccount("me@gmail.com", "abcd-secret", file);
+    expect(readMailAccount(file)).toEqual({ user: "me@gmail.com", password: "abcd-secret" });
+    // Sealed on Windows: the file never holds the password itself.
+    if (process.platform === "win32") expect(readFileSync(file, "utf8")).not.toContain("abcd-secret");
+    // One saved before sealing still reads, and is sealed in place.
+    writeFileSync(file, JSON.stringify({ user: "me@gmail.com", password: "old-plain" }));
+    expect(readMailAccount(file)?.password).toBe("old-plain");
+    if (process.platform === "win32") expect(readFileSync(file, "utf8")).not.toContain("old-plain");
     writeFileSync(file, JSON.stringify({ user: "me@gmail.com" }));
     expect(readMailAccount(file)).toBeNull();
     expect(readFileSync(file, "utf8")).toContain("me@gmail.com");

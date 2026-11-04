@@ -1,10 +1,16 @@
 // Local web interface for the job-search workspace. Listens on this computer only.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createSession, getSession, isAccess, listSessions, runUnattended } from "./agent";
+import { createSession, createTaskSession, getSession, isAccess, listSessions, runUnattended } from "./agent";
 import { clearedCookie, createAuth, sessionCookie } from "./auth";
 import { buildInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
+import { askInOrder, ENGINE_NAMES, engineOrder } from "./ai";
+import { ChatbotError, checkKey, keyStatus, PROVIDERS, saveKey, type Provider } from "./chatbots";
+import { cliStatus, openLogin } from "./clis";
+import { rankJobs } from "./ranker";
+import { scrapeJobs } from "./scraper";
+import { applyJob } from "./applier";
 import { conversationFiles, loadState, resolveDocument, searchJobs } from "./data";
 import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, listSources, readChecks, readDocument, readEditableFile, readSource, saveChecks, saveDocument, saveEditableFile, saveSource, setApplicationStatus } from "./edit";
 import { REPO } from "./policy";
@@ -18,6 +24,8 @@ const DATA = path.join(import.meta.dir, "data");
 const TOKEN_FILE = path.join(DATA, "token");
 
 await buildInterface(path.join(PUBLIC, "build"));
+// Whether ChatGPT is signed in, known before the first conversation asks.
+cliStatus().catch(() => {});
 
 mkdirSync(DATA, { recursive: true });
 if (!existsSync(TOKEN_FILE)) writeFileSync(TOKEN_FILE, crypto.randomUUID().replaceAll("-", ""));
@@ -43,6 +51,8 @@ const automation = createAutomation({ loadSettings, loadState, runSession: runUn
 const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), mailUser: readMailAccount()?.user ?? "" });
 
 const auth = createAuth();
+// The server's own run on the job list going now, "rank" or "scrape", or "" for none.
+let listBusy = "";
 
 // The login form, and whether this browser is logged in. Everything else in the API needs a login.
 async function loginRoutes(req: Request, url: URL): Promise<Response | null> {
@@ -116,7 +126,7 @@ async function api(req: Request, url: URL): Promise<Response> {
   if (req.method === "GET") {
     if (parts[0] === "state") {
       const settings = loadSettings();
-      return json({ ...loadState(settings), settings, presets: REGION_PRESETS, sessions: listSessions() });
+      return json({ ...loadState(settings), settings, presets: REGION_PRESETS, sessions: listSessions(), aiKeys: keyStatus(), aiLogins: await cliStatus() });
     }
     if (parts[0] === "profile" || parts[0] === "rules") return json(readDocument(parts[0]));
     if (parts[0] === "checks") return json(readChecks());
@@ -198,10 +208,62 @@ async function api(req: Request, url: URL): Promise<Response> {
       return json({ result: await sendMail({ to, subject: words.testSubject, body: words.testBody, attachments: [] }) });
     }
   }
+  // Signing in to ChatGPT with the account: Codex opens in a window of its own here (clis.ts).
+  if (parts[0] === "ai-login") {
+    const provider = String(body.provider) as Provider;
+    if (!PROVIDERS.includes(provider)) return json({ error: "not found" }, 404);
+    try { openLogin(provider); } catch (err) { if (err instanceof ChatbotError) throw new EditError(err.code); throw err; }
+    return json({ ok: true });
+  }
+  // A key for ChatGPT, kept only once OpenAI takes it; an empty one forgets it. Like the mail
+  // password, it is written once and never read back.
+  if (parts[0] === "ai-keys") {
+    const provider = String(body.provider) as Provider;
+    if (!PROVIDERS.includes(provider)) return json({ error: "not found" }, 404);
+    const key = String(body.key ?? "").trim();
+    if (key) {
+      try { await checkKey(provider, key); } catch (err) { if (err instanceof ChatbotError) throw new EditError(err.code); throw err; }
+    }
+    saveKey(provider, key);
+    return json(keyStatus());
+  }
+  // The new jobs ranked (ranker.ts), or the smart search and save (scraper.ts), by the settings' AI, the next
+  // connected one taking over from one that fails for the rest of the run, and the server doing everything else.
+  // One run of each at a time, since two would pick the same jobs; and while one writes the list, the other waits.
+  if (parts[0] === "rank" || parts[0] === "scrape") {
+    if (listBusy) throw new EditError(`${listBusy}_busy`, 409);
+    const job = parts[0];
+    listBusy = job;
+    const settings = loadSettings();
+    const lang = settings.language === "en" ? "en" : "he";
+    const order = engineOrder(settings.aiPrimary);
+    const session = createTaskSession(job === "rank" ? "/rank" : "/job-scraper", (steps, signal) => {
+      const ask = (system: string, prompt: string, stop: AbortSignal) => askInOrder(order, system, [{ role: "user", text: prompt }], {
+        signal: stop, onSwitch: (from, to, err) => steps.switched(ENGINE_NAMES[from], ENGINE_NAMES[to], err.code),
+      }).then((r) => ({ text: r.text, by: ENGINE_NAMES[r.engine] }));
+      return (job === "rank" ? rankJobs({ steps, signal, lang, ask }) : scrapeJobs({ steps, signal, lang, ask, settings })).finally(() => { listBusy = ""; });
+    });
+    return json(session.summary());
+  }
   if (parts[0] === "sessions" && !parts[1]) {
     const prompt = String(body.prompt ?? "").trim();
     const uploads = attached(body.files);
     if (!prompt && !uploads.length) return json({ error: "empty" }, 400);
+    // Applying, with ChatGPT first in the settings, is done by the server with it (applier.ts); with
+    // Claude first it is Claude's own /apply, the recommended way.
+    const applying = prompt.match(/^\/apply\s+([\s\S]+)$/)?.[1]?.trim();
+    const settings = loadSettings();
+    const order = engineOrder(settings.aiPrimary);
+    if (applying && !uploads.length && order[0] !== "claude") {
+      const lang = settings.language === "en" ? "en" : "he";
+      const session = createTaskSession(prompt.slice(0, 300), (steps, signal) => applyJob({
+        input: applying, steps, signal, lang,
+        ask: (system, text, stop) => askInOrder(order, system, [{ role: "user", text }], {
+          signal: stop, onSwitch: (from, to, err) => steps.switched(ENGINE_NAMES[from], ENGINE_NAMES[to], err.code),
+        }).then((r) => ({ text: r.text, by: ENGINE_NAMES[r.engine] })),
+      }));
+      return json(session.summary());
+    }
     return json(createSession(prompt, body.model, { access: isAccess(body.access) ? body.access : "ask", uploads }).summary());
   }
   const session = parts[0] === "sessions" ? getSession(parts[1]) : undefined;

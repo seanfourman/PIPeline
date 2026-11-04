@@ -182,19 +182,108 @@ function Runner() {
   );
 }
 
+const AI_PROVIDERS = [{ id: "openai", name: "ChatGPT", keys: "https://platform.openai.com/api-keys" }];
+const AI_IDS = ["claude", "openai"];
+const AI_NAMES: Record<string, string> = { claude: "Claude", openai: "ChatGPT" };
+
+// The AI the site works with (ai.ts): which one is primary, of those connected, and under it which takes over when
+// it fails; then each one's connection, with a mark of whether it is connected. Claude's is this computer's Claude
+// Code login, with nothing to set. ChatGPT signs in with the account the same way, through Codex (clis.ts): a
+// button opens Codex's sign-in in a window of its own, and the card sees it a few seconds after. An API key is the
+// other way, folded under it (chatbots.ts); like the mail account it is apart from the settings form, kept once
+// its box is left, or Enter pressed, and OpenAI took it; only whether one is saved comes back.
+function AiKeys({ primary, onPrimary }: { primary: string; onPrimary: (id: string) => void }) {
+  const { s, t, err, refresh } = useApp();
+  const logins = (s.aiLogins ?? {}) as Record<string, boolean>;
+  const connected = (id: string) => id === "claude" || Boolean(s.aiKeys[id] || logins[id]);
+  const first = connected(primary) ? primary : "claude";
+  const order = [first, ...AI_IDS.filter((id) => id !== first && connected(id))].map((id) => AI_NAMES[id]);
+  const [typed, setTyped] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState("");
+  const [status, setStatus] = useState<[string, boolean]>(["", false]);
+  const keep = async (provider: (typeof AI_PROVIDERS)[number], key: string) => {
+    if (busy) return;
+    setBusy(provider.id);
+    setStatus(key ? [t("settings.ai.checking"), false] : ["", false]);
+    try {
+      await api("ai-keys", { provider: provider.id, key });
+      await refresh();
+      setTyped((cur) => ({ ...cur, [provider.id]: "" }));
+      setStatus([t(key ? "settings.ai.savedNote" : "settings.ai.removed", { name: provider.name }), false]);
+    } catch (e) {
+      setStatus([err(e), true]);
+    }
+    setBusy("");
+  };
+  const signIn = (p: (typeof AI_PROVIDERS)[number]) => {
+    setStatus([t("settings.ai.signingIn", { name: p.name }), false]);
+    api("ai-login", { provider: p.id }).catch((e) => setStatus([err(e), true]));
+  };
+  return (
+    <Card className="stack">
+      <h2>{t("settings.ai.title")}</h2>
+      <p className="note">{t("settings.ai.note")}</p>
+      <div className="field">
+        <span className="field-label">{t("settings.ai.primary")}</span>
+        <div className="segmented" role="group" aria-label={t("settings.ai.primary")}>
+          {AI_IDS.map((id) => (
+            <button key={id} type="button" aria-pressed={first === id} disabled={!connected(id)} onClick={() => onPrimary(id)}>{AI_NAMES[id]}</button>
+          ))}
+        </div>
+        <small className="note">{order.length > 1 ? t("settings.ai.order", { first: order[0], rest: order.slice(1).join(", ") }) : t("settings.ai.alone", { first: order[0] })}</small>
+      </div>
+      <div className="ai-list">
+        <div className="ai-row">
+          <div className="ai-row-head"><strong>Claude</strong><span className="ai-state on">{t("settings.ai.on")}</span></div>
+          <p className="note">{t("settings.ai.claude")}</p>
+        </div>
+        {AI_PROVIDERS.map((p) => {
+          const value = typed[p.id] ?? "";
+          const save = () => { if (value.trim()) keep(p, value.trim()); };
+          return (
+            <div key={p.id} className="ai-row">
+              <div className="ai-row-head">
+                <strong>{p.name}</strong>
+                <span className={`ai-state ${connected(p.id) ? "on" : ""}`}>{t(connected(p.id) ? "settings.ai.on" : "settings.ai.off")}</span>
+              </div>
+              {logins[p.id]
+                ? <p className="note">{t(`settings.ai.${p.id}Login`)}</p>
+                : <div className="ai-sign-in"><Btn onClick={() => signIn(p)}>{t("settings.ai.signIn")}</Btn><small className="note">{t(`settings.ai.${p.id}How`)}</small></div>}
+              {/* The other way, a key, folded unless one is saved. */}
+              <details className="ai-key" open={Boolean(s.aiKeys[p.id]) || undefined}>
+                <summary>{t("settings.ai.orKey")}</summary>
+                <div className="key-row">
+                  {/* Empty, the box takes the page's direction, so the hint starts on the page's side. */}
+                  <input type="password" dir={value ? "ltr" : undefined} autoComplete="off" spellCheck={false} aria-label={t(`settings.ai.${p.id}`)}
+                    placeholder={t(s.aiKeys[p.id] ? "settings.ai.saved" : "settings.ai.paste")} value={value} disabled={busy === p.id}
+                    onChange={(e) => setTyped((cur) => ({ ...cur, [p.id]: e.target.value }))} onBlur={save} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
+                  {s.aiKeys[p.id] && <Btn kind="ghost" disabled={Boolean(busy)} onClick={() => keep(p, "")}>{t("settings.ai.remove")}</Btn>}
+                </div>
+                <External url={p.keys} className="key-link">{t("settings.ai.get")}<Icon name="open" /></External>
+              </details>
+            </div>
+          );
+        })}
+      </div>
+      {status[0] && <p className={status[1] ? "error-line" : "note"} role="status" dir="auto">{status[0]}</p>}
+    </Card>
+  );
+}
+
 export function Settings() {
-  const { s, t, lang, setLang, theme, setTheme, refresh } = useApp();
-  const [draft, setDraft] = useState(() => structuredClone(s.settings));
+  const { s, t, lang, setLang, theme, setTheme, refresh, loaded } = useApp();
+  // The screen can open before the first state is in, as when the page is reloaded here; until then it has no
+  // draft, so the app's empty stand-in is never shown, nor saved over the real settings.
+  const [draft, setDraft] = useState<any>(() => (loaded ? structuredClone(s.settings) : null));
   const [roleInput, setRoleInput] = useState("");
-  // The first state can arrive after this screen opens.
-  useEffect(() => { if (!draft.markets && s.settings.markets) setDraft(structuredClone(s.settings)); }, [s.settings]);
+  useEffect(() => { if (!draft && loaded) setDraft(structuredClone(s.settings)); }, [loaded, s.settings]);
   // Every change saves itself a moment later; the form keeps what was typed, the saved settings come back through
   // the app's state. The note at the top says how it went.
   const saving = useAutoSave(draft, async (next) => {
     await api("settings", { ...next, language: lang });
     await refresh();
-  }, { ready: Boolean(draft.markets) });
-  if (!draft.markets) return <Page title={t("settings.title")}><Spinner /></Page>;
+  }, { ready: Boolean(draft) });
+  if (!draft) return <Page title={t("settings.title")}><Spinner /></Page>;
 
   const update = (fn: (d: any) => void) => { const next = structuredClone(draft); fn(next); setDraft(next); };
   const set = (key: string, value: unknown) => update((d) => { d[key] = value; });
@@ -234,6 +323,8 @@ export function Settings() {
           </div>
         </div>
       </Card>
+      <AiKeys primary={draft.aiPrimary} onPrimary={(id) => set("aiPrimary", id)} />
+
       <Card className="stack">
         <MarketsEditor draft={draft} update={update} title={<h2>{t("settings.markets")}</h2>} />
       </Card>

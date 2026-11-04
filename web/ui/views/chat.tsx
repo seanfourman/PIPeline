@@ -13,6 +13,14 @@ type Doc = { path: string; name: string };
 
 const ACCESS: Access[] = ["ask", "auto", "full"];
 const MODELS: [string, string][] = [["", "default"], ["claude-opus-5-5", "opus"], ["claude-sonnet-5-5", "sonnet"], ["claude-haiku-5-5", "haiku"]];
+// Which AI the settings put first (ai.ts): the primary while it is connected, Claude otherwise. With ChatGPT first
+// on a key alone, a new conversation is a plain one, chat only, unless its message is a command.
+const MAKERS: Record<string, { name: string; company: string }> = { claude: { name: "Claude", company: "Anthropic" }, openai: { name: "ChatGPT", company: "OpenAI" } };
+function useFirstAi() {
+  const { s } = useApp();
+  const primary = String(s.settings.aiPrimary ?? "claude");
+  return primary !== "claude" && (s.aiKeys[primary] || s.aiLogins?.[primary]) ? primary : "claude";
+}
 // The commands a new conversation offers as a start; one that needs more, a link or a company, goes into the box
 // to finish there.
 const STARTS: [string, boolean][] = [["job-scraper", false], ["rank", false], ["apply", true], ["interview", true]];
@@ -85,9 +93,10 @@ function Threads({ id, onPick }: { id: string; onPick: () => void }) {
 // again. Enter sends and Shift+Enter starts a new line; empty, it takes the page's direction, so the hint starts
 // on the page's side. Images and files come in by the +, by pasting, or dropped on the box; each is sent up as
 // it comes and shows over the words, with a mark while it goes up and an × to take it off. onSend gets their ids.
-function Composer({ text, setText, onSend, onStop, working = false, placeholder, tools, warn, input, autoFocus }: {
+// Under it, warn is a warning and hint a quieter line.
+function Composer({ text, setText, onSend, onStop, working = false, placeholder, tools, warn, hint, input, autoFocus }: {
   text: string; setText: (v: string) => void; onSend: (files: string[]) => void; onStop?: () => void; working?: boolean; placeholder: string;
-  tools?: React.ReactNode; warn?: string; input?: React.RefObject<HTMLTextAreaElement>; autoFocus?: boolean;
+  tools?: React.ReactNode; warn?: React.ReactNode; hint?: React.ReactNode; input?: React.RefObject<HTMLTextAreaElement>; autoFocus?: boolean;
 }) {
   const { t } = useApp();
   const own = useRef<HTMLTextAreaElement>(null);
@@ -186,6 +195,7 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
       </div>
       {errors.map((line) => <p key={line} className="composer-error" role="alert"><Icon name="warn" /><span>{line}</span></p>)}
       {warn && <p className="composer-warn" role="note"><Icon name="warn" /><span>{warn}</span></p>}
+      {hint && <p className="composer-hint" role="note">{hint}</p>}
     </form>
   );
 }
@@ -202,7 +212,7 @@ function AccessPicker({ value, onChange }: { value: Access; onChange: (a: Access
   );
 }
 
-// The model, the same way: a round button with the model's icon.
+// Claude's model, the same way: a round button with the model's icon.
 function ModelPicker({ value, onChange }: { value: string; onChange: (m: string) => void }) {
   const { t } = useApp();
   return <Select compact className="circle" label={t("chat.model")} value={value} onChange={onChange} options={MODELS.map(([m, key]) => ({ value: m, label: t(`chat.models.${key}`), icon: `model-${key}` }))} />;
@@ -214,13 +224,20 @@ const ListButton = ({ onList }: { onList: () => void }) => {
   return <button type="button" className="chat-lists" aria-label={t("chat.openList")} onClick={onList}><Icon name="chat" /></button>;
 };
 
+// A new conversation. With ChatGPT first in the settings on a key alone it is a plain one: no access or model to pick,
+// and a line under the box says so; the starts and any message that is a command still go to Claude.
 function NewConversation({ onList }: { onList: () => void }) {
-  const { t, start, draft } = useApp();
+  const { s, t, start, draft } = useApp();
   const [text, setText] = useState(() => { const d = draft.current; draft.current = ""; return d; });
   const [model, setModel] = useState("");
   const [access, setAccess] = useState<Access>("ask");
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
+  const first = useFirstAi();
+  // ChatGPT signed in with its account works in the project as Claude does, through Codex (codex.ts), with the same
+  // access to pick; only Claude has models to pick from.
+  const codex = first === "openai" && Boolean(s.aiLogins?.openai);
+  const plain = !codex && first !== "claude" && !text.trim().startsWith("/");
   const go = (raw = text.trim(), files: string[] = []) => {
     if ((!raw && !files.length) || busy) return;
     setBusy(true);
@@ -242,8 +259,8 @@ function NewConversation({ onList }: { onList: () => void }) {
         </div>
         <Composer
           text={text} setText={setText} onSend={(files) => go(text.trim(), files)} placeholder={t("chat.newPlaceholder")} input={input} autoFocus
-          tools={<><AccessPicker value={access} onChange={setAccess} /><ModelPicker value={model} onChange={setModel} /></>}
-          warn={access === "full" ? t("chat.access.fullWarn") : ""}
+          tools={plain ? null : <><AccessPicker value={access} onChange={setAccess} />{!codex && <ModelPicker value={model} onChange={setModel} />}</>}
+          warn={!plain && access === "full" ? t("chat.access.fullWarn") : ""} hint={codex ? t("chat.ai.codex", MAKERS[first]) : plain ? t("chat.ai.plain", MAKERS[first]) : ""}
         />
         <div className="chat-starts" role="group" aria-label={t("chat.suggest")}>
           {STARTS.map(([command, more]) => (
@@ -388,6 +405,8 @@ function Conversation({ id, onList }: { id: string; onList: () => void }) {
   const [files, setFiles] = useState<Doc[]>([]);
   const log = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
+  // A plain conversation has no access to pick; the name of the AI that answered it last stands by the title.
+  const plain = Boolean(session?.plain);
 
   const loadFiles = useCallback(() => { api(`sessions/${id}/files`).then((d) => setFiles(d.files)).catch(() => {}); }, [id]);
   useEffect(loadFiles, [loadFiles]);
@@ -399,7 +418,8 @@ function Conversation({ id, onList }: { id: string; onList: () => void }) {
       if (e.t === "hello") { setEvents(e.events); setStatus(e.session.status); setLive(""); stick.current = true; return; }
       if (e.t === "delta") { setLive((l) => l + e.text); return; }
       if (e.t === "status") { setStatus(e.status); refresh().catch(() => {}); if (e.status !== "running") loadFiles(); return; }
-      if (e.t === "text") setLive("");
+      // A switch to the next AI drops what the one that failed had begun to write.
+      if (e.t === "text" || e.t === "switched") setLive("");
       if (e.t === "tool_result") loadFiles();
       setEvents((list) => [...list, e]);
     };
@@ -467,6 +487,7 @@ function Conversation({ id, onList }: { id: string; onList: () => void }) {
       case "question": return resolved.has(e.requestId) ? settled(e) : <Question key={key} ev={e} sessionId={id} />;
       case "result": return <p key={key} className="done-line">{e.ok ? t("chat.done") : t("chat.doneError")}{e.cost >= 0.01 ? t("chat.cost", { cost: e.cost.toFixed(2) }) : ""}</p>;
       case "error": return <p key={key} className="error-line" role="alert" dir="auto">{e.code ? t(`chat.errors.${e.code}`, { detail: e.text ?? "" }) : e.text}</p>;
+      case "switched": return <p key={key} className="switched-line" dir="auto"><Icon name="warn" />{t("chat.switched", { from: e.from, to: e.to })}</p>;
       default: return null;
     }
   };
@@ -476,6 +497,7 @@ function Conversation({ id, onList }: { id: string; onList: () => void }) {
       <header className="chat-top">
         <ListButton onList={onList} />
         <h1 className="chat-title" dir="auto">{session ? friendlyTitle(session.title, t) : ""}</h1>
+        {(plain || (session?.agent && session.agent !== "claude")) && session?.engine && <span className="chat-model"><bdi>{session.engine}</bdi></span>}
         {status !== "idle" && <span className={`chat-state ${status}`}>{t(`session.${status}`)}</span>}
       </header>
       <div className="log-frame">
@@ -495,7 +517,8 @@ function Conversation({ id, onList }: { id: string; onList: () => void }) {
       </div>
       <Composer
         text={text} setText={setText} onSend={send} onStop={() => api(`sessions/${id}/interrupt`, {})} working={working} placeholder={t("chat.message")}
-        tools={<AccessPicker value={access} onChange={changeAccess} />} warn={access === "full" ? t("chat.access.fullWarn") : ""}
+        tools={plain ? null : <AccessPicker value={access} onChange={changeAccess} />}
+        warn={!plain && access === "full" ? t("chat.access.fullWarn") : ""}
       />
     </div>
   );

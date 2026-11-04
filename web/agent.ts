@@ -1,10 +1,22 @@
-// Runs Claude sessions in the project and turns their messages into events for the browser.
+// Runs Claude sessions in the project and turns their messages into events for the browser. A plain conversation
+// is a session too, with the same events: chat only, answered by the AI first in the settings' order, the next
+// taking over when one fails (ai.ts). So is work the server does itself with that AI, as the ranking.
 import { query, type PermissionResult, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { askInOrder, ENGINE_NAMES, engineOrder, type Engine } from "./ai";
+import { CHAT_SYSTEM, ChatbotError, providerOf, type Turn } from "./chatbots";
+import { cliSignedIn } from "./clis";
+import { CodexAgent } from "./codex";
 import { documentPaths } from "./data";
 import { ACCESS, createPolicy, REPO, type Access } from "./policy";
-import { attachmentContent, type Upload } from "./uploads";
+import { loadSettings } from "./settings";
+import { attachmentContent, getUpload, type Upload } from "./uploads";
+
+export type TaskSteps = {
+  start: (id: string, target: string, name?: string) => void; done: (id: string, ok: boolean, preview: string) => void;
+  switched: (from: string, to: string, code: string) => void;
+};
 
 const DATA = path.join(import.meta.dir, "data", "sessions");
 const IDLE_CLOSE_MS = 15 * 60 * 1000;
@@ -31,11 +43,18 @@ class Session {
   private closed = true;
   private idleTimer?: Timer;
   private saveTimer?: Timer;
+  private replying?: AbortController;
+  // In a plain conversation, the name of the AI that answered last.
+  engine?: string;
+  // A conversation ChatGPT works in as an agent, through Codex (codex.ts), and its thread there.
+  agentThreadId?: string;
+  private external?: CodexAgent;
 
-  constructor(public id: string, public title: string, public model: string | undefined, public createdAt: number, private unattended = false, public access: Access = "ask") {}
+  constructor(public id: string, public title: string, public model: string | undefined, public createdAt: number, private unattended = false, public access: Access = "ask", public plain = false, public agent: "claude" | "codex" = "claude") {}
 
   summary() {
-    return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model, access: this.access };
+    const engine = this.agent === "codex" ? ENGINE_NAMES.openai : this.engine;
+    return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model, access: this.access, plain: this.plain, engine, agent: this.agent };
   }
 
   // A new access for what comes next; a request already waiting that it now allows goes ahead at once.
@@ -73,17 +92,111 @@ class Session {
   }
 
   save() {
-    writeFileSync(path.join(DATA, `${this.id}.json`), JSON.stringify({ ...this.summary(), claudeId: this.claudeId, events: this.events }));
+    writeFileSync(path.join(DATA, `${this.id}.json`), JSON.stringify({ ...this.summary(), claudeId: this.claudeId, agentThreadId: this.agentThreadId, events: this.events }));
+  }
+
+  // ChatGPT's turn in a conversation it works in as an agent: what was attached goes in as pictures it sees, or as a
+  // line with where the file is, as Claude gets it (uploads.ts); its requests come to authorize, like Claude's.
+  private sendToAgent(text: string, uploads: (Upload & { file: string })[]) {
+    const hooks = {
+      emit: (e: AgentEvent, keep?: boolean) => this.emit(e, keep),
+      authorize: (tool: string, input: Record<string, unknown>, signal: AbortSignal) => this.authorize(tool, input, signal),
+      thread: (threadId: string) => { this.agentThreadId = threadId; this.scheduleSave(); },
+      done: (ok: boolean, error?: string) => {
+        if (error && !ok) this.emit({ t: "error", text: error.slice(0, 300) });
+        this.emit({ t: "result", ok });
+        this.setStatus(ok ? "idle" : "error");
+        clearTimeout(this.idleTimer);
+        this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
+      },
+    };
+    this.external ??= new CodexAgent(hooks, this.agentThreadId);
+    const images = uploads.filter((u) => u.kind === "image");
+    const others = uploads.filter((u) => u.kind !== "image");
+    const said = [text, ...others.map((u) => `Attached file (${u.name}): ${path.relative(REPO, u.file).replaceAll("\\", "/")}`)].join("\n").trim() || "(see the attached image)";
+    clearTimeout(this.idleTimer);
+    this.setStatus("running");
+    this.external.send(said, images.map((u) => u.file)).catch((err) => {
+      this.emit({ t: "error", code: "codex_failed", text: String(err?.message ?? err).slice(0, 300) });
+      this.setStatus("error");
+    });
   }
 
   // A message, with the files attached to it, if any: the chat keeps what they were, Claude gets them (uploads.ts).
   send(text: string, uploads: (Upload & { file: string })[] = []) {
     this.emit({ t: "user", text, ...(uploads.length ? { files: uploads.map(({ id, name, kind, size }) => ({ id, name, kind, size })) } : {}) });
+    if (this.plain) { if (!this.replying) this.answer(); return; }
+    if (this.agent !== "claude") return this.sendToAgent(text, uploads);
     this.inbox.push(uploads.length ? attachmentContent(text, uploads) : text);
     clearTimeout(this.idleTimer);
     this.setStatus("running");
     if (this.closed) this.start();
     this.wake?.();
+  }
+
+  // A plain answer to the whole conversation so far, streamed like Claude's, from the first AI in the settings'
+  // order that gives one; each switch to the next is a line in the conversation. A message sent while it is being
+  // written is answered next, with the rest. skip leaves one out, as Claude when it has just failed.
+  private async answer(skip?: Engine) {
+    this.setStatus("running");
+    const stop = this.replying = new AbortController();
+    const asked = this.events.length;
+    let failed = false;
+    try {
+      const order = engineOrder(loadSettings().aiPrimary).filter((e) => e !== skip);
+      const { engine, text } = await askInOrder(order, CHAT_SYSTEM, this.turns(), {
+        signal: stop.signal,
+        onText: (part) => this.emit({ t: "delta", text: part }, false),
+        onSwitch: (from, to, err) => this.emit({ t: "switched", from: ENGINE_NAMES[from], to: ENGINE_NAMES[to], code: err.code }),
+      });
+      this.engine = ENGINE_NAMES[engine];
+      if (text.trim()) this.emit({ t: "text", text, by: this.engine });
+    } catch (err) {
+      failed = true;
+      const e = err instanceof ChatbotError ? err : new ChatbotError("ai_failed", String((err as Error)?.message ?? err));
+      this.emit({ t: "error", code: e.code, text: e.detail });
+    }
+    this.replying = undefined;
+    if (!failed && !stop.signal.aborted && this.events.slice(asked).some((e) => e.t === "user")) return this.answer();
+    this.emit({ t: "result", ok: !failed });
+    this.setStatus(failed ? "error" : "idle");
+  }
+
+  // Work the server does itself under this conversation, as the ranking (ranker.ts): what was asked as the first
+  // message, each step as a tool line, a switch to the next AI as a line, its report as the answer. A message
+  // written meanwhile is answered after it, as in any plain conversation.
+  async task(asked: string, work: (steps: TaskSteps, signal: AbortSignal) => Promise<string>) {
+    this.emit({ t: "user", text: asked });
+    this.setStatus("running");
+    const stop = this.replying = new AbortController();
+    const from = this.events.length;
+    let failed = false;
+    try {
+      const text = await work({
+        start: (id, target, name = "RankJob") => this.emit({ t: "tool", id, name, target, nested: false, files: [] }),
+        done: (id, ok, preview) => this.emit({ t: "tool_result", id, isError: !ok, preview }),
+        switched: (from, to, code) => this.emit({ t: "switched", from, to, code }),
+      }, stop.signal);
+      if (text.trim()) this.emit({ t: "text", text });
+    } catch (err) {
+      failed = true;
+      const e = err instanceof ChatbotError ? err : new ChatbotError("ai_failed", String((err as Error)?.message ?? err));
+      this.emit({ t: "error", code: e.code, text: e.detail });
+    }
+    this.replying = undefined;
+    if (!failed && !stop.signal.aborted && this.events.slice(from).some((e) => e.t === "user")) return this.answer();
+    this.emit({ t: "result", ok: !failed });
+    this.setStatus(failed ? "error" : "idle");
+  }
+
+  // The conversation as turns: what was written, with what was attached while it is still there, and the answers.
+  private turns(): Turn[] {
+    return this.events.flatMap((e): Turn[] => {
+      if (e.t === "text") return [{ role: "assistant", text: String(e.text) }];
+      if (e.t !== "user") return [];
+      const uploads = ((e.files ?? []) as { id: string }[]).map((f) => getUpload(f.id)).filter((u) => u !== null);
+      return [{ role: "user", text: String(e.text ?? ""), uploads }];
+    });
   }
 
   private async *input(): AsyncGenerator<SDKUserMessage> {
@@ -114,9 +227,25 @@ class Session {
       },
     });
     this.consume().catch((err) => {
+      if (this.handOver()) return;
       this.emit({ t: "error", text: String(err?.message ?? err) });
       this.setStatus("error");
     }).finally(() => { this.closed = true; this.wake?.(); });
+  }
+
+  // When Claude fails on a plain message (its quota, say), and another AI is connected, the conversation goes on as
+  // a plain one with the next in the order, which answers the message Claude didn't. Not for a command, which
+  // needs Claude's tools, not once a tool has run since the message, and never in an unattended run.
+  private handOver() {
+    const lastUser = this.events.findLastIndex((e) => e.t === "user");
+    const asked = String(this.events[lastUser]?.text ?? "");
+    const next = engineOrder(loadSettings().aiPrimary).find((e) => e !== "claude");
+    if (this.unattended || !next || asked.trim().startsWith("/") || this.events.slice(lastUser).some((e) => e.t === "tool")) return false;
+    this.plain = true;
+    this.close();
+    this.emit({ t: "switched", from: ENGINE_NAMES.claude, to: ENGINE_NAMES[next], code: "ai_failed" });
+    this.answer("claude");
+    return true;
   }
 
   private authorize(tool: string, input: Record<string, unknown>, signal: AbortSignal): Promise<PermissionResult> {
@@ -173,6 +302,8 @@ class Session {
   }
 
   async interrupt() {
+    this.replying?.abort();
+    await this.external?.interrupt();
     for (const [id, request] of this.pending) {
       request.resolve({ behavior: "deny", message: "The user stopped this run.", interrupt: true });
       this.emit({ t: "resolved", requestId: id, code: "stopped" });
@@ -203,8 +334,10 @@ class Session {
         }
       } else if (message.type === "result") {
         this.cost += message.total_cost_usd ?? 0;
-        this.emit({ t: "result", ok: message.subtype === "success", cost: message.total_cost_usd, durationMs: message.duration_ms });
-        this.setStatus(message.subtype === "success" ? "idle" : "error");
+        const ok = message.subtype === "success" && !message.is_error;
+        if (!ok && this.handOver()) return;
+        this.emit({ t: "result", ok, cost: message.total_cost_usd, durationMs: message.duration_ms });
+        this.setStatus(ok ? "idle" : "error");
         this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
       }
     }
@@ -213,6 +346,8 @@ class Session {
   close() {
     this.closed = true;
     this.handle?.close();
+    this.external?.close();
+    this.external = undefined;
     this.wake?.();
   }
 }
@@ -265,9 +400,13 @@ for (const name of readdirSync(DATA)) {
   if (!name.endsWith(".json")) continue;
   try {
     const saved = JSON.parse(readFileSync(path.join(DATA, name), "utf8"));
-    const session = new Session(saved.id, saved.title, saved.model, saved.createdAt, false, ACCESS.includes(saved.access) ? saved.access : "ask");
+    // A conversation saved before plain ones were marked was one by the ChatGPT model it named.
+    const plain = saved.plain === true || Boolean(providerOf(saved.model));
+    const session = new Session(saved.id, saved.title, saved.model, saved.createdAt, false, ACCESS.includes(saved.access) ? saved.access : "ask", plain, saved.agent === "codex" ? "codex" : "claude");
+    session.engine = typeof saved.engine === "string" ? saved.engine : undefined;
     session.events = saved.events ?? [];
     session.claudeId = saved.claudeId;
+    session.agentThreadId = typeof saved.agentThreadId === "string" ? saved.agentThreadId : undefined;
     session.cost = saved.cost ?? 0;
     session.status = saved.status === "running" || saved.status === "waiting" ? "error" : saved.status;
     const settled = new Set(session.events.filter((e) => e.t === "resolved").map((e) => e.requestId));
@@ -284,12 +423,26 @@ for (const name of readdirSync(DATA)) {
 
 export const isAccess = (a: unknown): a is Access => ACCESS.includes(a as Access);
 
+// A new conversation, by the settings' first connected AI: Claude's agent; ChatGPT's as a whole agent too, through
+// Codex, when its account is signed in; otherwise, on a key alone, a plain one, with a command still going to
+// Claude, which needs the tools. An unattended run is always Claude's.
 export function createSession(prompt: string, model?: string, options: { title?: string; unattended?: boolean; access?: Access; uploads?: (Upload & { file: string })[] } = {}) {
   const title = (options.title ?? (prompt || options.uploads?.map((u) => u.name).join(", ") || "")).replace(/\s+/g, " ").trim().slice(0, 70);
   const access = options.unattended ? "ask" : options.access ?? "ask";
-  const session = new Session(crypto.randomUUID(), title, MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended, access);
+  const first = options.unattended ? "claude" : engineOrder(loadSettings().aiPrimary)[0];
+  const agent = first === "openai" && cliSignedIn().openai ? "codex" : "claude";
+  const plain = agent === "claude" && first !== "claude" && !prompt.trim().startsWith("/");
+  const session = new Session(crypto.randomUUID(), title, !plain && agent === "claude" && MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended, access, plain, agent);
   sessions.set(session.id, session);
   session.send(prompt, options.uploads);
+  return session;
+}
+
+// A conversation for work the server does itself with the settings' AI (Session.task).
+export function createTaskSession(asked: string, work: Parameters<Session["task"]>[1]) {
+  const session = new Session(crypto.randomUUID(), asked, undefined, Date.now(), false, "ask", true);
+  sessions.set(session.id, session);
+  session.task(asked, work);
   return session;
 }
 
