@@ -2,7 +2,9 @@
 import { query, type PermissionResult, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createPolicy, REPO } from "./policy";
+import { documentPaths } from "./data";
+import { ACCESS, createPolicy, REPO, type Access } from "./policy";
+import { attachmentContent, type Upload } from "./uploads";
 
 const DATA = path.join(import.meta.dir, "data", "sessions");
 const IDLE_CLOSE_MS = 15 * 60 * 1000;
@@ -11,7 +13,7 @@ mkdirSync(DATA, { recursive: true });
 const decide = createPolicy();
 export const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
 
-type Pending = { resolve: (r: PermissionResult) => void; input: Record<string, unknown>; rememberKey?: string };
+type Pending = { resolve: (r: PermissionResult) => void; tool?: string; input: Record<string, unknown>; rememberKey?: string };
 type Status = "running" | "waiting" | "idle" | "error";
 export type AgentEvent = Record<string, unknown> & { t: string };
 
@@ -23,17 +25,30 @@ class Session {
   private subscribers = new Set<(e: AgentEvent) => void>();
   private pending = new Map<string, Pending>();
   private remembered = new Set<string>();
-  private inbox: string[] = [];
+  private inbox: SDKUserMessage["message"]["content"][] = [];
   private wake?: () => void;
   private handle?: Query;
   private closed = true;
   private idleTimer?: Timer;
   private saveTimer?: Timer;
 
-  constructor(public id: string, public title: string, public model: string | undefined, public createdAt: number, private unattended = false) {}
+  constructor(public id: string, public title: string, public model: string | undefined, public createdAt: number, private unattended = false, public access: Access = "ask") {}
 
   summary() {
-    return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model };
+    return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model, access: this.access };
+  }
+
+  // A new access for what comes next; a request already waiting that it now allows goes ahead at once.
+  setAccess(access: Access) {
+    this.access = access;
+    for (const [requestId, request] of this.pending) {
+      if (!request.tool || decide(request.tool, request.input, this.remembered, access).decision !== "allow") continue;
+      this.pending.delete(requestId);
+      request.resolve({ behavior: "allow", updatedInput: request.input });
+      this.emit({ t: "resolved", requestId, code: "allowed" });
+    }
+    if (this.status === "waiting" && this.pending.size === 0) this.setStatus("running");
+    this.scheduleSave();
   }
 
   subscribe(fn: (e: AgentEvent) => void) {
@@ -61,9 +76,10 @@ class Session {
     writeFileSync(path.join(DATA, `${this.id}.json`), JSON.stringify({ ...this.summary(), claudeId: this.claudeId, events: this.events }));
   }
 
-  send(text: string) {
-    this.emit({ t: "user", text });
-    this.inbox.push(text);
+  // A message, with the files attached to it, if any: the chat keeps what they were, Claude gets them (uploads.ts).
+  send(text: string, uploads: (Upload & { file: string })[] = []) {
+    this.emit({ t: "user", text, ...(uploads.length ? { files: uploads.map(({ id, name, kind, size }) => ({ id, name, kind, size })) } : {}) });
+    this.inbox.push(uploads.length ? attachmentContent(text, uploads) : text);
     clearTimeout(this.idleTimer);
     this.setStatus("running");
     if (this.closed) this.start();
@@ -72,12 +88,12 @@ class Session {
 
   private async *input(): AsyncGenerator<SDKUserMessage> {
     while (!this.closed) {
-      const text = this.inbox.shift();
-      if (text === undefined) {
+      const content = this.inbox.shift();
+      if (content === undefined) {
         await new Promise<void>((resolve) => { this.wake = resolve; });
         continue;
       }
-      yield { type: "user", message: { role: "user", content: text }, parent_tool_use_id: null, session_id: this.claudeId ?? "" };
+      yield { type: "user", message: { role: "user", content }, parent_tool_use_id: null, session_id: this.claudeId ?? "" };
     }
   }
 
@@ -106,11 +122,12 @@ class Session {
   private authorize(tool: string, input: Record<string, unknown>, signal: AbortSignal): Promise<PermissionResult> {
     const requestId = crypto.randomUUID();
     if (tool !== "AskUserQuestion") {
-      const verdict = decide(tool, input, this.remembered);
+      // An unattended run is always judged as one that asks, whatever was picked.
+      const verdict = decide(tool, input, this.remembered, this.unattended ? "ask" : this.access);
       if (verdict.decision === "allow") return Promise.resolve({ behavior: "allow", updatedInput: input });
       if (this.unattended) return Promise.resolve(this.refuse(`${tool}: ${describeInput(tool, input).slice(0, 300)}`));
       this.emit({ t: "permission", requestId, tool, input: describeInput(tool, input), canRemember: Boolean(verdict.rememberKey) });
-      return this.park(requestId, input, signal, verdict.rememberKey);
+      return this.park(requestId, input, signal, verdict.rememberKey, tool);
     }
     if (this.unattended) return Promise.resolve(this.refuse(""));
     this.emit({ t: "question", requestId, questions: input.questions });
@@ -123,10 +140,10 @@ class Session {
     return { behavior: "deny", message: "This is an unattended run, so nobody can approve this or answer. Do not retry it or work around it. Skip this step and say so in your final message." };
   }
 
-  private park(requestId: string, input: Record<string, unknown>, signal: AbortSignal, rememberKey?: string) {
+  private park(requestId: string, input: Record<string, unknown>, signal: AbortSignal, rememberKey?: string, tool?: string) {
     this.setStatus("waiting");
     return new Promise<PermissionResult>((resolve) => {
-      this.pending.set(requestId, { resolve, input, rememberKey });
+      this.pending.set(requestId, { resolve, tool, input, rememberKey });
       signal.addEventListener("abort", () => {
         if (this.pending.delete(requestId)) {
           this.emit({ t: "resolved", requestId, code: "cancelled" });
@@ -177,7 +194,7 @@ class Session {
       } else if (message.type === "assistant") {
         for (const block of message.message.content as any[]) {
           if (block.type === "text" && !parent && block.text.trim()) this.emit({ t: "text", text: block.text });
-          if (block.type === "tool_use") this.emit({ t: "tool", id: block.id, name: block.name, target: toolTarget(block.name, block.input), nested: Boolean(parent) });
+          if (block.type === "tool_use") this.emit({ t: "tool", id: block.id, name: block.name, target: toolTarget(block.name, block.input), nested: Boolean(parent), files: toolFiles(block.name, block.input) });
         }
       } else if (message.type === "user") {
         const content = (message.message as { content: unknown }).content;
@@ -224,6 +241,16 @@ function toolTarget(name: string, input: any): string {
   }
 }
 
+// The project files a tool call writes, relative to the project, for the chat to offer once they exist: a file
+// written or edited, and the documents a command names. Nothing here is trusted; the server only serves the ones
+// in its document folders (resolveDocument in data.ts).
+function toolFiles(name: string, input: any): string[] {
+  const rel = (p: string) => (path.isAbsolute(p) ? path.relative(REPO, p) : p).replaceAll("\\", "/");
+  if (name === "Write" || name === "Edit" || name === "NotebookEdit") return input.file_path || input.notebook_path ? [rel(String(input.file_path ?? input.notebook_path))] : [];
+  if (name === "Bash") return documentPaths(String(input.command ?? ""));
+  return [];
+}
+
 function resultPreview(content: unknown): string {
   const text = typeof content === "string"
     ? content
@@ -238,7 +265,7 @@ for (const name of readdirSync(DATA)) {
   if (!name.endsWith(".json")) continue;
   try {
     const saved = JSON.parse(readFileSync(path.join(DATA, name), "utf8"));
-    const session = new Session(saved.id, saved.title, saved.model, saved.createdAt);
+    const session = new Session(saved.id, saved.title, saved.model, saved.createdAt, false, ACCESS.includes(saved.access) ? saved.access : "ask");
     session.events = saved.events ?? [];
     session.claudeId = saved.claudeId;
     session.cost = saved.cost ?? 0;
@@ -255,11 +282,14 @@ for (const name of readdirSync(DATA)) {
   }
 }
 
-export function createSession(prompt: string, model?: string, options: { title?: string; unattended?: boolean } = {}) {
-  const title = (options.title ?? prompt).replace(/\s+/g, " ").trim().slice(0, 70);
-  const session = new Session(crypto.randomUUID(), title, MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended);
+export const isAccess = (a: unknown): a is Access => ACCESS.includes(a as Access);
+
+export function createSession(prompt: string, model?: string, options: { title?: string; unattended?: boolean; access?: Access; uploads?: (Upload & { file: string })[] } = {}) {
+  const title = (options.title ?? (prompt || options.uploads?.map((u) => u.name).join(", ") || "")).replace(/\s+/g, " ").trim().slice(0, 70);
+  const access = options.unattended ? "ask" : options.access ?? "ask";
+  const session = new Session(crypto.randomUUID(), title, MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended, access);
   sessions.set(session.id, session);
-  session.send(prompt);
+  session.send(prompt, options.uploads);
   return session;
 }
 

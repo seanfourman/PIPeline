@@ -13,7 +13,7 @@ import { Settings } from "./views/settings";
 
 export type AppState = {
   applications: Record<string, any>[]; jobs: Record<string, any>[]; files: { path: string; modified: number }[];
-  sessions: { id: string; title: string; status: string; createdAt: number }[];
+  sessions: { id: string; title: string; status: string; createdAt: number; model?: string; access?: string }[];
   settings: Record<string, any>; presets: Record<string, { name: string; places: string[] }[]>; profileReady: boolean;
 };
 
@@ -27,7 +27,9 @@ type Ctx = {
   dark: boolean; toggleTheme: () => void; theme: string; setTheme: (mode: string) => void;
   view: string; arg?: string;
   say: (text: string, mood?: Mood, ms?: number) => void; news: News;
-  start: (prompt: string, model?: string) => Promise<void>;
+  // access is how much the conversation may do without asking (policy.ts); left out, it asks. files are the ids
+  // of uploads attached to the first message (uploads.ts).
+  start: (prompt: string, model?: string, access?: string, files?: string[]) => Promise<void>;
   draft: React.MutableRefObject<string>;
   logout: () => void;
 };
@@ -40,6 +42,12 @@ const EMPTY: AppState = { applications: [], jobs: [], files: [], sessions: [], s
 // Browser storage only remembers small conveniences, and the page works without it.
 export const stored = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 export const store = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* unavailable */ } };
+
+// For now the site is in Hebrew and the light theme only: the English version and the dark theme are off until
+// they are ready, their buttons on the settings screen marked coming soon and those on the login hidden. true
+// brings each back, with the one picked before; public/boot.js has the same two.
+export const LANGUAGES_ON = false;
+export const THEMES_ON = false;
 
 function readHash(): [string, string | undefined] {
   const [view = "dash", arg] = location.hash.slice(2).split("/");
@@ -124,13 +132,65 @@ function Toast() {
   );
 }
 
+// How long Pip takes to slide back behind the sidebar; matches peek-in in styles.css.
+const PEEK_IN_MS = 420;
+
+// When a conversation waits for an answer, Pip waits for you at the bottom of the screen, peeking out from
+// behind the sidebar (up from the screen's bottom on a phone, where the sidebar is a bar on top), quietly, with
+// no "!", saying in a pixel speech bubble that it waits for your answer; a click opens that conversation, whose
+// name is in its label for screen readers only. It slides out, leans out a little further now and then, and
+// slides back in when nothing waits or the conversations page is open (kept while it goes). The pages' own Pips
+// stay as they are.
+function PeekingPip() {
+  const { s, t, view } = useApp();
+  // Not on the conversations page, where the conversations and what they wait for are in sight already.
+  const waiting = s.sessions.find((x) => x.status === "waiting");
+  const id = waiting && view !== "chat" ? waiting.id : "";
+  const [kept, setKept] = useState(id);
+  const [title, setTitle] = useState("");
+  if (id && id !== kept) setKept(id);
+  if (waiting && id && waiting.title !== title) setTitle(waiting.title);
+  const leaving = !id && !!kept;
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => setKept(""), matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PEEK_IN_MS);
+    return () => clearTimeout(timer);
+  }, [leaving]);
+  if (!kept) return null;
+  return (
+    <a className={`peek ${leaving ? "leaving" : ""}`} href={`#/chat/${kept}`} aria-label={`${t("pip.peek")} ${t("pip.peekIn")} ${friendlyTitle(title, t)}`}>
+      <Pip className="peek-pip" />
+      <span className="peek-say">
+        <span className="peek-edge"><span className="peek-words">{t("pip.peek")}</span></span>
+        <SpeechTail />
+      </span>
+    </a>
+  );
+}
+
+// The speech bubble's tail, in the bubble's pixels: its outline (k) and fill (w) on a grid of 3-pixel cells,
+// its top row over the bubble's bottom edge so the edge opens into it, the tip down at the start side, by Pip.
+const TAIL = ["kwwwwk", ".kwwwk", "..kwwk", "...kwk", "....kk"];
+function SpeechTail() {
+  return (
+    <svg className="peek-tail" viewBox="0 0 6 5" shapeRendering="crispEdges" aria-hidden="true">
+      {TAIL.flatMap((row, y) => [...row].map((c, x) => (c === "." ? null : <rect key={`${x},${y}`} x={x} y={y} width={1} height={1} className={c === "k" ? "tail-edge" : "tail-fill"} />)))}
+    </svg>
+  );
+}
+
+// The conversation last open since the page loaded. The conversations page opens on it, and on a new conversation
+// once the page is loaded again; reloaded on a conversation, the address keeps that one.
+let lastChat = "";
+
 function Screen() {
-  const { view, arg, s } = useApp();
+  const { view, arg } = useApp();
+  if (view === "chat" && arg) lastChat = arg;
   switch (view) {
     case "jobs": return <Jobs />;
     case "saved": return <SavedJobs />;
     case "apps": return <Apps />;
-    case "chat": return <Chat id={arg ?? s.sessions[0]?.id ?? "new"} />;
+    case "chat": return <Chat id={arg ?? (lastChat || "new")} />;
     case "tools": return <Tools />;
     case "profile": return <Profile />;
     case "rules": return <Rules />;
@@ -159,8 +219,8 @@ export function App() {
   // The forest run plays when the page opens, not after a logout.
   const [intro, setIntro] = useState(true);
   const [[view, arg], setRoute] = useState(readHash);
-  const [lang, setLangState] = useState<Lang>(() => (stored("lang") === "en" ? "en" : "he"));
-  const [theme, setTheme] = useState(() => stored("theme") ?? "");
+  const [lang, setLangState] = useState<Lang>(() => (LANGUAGES_ON && stored("lang") === "en" ? "en" : "he"));
+  const [theme, setTheme] = useState(() => (THEMES_ON ? stored("theme") ?? "" : "light"));
   const [news, setNews] = useState<News>(null);
   const newsTimer = useRef<ReturnType<typeof setTimeout>>();
   const draft = useRef("");
@@ -255,8 +315,8 @@ export function App() {
       setNews({ text, mood });
       newsTimer.current = setTimeout(() => setNews(null), ms);
     },
-    start: async (prompt, model) => {
-      const session = await api("sessions", { prompt, model });
+    start: async (prompt, model, access, files) => {
+      const session = await api("sessions", { prompt, model, access, files });
       await refresh();
       location.hash = `#/chat/${session.id}`;
     },
@@ -273,6 +333,7 @@ export function App() {
         <div className={`shell ${booted && loaded ? "entering" : "waiting"}`} aria-busy={!(booted && loaded)}>
           <Sidebar />
           <main id="main" tabIndex={-1}><Screen /></main>
+          <PeekingPip />
           <Toast />
         </div>
       )}

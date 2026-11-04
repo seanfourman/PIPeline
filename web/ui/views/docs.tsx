@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { COMMANDS, useApp } from "../app";
+import { SaveNote, useAutoSave } from "../autosave";
 import { api, Btn, Card, Field, Markdown, Page, Spinner } from "../kit";
 
 const Loading = () => { const { t } = useApp(); return <div className="row note"><Spinner />{t("common.loading")}</div>; };
@@ -34,33 +35,30 @@ export function Tools() {
 
 type Doc = { text: string; version: string; markdown: string };
 
-// The profile or the rules: read as a page, or edited in place.
+// The profile or the rules: read as a page, or edited in place, each change saving itself a moment later (from
+// the version it was read at, so a change a conversation made meanwhile is never written over), until going
+// back to the page.
 function DocumentCard({ kind }: { kind: "profile" | "rules" }) {
-  const { t, err, say } = useApp();
+  const { t, err } = useApp();
   const [doc, setDoc] = useState<Doc | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => { api(kind).then(setDoc).catch((e) => setError(err(e))); }, [kind]);
-  const save = async () => {
-    try {
-      setDoc(await api(kind, { text: editing, base: doc!.version }));
-      setEditing(null);
-      setError("");
-      say(t("pip.noted"), "happy", 4000);
-    } catch (e) {
-      setError(err(e));
-    }
-  };
+  const version = useRef("");
+  useEffect(() => { api(kind).then((d) => { version.current = d.version; setDoc(d); }).catch((e) => setError(err(e))); }, [kind]);
+  const saving = useAutoSave(editing, async (text) => {
+    const saved: Doc = await api(kind, { text, base: version.current });
+    version.current = saved.version;
+    setDoc(saved);
+  }, { ready: editing !== null, wait: 1000 });
   if (!doc) return <Card>{error ? <p className="error-line">{error}</p> : <Loading />}</Card>;
   if (editing !== null) {
     return (
       <Card className="stack">
-        <textarea className="code-box" rows={30} dir="ltr" value={editing} onChange={(e) => setEditing(e.target.value)} aria-label={t(`docs.${kind}Title`)} autoFocus />
-        <div className="row">
-          <Btn kind="primary" onClick={save}>{t("common.save")}</Btn>
-          <Btn onClick={() => { setEditing(null); setError(""); }}>{t("common.cancel")}</Btn>
-          {error && <span className="error-line" role="alert" dir="auto">{error}</span>}
+        <div className="row spread">
+          <Btn onClick={() => setEditing(null)}>{t("common.backToView")}</Btn>
+          <SaveNote state={saving} />
         </div>
+        <textarea className="code-box" rows={30} dir="ltr" value={editing} onChange={(e) => setEditing(e.target.value)} aria-label={t(`docs.${kind}Title`)} autoFocus />
       </Card>
     );
   }
@@ -84,26 +82,19 @@ export function Profile() {
 
 const LIMITS: [string, number, number][] = [["summaryLines", 1, 8], ["summaryFill", 0, 100], ["skillLines", 1, 10], ["skillItems", 1, 40]];
 
+// The CV's limits and banned wording, each change saving itself a moment later.
 function Checks() {
-  const { t, err, say } = useApp();
+  const { t, err } = useApp();
   const [draft, setDraft] = useState<{ limits: Record<string, number | string>; banned: { reason: string; phrases: string[] }[] } | null>(null);
   const [adding, setAdding] = useState<Record<number, string>>({});
-  const [status, setStatus] = useState<[string, boolean]>(["", false]);
-  useEffect(() => { api("checks").then(setDraft).catch((e) => setStatus([err(e), true])); }, []);
-  if (!draft) return <Card>{status[0] ? <p className="error-line">{status[0]}</p> : <Loading />}</Card>;
+  const [error, setError] = useState("");
+  useEffect(() => { api("checks").then(setDraft).catch((e) => setError(err(e))); }, []);
+  const saving = useAutoSave(draft, (next) => api("checks", next), { ready: draft !== null });
+  if (!draft) return <Card>{error ? <p className="error-line">{error}</p> : <Loading />}</Card>;
   const update = (fn: (d: NonNullable<typeof draft>) => void) => { const next = structuredClone(draft); fn(next); setDraft(next); };
-  const save = async () => {
-    try {
-      setDraft(await api("checks", draft));
-      setStatus([t("docs.checksSaved"), false]);
-      say(t("pip.noted"), "happy", 4000);
-    } catch (e) {
-      setStatus([t("common.saveFailed", { error: err(e) }), true]);
-    }
-  };
   return (
     <Card className="stack">
-      <h2>{t("docs.checksTitle")}</h2>
+      <div className="row spread"><h2>{t("docs.checksTitle")}</h2><SaveNote state={saving} /></div>
       <p className="note">{t("docs.checksNote")}</p>
       <div className="fields">
         {LIMITS.map(([name, min, max]) => (
@@ -138,10 +129,6 @@ function Checks() {
           </div>
         );
       })}
-      <div className="row">
-        <Btn kind="primary" onClick={save}>{t("docs.saveChecks")}</Btn>
-        {status[0] && <span className={status[1] ? "error-line" : "note"} role="status" dir="auto">{status[0]}</span>}
-      </div>
     </Card>
   );
 }
@@ -172,38 +159,29 @@ export function Rules() {
 
 const CODE_FILE = /\.(sty|cls|py|tex)$/;
 
+// One file of the files screen, its text saving itself a moment after each change, from the version it was read
+// at; one that can only be read just shows. The parent gives it a key per file, so a new one starts afresh.
 function FileEditor({ file }: { file: string }) {
   const { t, err } = useApp();
   const [doc, setDoc] = useState<{ text: string; version: string; readOnly: boolean } | null>(null);
   const [text, setText] = useState("");
-  const [status, setStatus] = useState<[string, boolean]>(["", false]);
+  const [error, setError] = useState("");
+  const version = useRef("");
   useEffect(() => {
-    setDoc(null);
-    setStatus(["", false]);
-    api(`file?path=${encodeURIComponent(file)}`).then((d) => { setDoc(d); setText(d.text); }).catch((e) => setStatus([err(e), true]));
+    api(`file?path=${encodeURIComponent(file)}`).then((d) => { version.current = d.version; setDoc(d); setText(d.text); }).catch((e) => setError(err(e)));
   }, [file]);
-  if (!doc) return <Card>{status[0] ? <p className="error-line">{status[0]}</p> : <Loading />}</Card>;
-  const save = async () => {
-    try {
-      setDoc(await api("file", { path: file, text, base: doc.version }));
-      setStatus([t("files.saved"), false]);
-    } catch (e) {
-      setStatus([err(e), true]);
-    }
-  };
+  const saving = useAutoSave(text, async (next) => {
+    const saved = await api("file", { path: file, text: next, base: version.current });
+    version.current = saved.version;
+  }, { ready: Boolean(doc && !doc.readOnly), wait: 1000 });
+  if (!doc) return <Card>{error ? <p className="error-line">{error}</p> : <Loading />}</Card>;
   return (
     <Card className="stack">
-      <h2 dir="ltr" className="file-name">{file}</h2>
+      <div className="row spread"><h2 dir="ltr" className="file-name">{file}</h2>{!doc.readOnly && <SaveNote state={saving} />}</div>
       {doc.readOnly && <p className="note">{t("files.readOnly")}</p>}
       {!doc.readOnly && CODE_FILE.test(file) && <p className="warn-line">{t("files.code")}</p>}
       {file === "CLAUDE.md" && <p className="note">{t("files.claude")}</p>}
       <textarea className="code-box" rows={30} dir="ltr" spellCheck={false} readOnly={doc.readOnly} aria-label={file} value={text} onChange={(e) => setText(e.target.value)} />
-      {!doc.readOnly && (
-        <div className="row">
-          <Btn kind="primary" onClick={save}>{t("common.save")}</Btn>
-          {status[0] && <span className={status[1] ? "error-line" : "note"} role="status" dir="auto">{status[0]}</span>}
-        </div>
-      )}
     </Card>
   );
 }
@@ -244,7 +222,7 @@ export function Files() {
             </React.Fragment>
           ))}
         </nav>
-        {open ? <FileEditor file={open} /> : <Card><p className="note">{t("files.pick")}</p></Card>}
+        {open ? <FileEditor key={open} file={open} /> : <Card><p className="note">{t("files.pick")}</p></Card>}
       </div>
     </Page>
   );

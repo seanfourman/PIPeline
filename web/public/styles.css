@@ -21,6 +21,8 @@
   --ink-3: #7b8a96;
   --line: #e1e8ed;
   --hover: rgb(15 20 25 / 6%);
+  /* A lighter one for the round choices, which a light ink tint shows less on at night. */
+  --hover-soft: rgb(15 20 25 / 3%);
   --primary: #2f7a3a;
   --primary-ink: #ffffff;
   --primary-edge: #225c2b;
@@ -53,7 +55,7 @@
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%);
+    --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%); --hover-soft: rgb(231 233 234 / 7%);
     --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --soft: #16181c;
     --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
     --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
@@ -66,7 +68,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%);
+  --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%); --hover-soft: rgb(231 233 234 / 7%);
   --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --soft: #16181c;
   --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
   --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
@@ -98,11 +100,14 @@ legend { padding: 0; }
 /* In Hebrew some icons that point a way are turned round, as the page is: the speech bubble's tail, the search
    glass's handle, the way out. */
 [dir="rtl"] :is(.icon-chat, .icon-jobs, .icon-logout, .icon-open) { transform: scaleX(-1); }
+/* The onward chevron points left, onward in Hebrew; in English it turns to the right. */
+[dir="ltr"] .icon-onward { transform: scaleX(-1); }
 
 /* Scrollbars: the browser's own, given only the colours (--scroll-thumb, with each theme), so Chromium browsers
-   on Windows draw their own smooth arrows and round bar, in a strip a shade off the page's colour. Drawing the
-   bar ourselves (::-webkit-scrollbar) loses those arrows, and once scrollbar-color is set Chromium ignores it. */
-:root { scrollbar-color: var(--scroll-thumb) color-mix(in srgb, var(--ink) 6%, var(--bg)); }
+   on Windows draw their own smooth arrows and round bar, in a strip of the page's own colour, white or black.
+   Drawing the bar ourselves (::-webkit-scrollbar) loses those arrows, and once scrollbar-color is set Chromium
+   ignores it. */
+:root { scrollbar-color: var(--scroll-thumb) var(--bg); }
 
 /* Frame. The sidebar is laid out like a social site's: the logo, one list of big icons and words with a round
    highlight, a round main button, and the account at the foot, on the page's own colour. */
@@ -125,7 +130,7 @@ legend { padding: 0; }
 /* A count on the icon, like a notification. */
 .count { position: absolute; top: -7px; inset-inline-end: -9px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--primary); color: var(--primary-ink); font-size: 11.5px; font-weight: 700; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--bg); }
 /* The main button, across the whole sidebar, in the forest colour. */
-.btn.post { align-self: stretch; min-height: 52px; margin-top: 14px; border: 0; border-radius: 999px; background: var(--primary); color: var(--primary-ink); box-shadow: none; font-size: 17px; font-weight: 700; }
+.btn.post { align-self: stretch; min-height: 52px; margin-top: 14px; margin-inline: 10px; border: 0; border-radius: 999px; background: var(--primary); color: var(--primary-ink); box-shadow: none; font-size: 17px; font-weight: 700; }
 .btn.post:hover { filter: none; opacity: 0.88; }
 .btn.post:active { transform: none; }
 .btn.post .icon { display: none; }
@@ -146,6 +151,13 @@ legend { padding: 0; }
 .segmented button:hover { color: var(--ink); }
 .segmented button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 14%); }
 .segmented .icon { width: 17px; height: 17px; }
+/* A choice not ready yet: faded and still under the pointer. A part of a page not ready yet has a small round
+   "soon" beside its heading, and everything under it faded and still. */
+.segmented button:disabled { color: var(--ink-3); cursor: default; }
+.segmented button:disabled:hover { color: var(--ink-3); }
+.soon-title { display: flex; align-items: center; gap: 10px; }
+.soon { padding: 2px 10px; border-radius: 999px; background: color-mix(in srgb, var(--sky-4) 30%, var(--surface)); color: color-mix(in srgb, var(--sky-4) 30%, var(--ink)); font-size: 12.5px; font-weight: 700; line-height: 1.6; }
+.later { opacity: 0.5; pointer-events: none; user-select: none; }
 .table-note { padding: 10px 16px 4px; }
 
 main { overflow-y: auto; }
@@ -154,6 +166,8 @@ main:focus, main:focus-visible { outline: none; }
 .page.wide { max-width: 1560px; }
 .page.narrow { max-width: 760px; width: 100%; }
 .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+/* A save that failed, wherever things save on their own (SaveNote in autosave.tsx): small red words. */
+.save-note { color: var(--bad); font-size: 13px; font-weight: 500; }
 .sub { color: var(--ink-2); margin-top: 6px; font-size: 16px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 22px; box-shadow: var(--shadow); }
 .stack { display: flex; flex-direction: column; gap: 12px; }
@@ -189,10 +203,99 @@ input[type="text"], input[type="search"], input[type="number"], input[type="emai
 input:hover, select:hover, textarea:hover { border-color: var(--ink-3); }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--soft); }
 textarea { resize: vertical; width: 100%; }
+/* A list to pick from (Select in select.tsx): a box like the text boxes, its chevron turning over as it opens,
+   and a round panel like the jobs page's menus, its rows lit softly under the pointer or the arrow keys and the
+   one in use ticked and bolder, a search box on top for a long list. The panel grows in from the box's side and
+   fades out; it is a popover, so it stays shown while it fades (overlay, display). */
+.select {
+  display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 42px; padding: 8px 12px; border: 1.5px solid var(--line); border-radius: 11px;
+  background: var(--surface); color: var(--ink); font: inherit; text-align: start; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.select:hover { border-color: var(--ink-3); }
+.select:focus-visible, .select.open { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--soft); }
+.select:disabled { opacity: 0.55; cursor: default; }
+.select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-blank { color: var(--ink-3); }
+.select > .icon { flex: none; width: 18px; height: 18px; color: var(--ink-2); transition: rotate 0.2s ease; }
+.select.open > .icon-down { rotate: 180deg; }
+.select.country { flex: 1 1 200px; }
+/* A dot of a choice's colour (an option's tone): an area's rating green, teal, amber or red, none an empty ring. */
+.select-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--dot, transparent); }
+.dot-near { --dot: var(--good); }
+.dot-ok { --dot: var(--sky-2); }
+.dot-edge { --dot: var(--warn); }
+.dot-far { --dot: var(--bad); }
+.dot-unset { box-shadow: inset 0 0 0 1.5px var(--ink-3); }
+/* An area's rating: a round button in the rating's own soft colour, its dot, its name and the chevron. */
+.select.tier {
+  flex: none; width: 158px; min-height: 38px; gap: 8px; padding: 6px 14px; border: 1px solid transparent; border-radius: 999px;
+  background: color-mix(in srgb, var(--tone) 14%, var(--surface)); color: color-mix(in srgb, var(--tone) 62%, var(--ink)); font-size: 14px; font-weight: 600;
+}
+.select.tier > .icon { color: currentColor; opacity: 0.65; }
+.select.tier:hover { border-color: color-mix(in srgb, var(--tone) 35%, transparent); }
+.select.tier.open, .select.tier:focus-visible { border-color: color-mix(in srgb, var(--tone) 45%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) 16%, transparent); }
+.tier.tone-near { --tone: var(--good); }
+.tier.tone-ok { --tone: var(--sky-2); }
+.tier.tone-edge { --tone: var(--warn); }
+.tier.tone-far { --tone: var(--bad); }
+.select.tier.tone-unset { --tone: var(--ink-3); border-color: var(--line); background: var(--surface); color: var(--ink-2); }
+.select-panel {
+  inset: auto; margin: 0; flex-direction: column; max-width: calc(100vw - 16px); max-height: var(--room, 320px); padding: 6px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); box-shadow: 0 14px 40px rgb(0 0 0 / 16%); overflow: hidden;
+  opacity: 0; scale: 0.97; translate: 0 -4px; transform-origin: top;
+  transition: opacity 0.14s ease, scale 0.14s ease, translate 0.14s ease, overlay 0.14s allow-discrete, display 0.14s allow-discrete;
+}
+.select-panel[data-side="up"] { translate: 0 4px; transform-origin: bottom; }
+.select-panel:popover-open { display: flex; opacity: 1; scale: 1; translate: 0 0; transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1); }
+@starting-style {
+  .select-panel:popover-open { opacity: 0; scale: 0.97; translate: 0 -4px; }
+  .select-panel[data-side="up"]:popover-open { translate: 0 4px; }
+}
+.select-find { display: flex; flex: none; align-items: center; gap: 8px; margin-bottom: 6px; padding-inline: 10px; border-radius: 10px; background: var(--soft); cursor: text; }
+.select-find .icon { flex: none; width: 16px; height: 16px; color: var(--ink-3); }
+.select-find input[type="text"] { flex: 1; min-width: 0; min-height: 38px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; text-align: start; }
+.select-scroll { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.select-list { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; outline: none; }
+.select-option { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 9px; font-size: 14.5px; cursor: pointer; }
+.select-option.active { background: var(--hover-soft); }
+.select-option[aria-selected="true"] { font-weight: 600; }
+.select-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-option .icon { flex: none; width: 16px; height: 16px; }
+.select-option:has(.select-note) { align-items: flex-start; }
+.select-option:has(.select-note) .icon { margin-top: 3px; }
+.select-note { display: block; max-width: 290px; margin-top: 1px; color: var(--ink-2); font-size: 12.5px; font-weight: 400; line-height: 1.4; white-space: normal; }
+.select-empty { margin: 0; padding: 14px 10px; color: var(--ink-2); font-size: 14px; text-align: center; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .field-label { font-size: 14.5px; font-weight: 600; }
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.area-list { display: flex; flex-direction: column; }
 .area-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 7px; border-bottom: 1px solid var(--line); }
+.area-list .area-row:last-child { border-bottom: 0; }
+.area-end { display: flex; align-items: center; gap: 4px; }
+.area-x { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease; }
+.area-x:hover { background: color-mix(in srgb, var(--bad) 10%, var(--surface)); color: var(--bad); }
+.area-x .icon { width: 16px; height: 16px; }
+/* A row to add something (a market, an area): its fields, and a round green + at the end; and a light link for a
+   shortcut, like remote work. */
+.add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.add-row input[type="text"] { flex: 1 1 180px; min-width: 0; }
+.add-go {
+  flex: none; display: grid; place-items: center; width: 42px; height: 42px; border: 0; border-radius: 50%; background: var(--primary); color: var(--primary-ink);
+  cursor: pointer; transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+.add-go:hover { background: var(--primary-edge); }
+.add-go:disabled { opacity: 0.35; cursor: default; }
+.add-go .icon { width: 20px; height: 20px; }
+.add-link {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding-block: 6px; padding-inline: 10px 14px; border: 0; border-radius: 999px;
+  background: none; color: var(--primary); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 0.2s ease;
+}
+.add-link:hover { background: var(--hover-soft); }
+/* A section's heading with a shortcut at the line's other end (remote work, by the markets' heading). */
+.section-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 12px; }
+.section-head .add-link { align-self: center; }
+.add-link:disabled { opacity: 0.4; cursor: default; }
+.add-link .icon { width: 16px; height: 16px; }
 .check { display: flex; align-items: center; gap: 9px; font-weight: 500; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--primary); }
 .row input[type="text"], .row input[type="email"], .row input[type="password"] { flex: 1 1 200px; min-width: 0; }
@@ -203,8 +306,10 @@ textarea { resize: vertical; width: 100%; }
 .tag { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px 4px 12px; border-radius: 999px; background: var(--soft); font-size: 14px; }
 [dir="rtl"] .tag { padding: 4px 12px 4px 8px; }
 .tag.plain { padding-inline: 12px; }
-.tag-x { background: none; border: 0; padding: 0 3px; color: var(--ink-2); font: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
+.tag-x { display: grid; place-items: center; background: none; border: 0; padding: 0 3px; color: var(--ink-2); font: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
 .tag-x:hover { color: var(--bad); }
+.tag-x .icon { width: 13px; height: 13px; }
+.place-tag > .icon { width: 14px; height: 14px; color: var(--ink-3); }
 .chips { display: flex; flex-wrap: wrap; gap: 7px; }
 /* The roles to choose from, by field: a round button each, outlined, filled in the forest colour with a tick once
    chosen. */
@@ -264,6 +369,66 @@ textarea { resize: vertical; width: 100%; }
 .toast-pip { width: 34px; flex: none; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 
+/* Pip waiting for an answer (PeekingPip in app.tsx), in the bottom corner by the sidebar. Its frame starts right
+   at the sidebar's edge and hides whatever is past it, so Pip, standing partly past that edge and leaning out,
+   seems to peek from behind the sidebar. --away is the way to the sidebar. Pip slides out and leans out a little
+   further every few seconds; its speech
+   bubble pops up a moment later; both go back when nothing waits. The frame lets clicks through but on Pip and
+   the bubble. */
+.peek {
+  --away: -1;
+  position: fixed; z-index: 15; bottom: 0; inset-inline-start: 275px; display: flex; align-items: flex-end;
+  padding: 40px 28px 4px 0; overflow: hidden; color: var(--ink); text-decoration: none; pointer-events: none;
+}
+[dir="rtl"] .peek { --away: 1; padding: 40px 0 4px 28px; }
+.peek-pip, .peek-say { pointer-events: auto; }
+.peek-pip {
+  flex: none; width: 88px; margin-inline-start: -24px; transform-origin: 50% 100%; rotate: calc(var(--away) * -8deg);
+  animation: peek-out 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.25) both, peek-lean 5s ease-in-out 1.6s infinite;
+}
+/* No shadow under its feet here, where it stands on the screen's edge rather than on the ground. */
+.peek-pip .pip-shadow { display: none; }
+@keyframes peek-out { from { translate: calc(var(--away) * 100%) 0; rotate: 0deg; } }
+@keyframes peek-lean {
+  0%, 74%, 100% { translate: 0 0; rotate: calc(var(--away) * -8deg); }
+  80%, 88% { translate: calc(var(--away) * -14px) 0; rotate: calc(var(--away) * -16deg); }
+}
+.peek.leaving .peek-pip { animation: peek-in 0.42s ease-in forwards; }
+@keyframes peek-in { to { translate: calc(var(--away) * 100%) 0; rotate: 0deg; } }
+/* The same on a phone, up from under the bottom edge and back down (in the narrow-window rules below). */
+@keyframes peek-up { from { translate: 0 100%; } }
+@keyframes peek-bob { 0%, 74%, 100% { translate: 0 0; } 80%, 88% { translate: 0 -8px; } }
+@keyframes peek-down { to { translate: 0 100%; } }
+/* The speech bubble, drawn in pixels like Pip: a white bubble in Pip's dark outline, three pixels thick, its
+   corners in steps, what it says in the pixel font on one line, and a stepped tail down to Pip's head. It pops up from the tail
+   with a bounce, rises a little under the pointer, and shrinks back into the tail as it goes. */
+.peek-say {
+  --say-ink: #2a2236;
+  position: relative; flex: none; max-width: 250px; margin-bottom: 92px; margin-inline-start: -22px; transform-origin: calc(100% - 24px) 100%;
+  filter: drop-shadow(0 4px 0 rgb(42 34 54 / 14%)); transition: translate 0.2s ease;
+  animation: say-in 0.4s cubic-bezier(0.3, 1.6, 0.5, 1) 0.45s both;
+}
+[dir="ltr"] .peek-say { transform-origin: 24px 100%; }
+.peek-edge {
+  display: block; padding: 3px; background: var(--say-ink);
+  clip-path: polygon(0 6px, 3px 6px, 3px 3px, 6px 3px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px,
+    100% calc(100% - 6px), calc(100% - 3px) calc(100% - 6px), calc(100% - 3px) calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%,
+    6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px));
+}
+.peek-words {
+  display: block; padding: 10px 16px 11px; background: #fff; color: var(--say-ink); font-family: var(--pixel); font-size: 23px; font-weight: 700; line-height: 1; white-space: nowrap;
+  clip-path: polygon(0 3px, 3px 3px, 3px 0, calc(100% - 3px) 0, calc(100% - 3px) 3px, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) calc(100% - 3px),
+    calc(100% - 3px) 100%, 3px 100%, 3px calc(100% - 3px), 0 calc(100% - 3px));
+}
+.peek-tail { position: absolute; top: calc(100% - 3px); inset-inline-start: 18px; width: 18px; height: 15px; }
+[dir="ltr"] .peek-tail { scale: -1 1; }
+.tail-edge { fill: var(--say-ink); }
+.tail-fill { fill: #fff; }
+.peek:hover .peek-say { translate: 0 -3px; }
+@keyframes say-in { from { opacity: 0; scale: 0.4; } }
+.peek.leaving .peek-say { animation: say-out 0.22s ease-in forwards; }
+@keyframes say-out { to { opacity: 0; scale: 0.4; } }
+
 /* Home. The banner is the one place in the app in pixel art: the login's forest at rest, the next step on a
    board like the login's, and the journey along the ground, in blocks of --px and the pixel font. */
 /* A one-block outline in --ring-c with stepped corners. Declared on each element so its own --ring-c is used. */
@@ -286,6 +451,7 @@ textarea { resize: vertical; width: 100%; }
 .hero-hi { color: var(--board-ink-2); font-size: 15px; }
 .hero-card h1 { font-family: var(--pixel); font-size: 40px; font-weight: 800; line-height: 1.1; }
 .hero-text { color: var(--board-ink-2); font-size: 16.5px; margin-bottom: 12px; }
+.hero-line { display: block; }
 /* The banner's button is a pixel block, lit along the top, with a thick edge below that presses in; .pixel gives
    another button the same look (the empty jobs list's). */
 .hero .btn.cta, .btn.pixel {
@@ -422,7 +588,10 @@ textarea { resize: vertical; width: 100%; }
 @keyframes breathe { 0%, 100% { opacity: 0.6; transform: scale(0.9, 0.94); } 50% { opacity: 1; transform: scale(1.08, 1.04); } }
 /* Six clouds, one of each rainbow colour, ovals set round the box that drift round their own places, turn, and
    stretch one way then the other, so the colours keep meeting and changing shape; two also shift a little in hue. */
-.sky-blob { --tint: var(--sky-1); width: 460px; height: 340px; margin: -170px 0 0 -230px; background: radial-gradient(closest-side, color-mix(in srgb, var(--tint) 34%, transparent), transparent); animation: drift 23s ease-in-out infinite; }
+.sky-blob {
+  --tint: var(--sky-1); width: 460px; height: 340px; margin: -170px 0 0 -230px; background: radial-gradient(closest-side, color-mix(in srgb, var(--tint) 34%, transparent), transparent);
+  transform: translate(var(--dx, 0), var(--dy, 0)); animation: drift 23s ease-in-out infinite;
+}
 .sky-blob-1 { --tint: var(--sky-1); --dx: -240px; --dy: -40px; }
 .sky-blob-2 { --tint: var(--sky-2); --dx: -100px; --dy: 120px; animation-duration: 27s; animation-delay: -5s; }
 .sky-blob-3 { --tint: var(--sky-3); --dx: 230px; --dy: -70px; animation-duration: 25s; animation-delay: -11s; }
@@ -470,8 +639,8 @@ textarea { resize: vertical; width: 100%; }
    and its caret, keep still. Emptied, the button rolls back out the way it came, speeding up as it goes, with the
    place still open (slot-open, kept by jobs.tsx for the roll's length), and only then does the place close and
    the other two slide back over it. */
-.seek-box { --out: 1; }
-:root[dir="rtl"] .seek-box { --out: -1; }
+.seek-box, .composer-box { --out: 1; }
+:root[dir="rtl"] :is(.seek-box, .composer-box) { --out: -1; }
 .seek-tools { display: flex; align-items: center; gap: 6px; align-self: stretch; margin-block: -7px; margin-inline-end: -8px; }
 .seek-icon, .seek-go, .seek-ai { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer; }
 .seek-icon { background: none; color: var(--ink-2); transition: background-color 0.2s ease, color 0.2s ease; }
@@ -480,7 +649,7 @@ textarea { resize: vertical; width: 100%; }
   position: relative; flex: none; align-self: stretch; width: 8px; margin-inline-start: -6px; overflow: hidden; pointer-events: none;
   border-start-end-radius: 999px; border-end-end-radius: 999px;
 }
-.seek-box.slot-open .seek-go-slot { width: 52px; margin-inline-start: 0; }
+:is(.seek-box, .composer-box).slot-open .seek-go-slot { width: 52px; margin-inline-start: 0; }
 /* Rolling: a turn of 135 degrees over the 52 pixels, about what a 44-pixel wheel turns. 0.45s each way, as
    ROLL_MS in jobs.tsx. */
 .seek-go {
@@ -488,11 +657,11 @@ textarea { resize: vertical; width: 100%; }
   translate: calc(var(--out) * 52px) 0; rotate: calc(var(--out) * 135deg);
   transition: translate 0.45s cubic-bezier(0.5, 0, 0.75, 0.2), rotate 0.45s cubic-bezier(0.5, 0, 0.75, 0.2);
 }
-.seek-box.typing .seek-go {
+:is(.seek-box, .composer-box).typing .seek-go {
   pointer-events: auto; translate: 0 0; rotate: 0deg;
   transition: translate 0.45s cubic-bezier(0.22, 0.8, 0.3, 1), rotate 0.45s cubic-bezier(0.22, 0.8, 0.3, 1);
 }
-.seek-box.typing .seek-go:disabled { opacity: 0.4; cursor: default; }
+:is(.seek-box, .composer-box).typing .seek-go:disabled { opacity: 0.4; cursor: default; }
 /* The sparkles: a round button in the forest rainbow, its colours always turning round it like a chroma, with a
    soft glow of the same colours about it, brighter under the pointer and while its menu is open. */
 @property --chroma { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
@@ -505,18 +674,128 @@ textarea { resize: vertical; width: 100%; }
 .seek-ai:hover::before, .seek-ai[aria-expanded="true"]::before { opacity: 0.95; }
 .seek-ai .icon { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
 @keyframes chroma { to { --chroma: 360deg; } }
-/* The menus open under the box's end, as wide as a column of fields. */
+/* The menus open under the box's end, their top level with the role buttons' (the search's gap of 18, the
+   buttons' 4 above them, and the box's border), popping like a chat app's: a quick fade and grow from the top. */
 .seek-panel {
-  position: absolute; z-index: 20; top: calc(100% + 14px); inset-inline-end: 0; width: 330px; display: flex; flex-direction: column; gap: 12px; padding: 16px;
-  border: 1px solid var(--line); border-radius: 16px; background: var(--surface); box-shadow: 0 14px 40px rgb(0 0 0 / 16%);
+  position: absolute; z-index: 20; top: calc(100% + 23px); inset-inline-end: 0; width: 330px; display: flex; flex-direction: column; gap: 12px; padding: 16px;
+  border: 1px solid var(--line); border-radius: 18px; background: var(--surface); box-shadow: 0 14px 40px rgb(0 0 0 / 16%);
+  transform-origin: top; animation: panel-in 0.16s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
-.seek-panel select { width: 100%; }
-.seek-where { color: var(--ink-2); font-size: 14px; }
-.seek-more { color: var(--ink-2); font-size: 13.5px; }
-.seek-action { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 0; border-radius: 12px; background: none; color: var(--ink); font: inherit; text-align: start; cursor: pointer; transition: background-color 0.2s ease; }
-.seek-action:hover { background: var(--hover); }
-.seek-action strong { font-weight: 600; }
-.seek-action small { color: var(--ink-2); font-size: 13px; line-height: 1.4; }
+@keyframes panel-in { from { opacity: 0; scale: 0.97; translate: 0 -4px; } }
+/* Closing, it goes back the way it came, a little quicker, and takes no clicks on the way. */
+.seek-panel.closing { animation: panel-out 0.13s ease-in forwards; pointer-events: none; }
+@keyframes panel-out { to { opacity: 0; scale: 0.97; translate: 0 -4px; } }
+/* The filters menu: where, as a row that opens the window for changing it, then each option as a row of round
+   choices under its name, the one in use filled in ink, like a chat app's settings. As wide as its longest row of
+   choices, so each stays on one line while the window has room; past that they wrap. */
+.seek-filters { width: max-content; max-width: min(620px, calc(100vw - 32px)); gap: 2px; padding: 8px; }
+/* Where: a card with the pin in a round mark, the markets in bold and the hidden areas softer under them, and
+   Change as a small round button at its end, which darkens with the card under the pointer. */
+.where-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; margin-bottom: 6px; padding-block: 10px; padding-inline: 10px 12px; border: 1px solid var(--line); border-radius: 16px;
+  background: var(--surface); color: var(--ink); font: inherit; text-align: start; cursor: pointer; transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.where-row:hover { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); background: color-mix(in srgb, var(--ink) 3%, var(--surface)); }
+.where-mark {
+  flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
+  background: color-mix(in srgb, var(--sky-3) 22%, var(--surface)); color: color-mix(in srgb, var(--sky-3) 55%, var(--ink));
+}
+.where-mark .icon { width: 18px; height: 18px; }
+.where-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; line-height: 1.35; }
+.where-place { font-size: 14.5px; font-weight: 600; }
+.where-hidden { color: var(--ink-2); font-size: 12.5px; }
+.where-change {
+  flex: none; display: inline-flex; align-items: center; gap: 2px; padding-block: 5px; padding-inline: 12px 8px; border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, var(--surface)); color: var(--ink); font-size: 13px; font-weight: 600; transition: background-color 0.2s ease;
+}
+.where-change .icon { width: 15px; height: 15px; color: var(--ink-2); }
+.where-row:hover .where-change { background: color-mix(in srgb, var(--ink) 9%, var(--surface)); }
+.choice { display: flex; flex-direction: column; gap: 8px; padding: 10px 8px 8px; }
+.choice-label { color: var(--ink-2); font-size: 13px; font-weight: 600; }
+.choice-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice-option {
+  padding: 6px 13px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--ink); font: inherit; font-size: 13.5px; cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.choice-option:hover { border-color: color-mix(in srgb, var(--ink) 12%, var(--line)); background: var(--hover-soft); }
+.choice-option[aria-checked="true"] { border-color: var(--ink); background: var(--ink); color: var(--bg); }
+/* The window for where to search, like a chat app's settings window: in the middle over a dimmed page, round,
+   a title with a close button, the markets and the areas in sections that scroll if they must, and Save at the
+   foot. It fades and grows in. */
+.where-dialog {
+  width: min(600px, calc(100vw - 32px)); max-height: min(720px, calc(100dvh - 48px)); padding: 0; border: 1px solid var(--line); border-radius: 20px;
+  background: var(--surface); color: var(--ink); box-shadow: 0 24px 80px rgb(0 0 0 / 28%); overflow: hidden;
+}
+.where-dialog[open] { animation: dialog-in 0.2s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.where-dialog::backdrop { background: rgb(0 0 0 / 35%); backdrop-filter: blur(2px); }
+.where-dialog[open]::backdrop { animation: backdrop-in 0.2s ease; }
+@keyframes dialog-in { from { opacity: 0; scale: 0.96; } }
+@keyframes backdrop-in { from { opacity: 0; } }
+/* Closing, the same in reverse, a little quicker (CLOSE_MS in jobs.tsx), and nothing in it takes clicks meanwhile. */
+.where-dialog.closing { pointer-events: none; animation: dialog-out 0.16s ease-in forwards; }
+.where-dialog.closing::backdrop { animation: backdrop-out 0.16s ease-in forwards; }
+@keyframes dialog-out { to { opacity: 0; scale: 0.96; } }
+@keyframes backdrop-out { to { opacity: 0; } }
+.where-sheet { display: flex; flex-direction: column; max-height: inherit; }
+.where-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px 14px; border-bottom: 1px solid var(--line); }
+.where-head h2 { flex: 1; font-size: 22px; font-weight: 600; }
+.where-close {
+  display: grid; place-items: center; flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: none; color: var(--ink-2); cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.where-close:hover { background: var(--hover); color: var(--ink); }
+/* The window's sections scroll with a slim bar of their own (ThinBar in kit.tsx), lighter than the page's: the
+   browser's is hidden, and ours is a thin round bar at the inner end with nothing behind it and no arrows, seen
+   while it scrolls or the pointer is in its frame, a little bolder under the pointer and while dragged. The
+   lists to pick from (.select-scroll) have it too. */
+.where-scroll { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.where-body { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px; scrollbar-width: none; }
+.thin-bar { position: absolute; z-index: 1; inset-inline-end: 3px; width: 12px; opacity: 0; touch-action: none; transition: opacity 0.3s ease; }
+.thin-bar::before { content: ""; position: absolute; inset: 0 4px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 28%, transparent); transition: inset 0.15s ease, background-color 0.15s ease; }
+.thin-bar.awake, :hover > .thin-bar { opacity: 1; }
+.thin-bar:hover::before, .thin-bar.dragging::before { inset: 0 3px; background: color-mix(in srgb, var(--ink) 45%, transparent); }
+.where-section { display: flex; flex-direction: column; gap: 10px; padding-block: 18px; }
+.where-section + .where-section { border-top: 1px solid var(--line); }
+.where-section h3 { font-size: 15px; font-weight: 600; }
+/* An area's name and its rating's list beside it; the window's fields round, like its buttons. */
+.where-section .area-row { min-height: 52px; }
+.where-dialog .add-row input[type="text"], .where-dialog .add-row .select.country { min-height: 42px; border-radius: 999px; padding-inline: 16px; }
+/* The sparkles' menu, Pip's two jobs that use Claude. A faint glow of Claude's own colour at its top, a heading
+   with Claude's mark on a round tile, and a warning, in the warning colours, that each job uses the user's
+   Claude tokens. Each job is a plain card; under the pointer its frame lights up in the sparkles' turning
+   colours, a light shadow comes up under it and an arrow slides in, each fading in and out. */
+.seek-ai-panel {
+  --claude: #d97757;
+  width: 370px; gap: 8px; padding: 10px;
+  background: radial-gradient(120% 110px at 50% 0, color-mix(in srgb, var(--claude) 12%, transparent), transparent) no-repeat, var(--surface);
+}
+.ai-head { display: flex; align-items: center; gap: 11px; padding: 6px 6px 2px; font-size: 15px; }
+.ai-head strong { font-weight: 700; }
+.ai-claude { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: color-mix(in srgb, var(--claude) 16%, var(--surface)); }
+.claude-mark { width: 20px; height: 20px; fill: var(--claude, #d97757); }
+.ai-warn {
+  display: flex; align-items: flex-start; gap: 9px; margin: 0 0 2px; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); border-radius: 12px;
+  background: var(--warn-soft); color: color-mix(in srgb, var(--warn) 62%, var(--ink)); font-size: 13px; line-height: 1.45;
+}
+.ai-warn .icon { flex: none; width: 16px; height: 16px; margin-top: 1px; color: var(--warn); }
+.seek-action {
+  position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--surface); color: var(--ink); font: inherit; text-align: start; cursor: pointer; transition: box-shadow 0.25s ease;
+}
+.seek-action::before {
+  content: ""; position: absolute; inset: -1px; padding: 1.5px; border-radius: inherit; pointer-events: none;
+  background: conic-gradient(from var(--chroma), var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3));
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  opacity: 0; transition: opacity 0.25s ease; animation: chroma 5s linear infinite;
+}
+.seek-action:hover, .seek-action:focus-visible { outline: none; box-shadow: 0 8px 22px rgb(0 0 0 / 8%); }
+.seek-action:hover::before, .seek-action:focus-visible::before { opacity: 1; }
+.action-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.action-text strong { font-weight: 600; }
+.action-text small { color: var(--ink-2); font-size: 13px; line-height: 1.4; }
+.seek-action > .icon-onward { flex: none; width: 18px; height: 18px; color: var(--ink-2); opacity: 0; translate: 6px 0; transition: opacity 0.2s ease, translate 0.2s ease; }
+[dir="ltr"] .seek-action > .icon-onward { translate: -6px 0; }
+.seek-action:hover > .icon-onward, .seek-action:focus-visible > .icon-onward { opacity: 1; translate: 0 0; }
 /* The first roles stay in a straight row. The + releases the rest down an inward-curving fan, without moving
    the search box, in more than one column when they don't all fit down the window. Each glass label unfolds
    from the trigger, then folds back in the opposite order. */
@@ -585,7 +864,18 @@ textarea { resize: vertical; width: 100%; }
 .role-stack[data-open="true"] .role-fan-item:hover,
 .role-stack[data-open="true"] .role-fan-item:focus-visible { z-index: 1; }
 .seek-note { color: var(--ink-2); text-align: center; }
-.seek-status { justify-content: center; animation: rise-in 0.4s ease both 0.25s; }
+/* While it searches: in the middle of the page (the jobs page fills the window), Pip's head mark in grey,
+   breathing, inside a thin grey ring that turns. Nothing is written; its label is for screen readers. It fades in
+   after a moment, so a quick search shows nothing. */
+.page.jobs-page { position: relative; }
+.seek-loading {
+  position: absolute; top: 50%; left: 50%; display: grid; place-items: center; width: 64px; height: 64px; translate: -50% -50%;
+  color: var(--ink-3); animation: loading-in 0.3s ease 0.25s both;
+}
+@keyframes loading-in { from { opacity: 0; scale: 0.9; } }
+.seek-ring { position: absolute; inset: 0; border: 2.5px solid color-mix(in srgb, var(--ink-3) 18%, transparent); border-top-color: var(--ink-3); border-radius: 50%; animation: spin 0.9s linear infinite; }
+.seek-loading-mark { width: 28px; animation: mark-breathe 1.8s ease-in-out infinite; }
+@keyframes mark-breathe { 50% { scale: 0.9; opacity: 0.65; } }
 /* The results rise in once they come: the count, the list, and then its rows one after another (--i, the row's
    place, from jobs.tsx). Each search's results do it afresh. */
 .seek-results { display: flex; flex-direction: column; gap: 10px; width: min(760px, 100%); margin-top: 10px; }
@@ -599,7 +889,39 @@ textarea { resize: vertical; width: 100%; }
    language's order (plaintext) but line up on the page's side whatever it is: with plaintext, start would follow
    each title's language, so an English title would sit on the left of a Hebrew page. */
 .results { display: flex; flex-direction: column; }
-.seek-results > .note { padding-inline: 12px; }
+/* The foot of the results (ResultsEnd): the earth, in the page's ink, across the whole width of the main area
+   and down to its foot, past the page's padding, growing to fill the window when the results are few. For that
+   the jobs page is as wide as the main area, with its side padding on the search instead, and at least as tall.
+   The earth's blocks dissolve in from the white at its top (Earth, drawn on a canvas). A shaft with its ladder
+   goes down at the start side to a pool of lamplight where Pip, in grey, digs; the words sit in the middle in
+   white. It fades in after the last result. Pip swings the pickaxe back and forth (dig-a raised, dig-b struck,
+   with earth flying). */
+.page.jobs-page { max-width: none; min-height: 100%; padding-inline: 0; }
+.jobs-page .seek { padding-inline: 38px; }
+.mine {
+  position: relative; flex: 1 0 auto; display: flex; flex-direction: column; min-height: 380px; margin-bottom: -80px;
+  animation: mine-in 0.6s ease both; animation-delay: calc(150ms + var(--i, 0) * 45ms);
+}
+@keyframes mine-in { from { opacity: 0; } }
+/* All of it in greys, light and quiet, each buried thing and speck its own shade around one grey (Earth). */
+.mine-earth { position: absolute; inset: 0; width: 100%; height: 100%; color: var(--ink-3); }
+.mine-shaft {
+  position: absolute; top: 12px; bottom: 12px; inset-inline-start: 18%; width: 28px;
+  border-inline: 4px solid color-mix(in srgb, var(--ink-3) 40%, transparent);
+  background: repeating-linear-gradient(to bottom, transparent 0 14px, color-mix(in srgb, var(--ink-3) 40%, transparent) 14px 18px);
+}
+/* Pip beside the ladder's foot, drawn as grey lines like the rest, its tail toward the ladder and its pickaxe
+   swinging toward the page's middle (turned the other way when the page runs left to right). The words are black. */
+.mine-room { position: absolute; bottom: 0; inset-inline-start: calc(18% - 40px); width: 300px; height: 110px; }
+.mine-pip { position: absolute; bottom: 12px; inset-inline-start: 72px; width: 140px; color: color-mix(in srgb, var(--ink-3) 85%, transparent); }
+[dir="ltr"] .mine-pip { scale: -1 1; }
+.mine-words { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 134px 24px 40px; text-align: center; }
+.mine-title { color: var(--ink); font-family: var(--pixel); font-size: 34px; font-weight: 600; line-height: 1.1; }
+.mine-count { color: var(--ink-3); font-size: 15.5px; }
+.pip-digging .dig-a { animation: dig-a 0.9s steps(1) infinite; }
+.pip-digging .dig-b { opacity: 0; animation: dig-b 0.9s steps(1) infinite; }
+@keyframes dig-a { 0% { opacity: 1; } 60% { opacity: 0; } }
+@keyframes dig-b { 0% { opacity: 0; } 60% { opacity: 1; } }
 .result { position: relative; display: flex; align-items: flex-start; gap: 14px; padding: 14px 12px; border-radius: 14px; transition: background-color 0.2s ease; }
 .result + .result::before { content: ""; position: absolute; top: 0; inset-inline: 12px; border-top: 1px solid var(--line); transition: opacity 0.2s ease; }
 .result:hover { background: var(--hover); }
@@ -623,8 +945,12 @@ textarea { resize: vertical; width: 100%; }
 .result-chip.warn { background: color-mix(in srgb, var(--warn) 18%, var(--surface)); color: color-mix(in srgb, var(--warn) 55%, var(--ink)); }
 .result-chip.bad { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: color-mix(in srgb, var(--bad) 65%, var(--ink)); }
 .result-actions { flex: none; display: flex; gap: 6px; align-self: center; }
+/* A round button whose name floats over it, under the pointer or reached by the keyboard: a small white pill like
+   the page's menus, with a thin border, a soft shadow and a point down to the button, growing in a little after a
+   moment and fading as the pointer leaves. The page draws it, not the browser's own tooltip, and it takes no
+   clicks. */
 .result-act {
-  display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 50%;
+  position: relative; display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 50%;
   background: var(--surface); color: var(--ink-2); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
 }
 .result-act:hover { background: color-mix(in srgb, var(--ink) 7%, var(--surface)); color: var(--ink); }
@@ -632,6 +958,19 @@ textarea { resize: vertical; width: 100%; }
 .result-act.primary:hover { background: var(--primary-edge); color: var(--primary-ink); }
 .result-act .icon { width: 18px; height: 18px; }
 .result-act:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.result-act-label {
+  position: absolute; z-index: 5; bottom: calc(100% + 10px); left: 50%; padding: 6px 13px; border: 1px solid var(--line); border-radius: 999px;
+  background: var(--surface); color: var(--ink-2); box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
+  font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.3; white-space: nowrap; pointer-events: none;
+  opacity: 0; translate: -50% 4px; scale: 0.96; transform-origin: 50% 100%; transition: opacity 0.16s ease, translate 0.16s ease, scale 0.16s ease;
+}
+.result-act-label::after {
+  content: ""; position: absolute; top: calc(100% - 4px); left: 50%; width: 8px; height: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  background: var(--surface); translate: -50% 0; rotate: 45deg;
+}
+.result-act:is(:hover, :focus-visible) .result-act-label {
+  opacity: 1; translate: -50% 0; scale: 1; transition-delay: 0.25s; transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
 .joblist { padding: 0; overflow: hidden; }
 .job { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 16px 20px; }
 .job + .job { border-top: 1px solid var(--line); }
@@ -659,50 +998,231 @@ select.status { font-weight: 600; }
 .cmd p { color: var(--ink-2); font-size: 14.5px; flex: 1; }
 .cmd input { width: 100%; }
 
-/* Chat */
-.chat { display: grid; grid-template-columns: 270px minmax(0, 1fr); height: 100%; }
-.threads { border-inline-end: 1px solid var(--line); background: var(--surface); overflow-y: auto; padding: 14px 10px; display: flex; flex-direction: column; gap: 4px; }
-.threads .btn { margin-bottom: 8px; }
-.thread { display: flex; flex-direction: column; gap: 2px; padding: 9px 11px; border-radius: 10px; text-decoration: none; color: var(--ink); font-weight: 400; }
-.thread:hover { background: var(--surface-2); }
-.thread[aria-current="true"] { background: var(--soft); }
-.thread .ellipsis { font-size: 14px; font-weight: 600; }
-.convo { display: flex; flex-direction: column; min-height: 0; height: 100%; }
-.chat-head { padding: 12px 28px; border-bottom: 1px solid var(--line); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.chat-head .ellipsis { font-family: var(--head); font-weight: 600; font-size: 17px; }
-.log { flex: 1; overflow-y: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 12px; }
-.log > * { width: 100%; max-width: 780px; margin-inline: auto; }
-.msg-user { align-self: flex-end; width: auto !important; max-width: min(620px, 85%) !important; margin-inline: auto 0 !important; background: var(--soft); border-radius: 16px; padding: 10px 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.msg-pip { display: flex; gap: 12px; align-items: flex-start; }
-.msg-avatar { width: 38px; flex: none; margin-top: 2px; }
-.msg-text { min-width: 0; flex: 1; overflow-wrap: anywhere; }
-.typing .dots { display: flex; gap: 5px; padding: 14px 4px; }
+/* The conversations page (chat.tsx), like a chat app's: the open conversation, then the list of conversations on
+   the page's far side, as wide as the sidebar and padded like it, so the page is even. Only the messages and the
+   list scroll, each with the slim bar; the box to write in stays at the foot. In a narrower window the list
+   slides in over the page from its far side (below). */
+.chat { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 275px; height: 100%; }
+.chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.threads { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 8px 12px 14px; border-inline-start: 1px solid var(--line); background: var(--bg); }
+.thread-new {
+  display: flex; flex: none; align-items: center; gap: 12px; min-height: 46px; margin-top: 8px; padding-inline: 16px; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--ink); font-weight: 600; text-decoration: none; transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+.thread-new:hover { border-color: color-mix(in srgb, var(--ink) 14%, var(--line)); background: var(--hover-soft); }
+.thread-new .icon { width: 19px; height: 19px; }
+.threads-scroll { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.threads-list { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.thread-group { display: flex; flex-direction: column; gap: 1px; padding-top: 16px; }
+.thread-group h2 { padding: 0 12px 6px; color: var(--ink-3); font-family: inherit; font-size: 12.5px; font-weight: 600; }
+.thread {
+  display: flex; align-items: center; gap: 8px; min-height: 38px; padding-inline: 12px; border-radius: 10px; color: var(--ink); font-size: 14.5px;
+  text-decoration: none; transition: background-color 0.15s ease;
+}
+.thread:hover { background: var(--hover-soft); }
+.thread[aria-current="page"] { background: var(--hover); font-weight: 600; }
+.thread-title, .chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[dir="rtl"] :is(.thread-title, .chat-title) { text-align: right; }
+[dir="ltr"] :is(.thread-title, .chat-title) { text-align: left; }
+/* A conversation working pulses in blue; one waiting for you is amber, one that stopped red. */
+.thread-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.thread-dot.running { background: var(--live); animation: pulse 1.4s ease-in-out infinite; }
+.thread-dot.waiting { background: var(--warn); }
+.thread-dot.error { background: var(--bad); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+.threads-shade { display: none; }
+
+.chat-top { display: flex; flex: none; align-items: center; gap: 10px; min-height: 60px; padding: 10px 24px; }
+.chat-lists { display: none; flex: none; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; color: var(--ink-2); cursor: pointer; }
+.chat-lists:hover { background: var(--hover-soft); color: var(--ink); }
+.chat-lists .icon { width: 20px; height: 20px; }
+.chat-title { font-family: inherit; font-size: 16px; font-weight: 600; }
+.chat-state { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--hover-soft); font-size: 12.5px; font-weight: 600; }
+.chat-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chat-state.running { color: var(--live); }
+.chat-state.waiting { color: var(--warn); }
+.chat-state.error { color: var(--bad); }
+
+/* The messages in one column: yours in a soft round bubble at the column's end, Pip's as plain text beside a small
+   Pip; the tool calls between them as one folded line of steps; a request or a question as a card. */
+.convo { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.log-frame { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.log { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.log-column { display: flex; flex-direction: column; gap: 18px; width: min(760px, 100% - 48px); margin: 0 auto; padding: 8px 0 28px; }
+.msg-user { display: flex; justify-content: flex-end; }
+.msg-bubble {
+  max-width: min(560px, 80%); padding: 10px 16px; border-radius: 20px; background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+  line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.msg-pip { display: flex; align-items: flex-start; gap: 14px; }
+.msg-avatar { flex: none; width: 30px; margin-top: 3px; }
+.msg-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.typing-text { padding-top: 5px; color: var(--ink-3); font-size: 14px; animation: pulse 1.4s ease-in-out infinite; }
 .dots i { width: 7px; height: 7px; background: var(--ink-3); animation: dot 1.2s steps(1) infinite; }
 .dots i:nth-child(2) { animation-delay: 0.2s; } .dots i:nth-child(3) { animation-delay: 0.4s; }
 @keyframes dot { 0% { opacity: 0.25; } 30% { opacity: 1; } 60% { opacity: 0.25; } }
-.tool { color: var(--ink-2); font-size: 13.5px; }
-.tool summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+.steps { align-self: flex-start; max-width: 100%; color: var(--ink-2); font-size: 13.5px; }
+.steps > summary {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 6px 12px; border-radius: 999px; background: var(--hover-soft);
+  cursor: pointer; list-style: none; transition: background-color 0.2s ease;
+}
+.steps > summary::-webkit-details-marker { display: none; }
+.steps > summary:hover { background: var(--hover); }
+.steps .icon { flex: none; width: 15px; height: 15px; }
+.steps > summary > .icon-down { transition: rotate 0.2s ease; }
+.steps[open] > summary > .icon-down { rotate: 180deg; }
+.steps.failed > summary > .icon-warn { color: var(--bad); }
+.steps .spinner { flex: none; width: 13px; height: 13px; }
+.steps ol { display: flex; flex-direction: column; gap: 7px; margin: 8px 0 0; margin-inline-start: 14px; padding: 4px 0; padding-inline-start: 16px; border-inline-start: 2px solid var(--line); list-style: none; }
+.tool { min-width: 0; }
+.tool-row, .tool summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tool summary { cursor: pointer; list-style: none; }
 .tool summary::-webkit-details-marker { display: none; }
-.tool summary::before { content: ""; width: 7px; height: 7px; background: var(--live); flex: none; }
-.tool.done summary::before { background: var(--ink-3); }
-.tool.failed summary::before { background: var(--bad); }
-.tool.nested { padding-inline-start: 18px; }
-.tool .pre { margin-top: 6px; max-height: 240px; overflow-y: auto; }
-.ask { border: 2px solid var(--cta); background: var(--warn-soft); border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
-.ask.settled { border: 1px dashed var(--line); background: none; padding: 8px 14px; color: var(--ink-2); font-size: 14px; }
-.ask-head { display: flex; align-items: center; gap: 10px; }
-.ask-pip { width: 40px; flex: none; }
-.ask .pre { max-height: 260px; overflow-y: auto; }
-.ask-title { font-weight: 700; }
-.option { display: flex; gap: 8px; align-items: flex-start; padding: 6px 2px; cursor: pointer; }
-.option input { margin-top: 5px; accent-color: var(--primary); }
-.option small { display: block; color: var(--ink-2); font-size: 13px; }
-.done-line { color: var(--ink-3); font-size: 13px; text-align: center; }
-.composer { border-top: 1px solid var(--line); background: var(--surface); padding: 12px 28px; }
-.composer form { max-width: 780px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
-.composer textarea { min-height: 44px; max-height: 180px; }
-.new-chat { display: flex; align-items: center; gap: 18px; }
-.new-chat-pip { width: 110px; flex: none; }
+.tool .icon { width: 14px; height: 14px; }
+.tool.done .icon { color: var(--ink-3); }
+.tool.failed .icon { color: var(--bad); }
+.tool.nested { padding-inline-start: 16px; }
+.tool .pre { max-height: 240px; margin-top: 6px; overflow: auto; font-size: 12.5px; }
+.ask-card {
+  display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); border-radius: 18px;
+  background: color-mix(in srgb, var(--warn-soft) 70%, var(--surface));
+}
+.ask-card-head { display: flex; align-items: center; gap: 10px; }
+.ask-pip { flex: none; width: 34px; }
+.ask-card .pre { max-height: 260px; margin: 0; overflow: auto; }
+.ask-hint { color: var(--ink-2); font-size: 12.5px; }
+.ask-question { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: 0; }
+.ask-question legend { margin-bottom: 6px; font-weight: 700; }
+.ask-option {
+  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  cursor: pointer; transition: border-color 0.2s ease;
+}
+.ask-option:hover { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); }
+.ask-option:has(input:checked) { border-color: var(--ink); }
+.ask-option input { margin-top: 4px; accent-color: var(--ink); }
+.ask-option strong { display: block; font-weight: 600; }
+.ask-option small { display: block; color: var(--ink-2); font-size: 13px; }
+.settled { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13.5px; }
+.settled .icon { flex: none; width: 15px; height: 15px; color: var(--good); }
+.settled.no .icon { color: var(--bad); }
+.done-line { color: var(--ink-3); font-size: 12.5px; text-align: center; }
+
+/* The documents the conversation made, as cards to open or save. */
+.chat-files { display: flex; flex-direction: column; gap: 8px; }
+.chat-files h2 { color: var(--ink-2); font-family: inherit; font-size: 13px; font-weight: 600; }
+.chat-file { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.chat-file-mark { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--bad) 12%, var(--surface)); color: var(--bad); }
+.chat-file-mark .icon { width: 20px; height: 20px; }
+.chat-file-name { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.chat-file-name > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-file-name > span { font-weight: 600; }
+.chat-file-name small { color: var(--ink-3); font-size: 12px; }
+[dir="rtl"] .chat-file-name > * { text-align: right; }
+.chat-file-act {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--hover-soft); color: var(--ink);
+  font-size: 13px; font-weight: 600; text-decoration: none; transition: background-color 0.2s ease;
+}
+.chat-file-act:hover { background: var(--hover); }
+.chat-file-act .icon { width: 15px; height: 15px; }
+
+/* The box to write in, shaped like the jobs search's: one pill-shaped row, the + at its start, the words, then the
+   pickers as round buttons and the go button's place at its end, the button green as the search's and rolling
+   in the same way (.seek-go-slot, above). A second line or a file opens the box up (tall): still round, the files
+   and the words over a row with the + at its start and the rest at its end. Full access shows a warning under it. */
+.composer { flex: none; width: min(760px, 100% - 32px); margin: 0 auto; padding-bottom: 18px; }
+.composer-box {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "attach text tools"; align-items: center; column-gap: 4px;
+  min-height: 58px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 6%); transition: border-color 0.2s ease;
+}
+.composer-box:focus-within { border-color: var(--primary); }
+.composer-box.tall { grid-template-areas: "files files files" "text text text" "attach . tools"; row-gap: 2px; padding-top: 10px; border-radius: 28px; }
+.composer-files { grid-area: files; }
+.composer textarea, .composer textarea:hover, .composer textarea:focus {
+  grid-area: text; width: 100%; height: 44px; min-height: 44px; max-height: 220px; padding: 10px 6px; border: 0; border-radius: 0; background: none; box-shadow: none;
+  line-height: 24px; text-align: start; resize: none; overflow: hidden;
+}
+.composer-box.tall textarea { overflow-y: auto; scrollbar-width: thin; }
+.composer-tools { grid-area: tools; display: flex; align-items: center; gap: 6px; align-self: stretch; margin-block: -6px; margin-inline-end: -8px; }
+.composer-box.tall .composer-tools { margin-block: 0 -6px; }
+.composer-box .seek-go { top: calc(50% - 22px); }
+.seek-go.stop { background: var(--ink); color: var(--bg); }
+.seek-go.stop .icon { width: 14px; height: 14px; fill: currentColor; }
+/* A file dragged over the box marks it; what is attached sits over the text, an image as a small picture and
+   anything else as a card with its name and size, each with a round × at its corner. */
+.composer-box.over { border-color: var(--ink); border-style: dashed; background: var(--hover-soft); }
+.composer-files { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 4px 4px; }
+.attached { position: relative; flex: none; display: flex; align-items: center; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+.attached.image { width: 64px; height: 64px; overflow: visible; }
+.attached.image img { width: 100%; height: 100%; border-radius: 13px; object-fit: cover; }
+.attached.file { gap: 10px; max-width: 240px; padding-block: 8px; padding-inline: 8px 12px; }
+.attached.failed { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); }
+.attached-mark { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; background: color-mix(in srgb, var(--bad) 12%, var(--surface)); color: var(--bad); }
+.attached-mark .icon { width: 18px; height: 18px; }
+.attached-mark .spinner { width: 16px; height: 16px; }
+.attached-name { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.attached-name > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attached-name > span { font-size: 13.5px; font-weight: 600; }
+.attached-name small { color: var(--ink-3); font-size: 12px; }
+[dir="rtl"] .attached-name > * { text-align: right; }
+.attached-x {
+  position: absolute; top: -7px; inset-inline-end: -7px; display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 2px solid var(--surface);
+  border-radius: 50%; background: var(--ink); color: var(--bg); cursor: pointer;
+}
+.attached-x .icon { width: 12px; height: 12px; }
+/* The + and the pickers: round buttons with an icon, like the search's settings button. */
+.composer-attach, .select.circle {
+  flex: none; display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 50%; background: none;
+  color: var(--ink-2); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+}
+.composer-attach { grid-area: attach; }
+.composer-attach:hover, .select.circle:hover, .select.circle.open { background: var(--hover); color: var(--ink); }
+.select.circle.open, .select.circle:focus-visible { box-shadow: none; }
+.select.circle:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.composer-attach .icon { width: 22px; height: 22px; }
+.select.circle > .icon { width: 20px; height: 20px; }
+.select.circle.access-full { background: color-mix(in srgb, var(--bad) 11%, var(--surface)); color: var(--bad); }
+.composer-error { display: flex; align-items: flex-start; gap: 8px; margin: 8px 8px 0; color: var(--bad); font-size: 12.5px; line-height: 1.45; }
+.composer-error .icon { flex: none; width: 15px; height: 15px; margin-top: 1px; }
+/* In a message: the pictures and files attached, at the same end as its words. */
+.msg-user { flex-direction: column; align-items: flex-end; gap: 6px; }
+.msg-files { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: flex-end; gap: 8px; max-width: min(560px, 80%); }
+.msg-image { display: block; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
+.msg-image img { display: block; max-width: 260px; max-height: 220px; object-fit: cover; }
+.msg-file { display: flex; align-items: center; gap: 10px; max-width: 260px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); text-decoration: none; }
+.msg-file:hover { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); }
+.composer-warn { display: flex; align-items: flex-start; gap: 8px; margin: 8px 8px 0; color: color-mix(in srgb, var(--bad) 80%, var(--ink)); font-size: 12.5px; line-height: 1.45; }
+.composer-warn .icon { flex: none; width: 15px; height: 15px; margin-top: 1px; }
+
+/* A new conversation: Pip and the question in the middle, the box under them, and a few starts as pills. */
+.chat-new { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; }
+.chat-new-body { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding-bottom: 12vh; }
+.chat-new-head { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.chat-new-pip { width: 74px; }
+.chat-new h1 { font-size: 28px; text-align: center; }
+.chat-new .composer { padding-bottom: 0; }
+.chat-starts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: min(760px, 100% - 32px); }
+.chat-start {
+  padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink-2); font: inherit; font-size: 13.5px;
+  cursor: pointer; transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+.chat-start:hover { border-color: color-mix(in srgb, var(--ink) 14%, var(--line)); background: var(--hover-soft); color: var(--ink); }
+
+/* Narrower windows: the list slides in over the page from its far side, from the button at the top. */
+@media (max-width: 1100px) {
+  .chat { grid-template-columns: minmax(0, 1fr); }
+  .chat-lists { display: grid; }
+  .threads {
+    --out: 1;
+    position: absolute; z-index: 30; inset-block: 0; inset-inline-end: 0; width: min(300px, 86vw); box-shadow: 0 0 40px rgb(0 0 0 / 18%);
+    translate: calc(var(--out) * 100%) 0; visibility: hidden; transition: translate 0.25s ease, visibility 0s linear 0.25s;
+  }
+  [dir="rtl"] .threads { --out: -1; }
+  .chat.lists-open .threads { translate: 0 0; visibility: visible; transition: translate 0.25s ease; }
+  .threads-shade { position: absolute; z-index: 29; inset: 0; display: block; border: 0; background: rgb(0 0 0 / 25%); animation: shade-in 0.2s ease; }
+  @keyframes shade-in { from { opacity: 0; } }
+  .chat-top { padding-inline: 12px; }
+}
 
 /* Markdown */
 .md > * + * { margin-top: 9px; }
@@ -866,8 +1386,14 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 }
 @keyframes boot-paw { 0% { opacity: 1; } 60% { opacity: 0.14; } }
 
+/* Lite, when the browser draws without the graphics card (public/boot.js): the sky stands still, the glass is
+   frosted without blurring what is behind it, the sparkles keep their colours still, and the window's backdrop
+   only dims. Those were what made the page crawl with hardware acceleration off. */
+html.lite .seek-sky *, html.lite .seek-ai, html.lite .seek-ai::before, html.lite .seek-action::before { animation: none !important; }
+html.lite :is(.seek-pill, .role-fan-item) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
+html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0 / 45%); }
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-status, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-ai, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .result-act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .seek-action, .seek-action::before, .seek-action > .icon, .seek-ai, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
   .pip-a { opacity: 1; }
 }
@@ -875,10 +1401,11 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 /* Narrower windows: the sidebar keeps only its icons, and the main button becomes a round plus. */
 @media (min-width: 861px) and (max-width: 1100px) {
   .shell { grid-template-columns: 88px minmax(0, 1fr); }
+  .peek { inset-inline-start: 88px; }
   .side { align-items: center; padding-inline: 8px; }
   .nav a { align-self: center; padding: 12px; }
   .nav-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  .btn.post { align-self: center; width: 52px; padding: 0; }
+  .btn.post { align-self: center; width: 52px; margin-inline: 0; padding: 0; }
   .btn.post span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .btn.post .icon { display: block; width: 24px; height: 24px; }
   .account { flex-direction: column; gap: 6px; padding: 8px 0; }
@@ -898,7 +1425,17 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
   .account-name { display: none; }
   .avatar { width: 34px; height: 34px; font-size: 15px; }
   .toast { bottom: 16px; }
+  /* No sidebar at the side here, so Pip peeks up from under the screen's bottom edge, in the same corner. */
+  .peek { inset-inline-start: 0; padding: 40px 16px 0; }
+  [dir="rtl"] .peek { padding: 40px 16px 0; }
+  .peek-pip { width: 70px; margin: 0 0 -22px; rotate: 0deg; animation: peek-up 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.25) both, peek-bob 5s ease-in-out 1.6s infinite; }
+  .peek.leaving .peek-pip { animation: peek-down 0.42s ease-in forwards; }
+  .peek-say { margin-bottom: 52px; margin-inline-start: -14px; }
   .page { padding: 20px 16px 100px; }
+  .jobs-page .seek { padding-inline: 16px; }
+  .mine { margin-bottom: -100px; }
+  .mine-words { padding-inline-start: calc(18% + 48px); }
+  .mine-title { font-size: 27px; }
   h1 { font-size: 27px; }
   .hero { --fade: 0px; height: auto; display: flex; flex-direction: column; background: var(--board-panel); }
   .hero .hero-forest { position: relative; height: 170px; }
@@ -918,13 +1455,15 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
   .seek-title { font-size: 24px; }
   .seek-panel { width: calc(100vw - 32px); }
   .table-wrap table { min-width: 820px; }
-  .chat { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .threads { max-height: 110px; border-inline-end: 0; border-bottom: 1px solid var(--line); }
-  .log, .composer, .chat-head { padding-inline: 14px; }
+  .log-column { width: calc(100% - 28px); }
+  .composer { width: calc(100% - 20px); padding-bottom: 10px; }
+  .chat-new h1 { font-size: 23px; }
+  .chat-file { gap: 8px; }
+  .chat-file-act { padding: 8px; }
+  .chat-file-act span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .job { flex-direction: column; align-items: stretch; }
   .cv-edit { grid-template-columns: minmax(0, 1fr); grid-auto-rows: 70vh; height: auto; }
   .files { grid-template-columns: minmax(0, 1fr); }
-  .new-chat-pip { width: 80px; }
   .login-top { padding: 12px 14px; }
   .login-card { padding: calc(var(--px) * 7); }
 }

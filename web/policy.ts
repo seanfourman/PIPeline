@@ -58,6 +58,13 @@ const isInside = (file: string, dir: string) => {
 
 export type Decision = { decision: "allow" | "ask"; rememberKey?: string };
 
+// How much a conversation may do without asking, picked per conversation in the chat. ask is everything above;
+// auto adds every edit inside the project, but for the files that change what the agent may do; full allows
+// everything, which a pasted posting could then use, so the chat warns before it is picked. The deny rules in
+// .claude/settings.json hold in every mode, since the SDK checks them before asking here.
+export type Access = "ask" | "auto" | "full";
+export const ACCESS: Access[] = ["ask", "auto", "full"];
+
 export function createPolicy(repo = REPO, tempRoot = path.join(os.tmpdir(), "claude")) {
   const prefixes = allowedPrefixes(repo);
   const resolve = (p: string) => (path.isAbsolute(p) ? p : path.join(repo, p));
@@ -80,7 +87,7 @@ export function createPolicy(repo = REPO, tempRoot = path.join(os.tmpdir(), "cla
     return prefixes.some((p) => cmd === p || cmd.startsWith(p + " "));
   };
 
-  return (tool: string, input: Record<string, unknown>, remembered: Set<string> = new Set()): Decision => {
+  const asked = (tool: string, input: Record<string, unknown>, remembered: Set<string>): Decision => {
     if (AUTO_TOOLS.has(tool)) return { decision: "allow" };
 
     if (READ_TOOLS.has(tool)) {
@@ -106,5 +113,21 @@ export function createPolicy(repo = REPO, tempRoot = path.join(os.tmpdir(), "cla
     if (tool === "Bash") return { decision: bashIsSafe(String(input.command ?? "")) ? "allow" : "ask" };
 
     return { decision: "ask" };
+  };
+
+  // An edit inside the project that does not change what the agent may do.
+  const projectEdit = (tool: string, input: Record<string, unknown>) => {
+    if (!WRITE_TOOLS.has(tool) && tool !== "NotebookEdit") return false;
+    const file = resolve(String(input.file_path ?? input.notebook_path ?? ""));
+    if (!isInside(file, repo)) return false;
+    const rel = path.relative(repo, file).replaceAll("\\", "/");
+    return !(NEVER_REMEMBER.some((n) => rel === n || rel.startsWith(n)) || rel.endsWith("SKILL.md"));
+  };
+
+  return (tool: string, input: Record<string, unknown>, remembered: Set<string> = new Set(), access: Access = "ask"): Decision => {
+    if (access === "full") return { decision: "allow" };
+    const verdict = asked(tool, input, remembered);
+    if (access === "auto" && verdict.decision === "ask" && projectEdit(tool, input)) return { decision: "allow" };
+    return verdict;
   };
 }

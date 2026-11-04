@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { companionLine, store, stored, useApp, type AppState } from "../app";
+import { store, stored, useApp, type AppState } from "../app";
 import { paintStill } from "../intro";
 import { Btn } from "../kit";
 import { Pip, PipAsleep, pixelPath } from "../pip";
@@ -95,7 +95,6 @@ export function appStats(s: AppState) {
   return { drafted: reached(["drafted"]), sent: reached(SENT), interview: reached(INTERVIEW), offer: reached(OFFER) };
 }
 
-export const SESSION_TONE: Record<string, string> = { running: "live", waiting: "warn", idle: "good", error: "bad" };
 
 export function nextStep(s: AppState, t: ReturnType<typeof useApp>["t"], start: (p: string) => void) {
   const go = (hash: string) => () => { location.hash = hash; };
@@ -208,23 +207,24 @@ function useWalk(current: number, list: React.RefObject<HTMLOListElement>) {
 }
 
 function Hero() {
-  const { s, t, view, start } = useApp();
+  const { s, t, start } = useApp();
   const settingsName = String(s.settings.displayName ?? "");
   const next = nextStep(s, t, start);
   const { stages, current, finished } = journey(s, t);
   const list = useRef<HTMLOListElement>(null);
   const place = useWalk(current, list);
   const walking = place !== current;
-  const line = companionLine(s, view, t);
-  // Pip waves on the journey; it doesn't show the working dots here, where nothing says what it is working on.
-  const mood = walking ? "idle" : finished ? "happy" : line.mood === "idle" || line.mood === "work" ? "wave" : line.mood;
+  // Pip waves on the journey, whatever it is doing elsewhere: nothing here says what it is working on or that a
+  // conversation waits for an answer, so neither its working dots nor its blinking "!" would make sense.
+  const mood = walking ? "idle" : finished ? "happy" : "wave";
   return (
     <section className="hero">
       <Forest />
       <div className="hero-card">
         <p className="hero-hi">{settingsName ? t("home.hi", { name: settingsName }) : t("home.hiNoName")} {t("home.intro")}</p>
         <h1 dir="auto">{next.title}</h1>
-        <p className="hero-text" dir="auto">{next.text}</p>
+        {/* Each sentence on a line of its own. */}
+        <p className="hero-text" dir="auto">{next.text.split(/(?<=[.!?])\s+/).map((line, i) => <span key={i} className="hero-line">{line}</span>)}</p>
         <Btn kind="cta" onClick={next.run}>{next.label}</Btn>
       </div>
       <ol ref={list} className="stations" aria-label={t("home.journey")}>

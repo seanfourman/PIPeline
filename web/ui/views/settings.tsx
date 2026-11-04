@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { useApp } from "../app";
+import { LANGUAGES_ON, THEMES_ON, useApp } from "../app";
 import { AREA_NAMES_EN, type Lang } from "../i18n";
 import { api, Btn, Card, External, Field, Icon, Page, Spinner } from "../kit";
+import { SaveNote, useAutoSave } from "../autosave";
+import { Select } from "../select";
 import { fromList, listedRole, matchListed, ROLE_FIELDS, roleQuery } from "../../roles";
 
 const COUNTRY_CODES = "AD AE AF AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BJ BN BO BR BS BT BW BY BZ CA CD CF CG CH CI CL CM CN CO CR CU CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FR GA GB GD GE GH GM GN GQ GR GT GW GY HK HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KG KH KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MK ML MM MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NZ OM PA PE PG PH PK PL PR PS PT PY QA RO RS RU RW SA SC SD SE SG SI SK SL SN SO SR SV SY SZ TD TG TH TJ TM TN TR TT TW TZ UA UG US UY UZ VE VN YE ZA ZM ZW".split(" ");
@@ -13,13 +15,119 @@ const regionName = (code: string, lang: Lang) => { try { return new Intl.Display
 export const marketLabel = (m: { code: string; label?: string }, lang: Lang, t: (k: string) => string) => (m.code === "REMOTE" ? t("settings.remote") : regionName(m.code, lang));
 export const areaName = (name: string, lang: Lang) => (lang === "en" ? AREA_NAMES_EN[name] ?? name : name);
 
-function TierSelect({ value, onChange, unset }: { value: string; onChange: (v: string) => void; unset?: boolean }) {
+// An area's rating, as a list to drop down: a round button in the rating's colour, with its dot, and the ratings
+// in the list each with theirs (green, teal, amber, red; grey for none).
+function TierSelect({ value, onChange, unset, label }: { value: string; onChange: (v: string) => void; unset?: boolean; label?: string }) {
   const { t } = useApp();
   return (
-    <select aria-label={t("settings.areaTier")} value={value} onChange={(e) => onChange(e.target.value)}>
-      {unset && <option value="">{t("tiers.unset")}</option>}
-      {TIERS.map((v) => <option key={v} value={v}>{t(`tiers.${v}`)}</option>)}
-    </select>
+    <Select
+      className={`tier tone-${value || "unset"}`} label={label ? `${t("settings.areaTier")}: ${label}` : t("settings.areaTier")} value={value} onChange={onChange}
+      options={(unset ? ["", ...TIERS] : TIERS).map((v) => ({ value: v, label: t(`tiers.${v || "unset"}`), tone: v || "unset" }))}
+    />
+  );
+}
+
+type Update = (fn: (d: any) => void) => void;
+
+// Where to search, up to 3 markets (a country, with a city or not, or remote), on a settings draft: the settings
+// screen's, and the jobs page's window for changing it there. Its heading (title) with a light link for remote
+// work at the line's end, the markets chosen as round tags with a pin and an ×, and a row to add one, a country
+// to find in a list and a city, with a round + at its start. With 3 chosen, the link and the row give way to a
+// note that that is the most, and that removing one makes room.
+const MAX_MARKETS = 3;
+
+export function MarketsEditor({ draft, update, title }: { draft: any; update: Update; title: React.ReactNode }) {
+  const { t, lang } = useApp();
+  const [country, setCountry] = useState("");
+  const [city, setCity] = useState("");
+  const countries = COUNTRY_CODES.map((code) => ({ code, label: regionName(code, lang), country: regionName(code, "en") })).sort((a, b) => a.label.localeCompare(b.label, lang));
+  const full = draft.markets.length >= MAX_MARKETS;
+  const add = () => {
+    const picked = countries.find((c) => c.code === country);
+    if (!picked || full) return;
+    update((d) => { d.markets = [...d.markets.filter((m: any) => m.code !== picked.code), { code: picked.code, country: picked.country, city: city.trim(), label: picked.label }]; });
+    setCity("");
+    setCountry("");
+  };
+  return (
+    <>
+      <div className="section-head">
+        {title}
+        {!full && !draft.markets.some((m: any) => m.code === "REMOTE") && (
+          <button type="button" className="add-link" onClick={() => update((d) => { d.markets.push({ code: "REMOTE", country: "", city: "", label: "Remote" }); })}>
+            <Icon name="plus" />{t("settings.addRemote")}
+          </button>
+        )}
+      </div>
+      {draft.markets.length ? (
+        <div className="chips">
+          {draft.markets.map((m: any) => (
+            <span key={m.code} className="tag place-tag"><Icon name="pin" />{m.city ? `${m.city}, ` : ""}{marketLabel(m, lang, t)}
+              <button type="button" className="tag-x" aria-label={`${t("common.remove")} ${marketLabel(m, lang, t)}`} onClick={() => update((d) => { d.markets = d.markets.filter((x: any) => x.code !== m.code); })}><Icon name="close" /></button>
+            </span>
+          ))}
+        </div>
+      ) : <p className="error-line">{t("settings.noMarket")}</p>}
+      {full ? <p className="note" role="status">{t("settings.marketsFull", { n: MAX_MARKETS })}</p> : (
+        <div className="add-row">
+          <button type="button" className="add-go" aria-label={t("common.add")} disabled={!country} onClick={add}><Icon name="plus" /></button>
+          {/* Found by its name in either language, or its code. */}
+          <Select className="country" label={t("settings.country")} placeholder={t("settings.country")} value={country} onChange={setCountry}
+            options={countries.map((c) => ({ value: c.code, label: c.label, keywords: `${c.country} ${c.code}` }))} />
+          {/* Empty, the box takes the page's direction, so the hint starts on the page's side; a city typed takes its own. */}
+          <input type="text" placeholder={t("settings.city")} aria-label={t("settings.city")} dir={city ? "auto" : undefined} value={city} onChange={(e) => setCity(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }} />
+        </div>
+      )}
+    </>
+  );
+}
+
+// The areas' ratings, the ready-made ones for the markets chosen and any added by hand, on a settings draft: a
+// note, how to type a name on its own line in bold; each a row with its name and its rating to drop down
+// (TierSelect), one added by hand with an × to take it off; and a row to add one, a round + first, its name and its rating.
+export function AreasEditor({ draft, update }: { draft: any; update: Update }) {
+  const { s, t, lang } = useApp();
+  const [areaInput, setAreaInput] = useState("");
+  const [areaTier, setAreaTier] = useState("near");
+  const presets = draft.markets.flatMap((m: any) => s.presets[m.code] ?? []);
+  const presetNames = new Set(presets.map((p: any) => p.name));
+  const custom = draft.areas.filter((a: any) => !presetNames.has(a.name));
+  return (
+    <>
+      <p className="note">{t("settings.areasNote")}<br /><strong>{t("settings.areasHint")}</strong></p>
+      <div className="area-list">
+        {presets.map((p: any) => (
+          <div key={p.name} className="area-row">
+            <span>{areaName(p.name, lang)}</span>
+            <TierSelect unset label={areaName(p.name, lang)} value={draft.areas.find((a: any) => a.name === p.name)?.tier ?? ""} onChange={(v) => update((d) => {
+              d.areas = d.areas.filter((a: any) => a.name !== p.name);
+              if (v) d.areas.push({ name: p.name, places: p.places, tier: v });
+            })} />
+          </div>
+        ))}
+        {custom.map((a: any) => (
+          <div key={a.name} className="area-row">
+            <span dir="auto">{a.name}</span>
+            <div className="area-end">
+              <TierSelect label={a.name} value={a.tier} onChange={(v) => update((d) => { d.areas.find((x: any) => x.name === a.name).tier = v; })} />
+              <button type="button" className="area-x" aria-label={`${t("common.remove")} ${a.name}`} onClick={() => update((d) => { d.areas = d.areas.filter((x: any) => x.name !== a.name); })}><Icon name="close" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <form className="add-row" onSubmit={(e) => {
+        e.preventDefault();
+        const name = areaInput.trim();
+        if (!name) return;
+        update((d) => { d.areas = [...d.areas.filter((a: any) => a.name !== name), { name, places: [name.toLowerCase()], tier: areaTier }]; });
+        setAreaInput("");
+      }}>
+        <button type="submit" className="add-go" aria-label={t("settings.addArea")} disabled={!areaInput.trim()}><Icon name="plus" /></button>
+        <input type="text" placeholder={t("settings.areaName")} aria-label={t("settings.areaName")} dir={areaInput ? "auto" : undefined} value={areaInput} onChange={(e) => setAreaInput(e.target.value)} />
+        <TierSelect value={areaTier} onChange={setAreaTier} />
+      </form>
+    </>
   );
 }
 
@@ -37,16 +145,22 @@ function Runner() {
   const attempt = async (work: () => Promise<void>) => { try { await work(); } catch (e) { setStatus([err(e), true]); } };
   const mailText = (m: Run["mail"]) => (m ? t(`settings.mail.${m.status}`, { detail: m.detail ?? "" }) : "");
   const [before, after] = String(t("settings.accountNote")).split("{link}");
+  // The account saves itself once both are filled and the password's box is left (or Enter pressed), never while
+  // a password is half typed.
+  const saveAccount = () => {
+    if (!user.trim() || !password) return;
+    attempt(async () => { setInfo(await api("automation/mail", { user, password })); setPassword(""); setStatus([t("settings.accountSaved"), false]); });
+  };
   return (
     <div className="stack">
       <h3 className="sub-title">{t("settings.account")}</h3>
       <p className="note">{before}<External url="https://myaccount.google.com/apppasswords" className="">{t("settings.appPassword")}</External>{after}</p>
       <div className="row">
-        <input type="email" dir="ltr" placeholder="you@gmail.com" aria-label={t("settings.gmail")} value={user} onChange={(e) => setUser(e.target.value)} />
-        <input type="password" dir="ltr" autoComplete="off" aria-label={t("settings.appPassword")} placeholder={info?.mailUser ? t("settings.passwordSaved") : t("settings.appPassword")} value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input type="email" dir="ltr" placeholder="you@gmail.com" aria-label={t("settings.gmail")} value={user} onChange={(e) => setUser(e.target.value)} onBlur={saveAccount} />
+        <input type="password" dir="ltr" autoComplete="off" aria-label={t("settings.appPassword")} placeholder={info?.mailUser ? t("settings.passwordSaved") : t("settings.appPassword")} value={password}
+          onChange={(e) => setPassword(e.target.value)} onBlur={saveAccount} onKeyDown={(e) => { if (e.key === "Enter") saveAccount(); }} />
       </div>
       <div className="row">
-        <Btn onClick={() => attempt(async () => { setInfo(await api("automation/mail", { user, password })); setPassword(""); setStatus([t("settings.accountSaved"), false]); })}>{t("settings.saveAccount")}</Btn>
         <Btn onClick={() => attempt(async () => { setStatus([t("settings.sending"), false]); const { result } = await api("automation/test", {}); setStatus([mailText(result), result.status !== "sent"]); })}>{t("settings.test")}</Btn>
         <Btn onClick={() => attempt(async () => { if (!confirm(t("settings.confirm"))) return; setInfo(await api("automation/run", {})); setStatus([t("settings.started"), false]); })}>{t("settings.runNow")}</Btn>
       </div>
@@ -69,130 +183,64 @@ function Runner() {
 }
 
 export function Settings() {
-  const { s, t, lang, setLang, theme, setTheme, err, say, refresh } = useApp();
+  const { s, t, lang, setLang, theme, setTheme, refresh } = useApp();
   const [draft, setDraft] = useState(() => structuredClone(s.settings));
-  const [status, setStatus] = useState<[string, boolean]>(["", false]);
-  const [country, setCountry] = useState("");
-  const [city, setCity] = useState("");
-  const [areaInput, setAreaInput] = useState("");
-  const [areaTier, setAreaTier] = useState("near");
   const [roleInput, setRoleInput] = useState("");
   // The first state can arrive after this screen opens.
   useEffect(() => { if (!draft.markets && s.settings.markets) setDraft(structuredClone(s.settings)); }, [s.settings]);
+  // Every change saves itself a moment later; the form keeps what was typed, the saved settings come back through
+  // the app's state. The note at the top says how it went.
+  const saving = useAutoSave(draft, async (next) => {
+    await api("settings", { ...next, language: lang });
+    await refresh();
+  }, { ready: Boolean(draft.markets) });
   if (!draft.markets) return <Page title={t("settings.title")}><Spinner /></Page>;
 
   const update = (fn: (d: any) => void) => { const next = structuredClone(draft); fn(next); setDraft(next); };
   const set = (key: string, value: unknown) => update((d) => { d[key] = value; });
   const setAuto = (key: string, value: unknown) => update((d) => { d.automation[key] = value; });
-  const countries = COUNTRY_CODES.map((code) => ({ code, label: regionName(code, lang), country: regionName(code, "en") })).sort((a, b) => a.label.localeCompare(b.label, lang));
-  const presets = draft.markets.flatMap((m: any) => s.presets[m.code] ?? []);
-  const presetNames = new Set(presets.map((p: any) => p.name));
-  const custom = draft.areas.filter((a: any) => !presetNames.has(a.name));
-  const full = draft.markets.length >= 3;
   const ownRoles = draft.roles.filter((r: any) => !listedRole(r.id));
+  const later = !LANGUAGES_ON && !THEMES_ON;
 
-  const save = async () => {
-    try {
-      const saved = await api("settings", { ...draft, language: lang });
-      setDraft(saved);
-      await refresh();
-      setStatus([t("settings.saved"), false]);
-      say(t("pip.noted"), "happy", 4000);
-    } catch (e) {
-      setStatus([t("common.saveFailed", { error: err(e) }), true]);
-    }
-  };
   const number = (label: string, value: number, onChange: (n: number) => void) => (
     <Field label={label}><input type="number" min={0} step={1} dir="ltr" value={value || ""} onChange={(e) => onChange(Number(e.target.value))} /></Field>
   );
-  const saveBar = <div className="row"><Btn kind="primary" onClick={save}>{t("common.save")}</Btn>{status[0] && <span className={status[1] ? "error-line" : "note"} role="status">{status[0]}</span>}</div>;
 
   return (
-    <Page title={t("settings.title")} sub={t("settings.sub")} actions={<Btn kind="primary" onClick={save}>{t("common.save")}</Btn>}>
-      {/* Language and theme apply at once and stay in this browser, so they need no saving. */}
+    <Page title={t("settings.title")} sub={t("settings.sub")} actions={<SaveNote state={saving} />}>
+      {/* Language and theme apply at once and stay in this browser, so they need no saving. While the English
+          version and the dark theme are both off (app.tsx), the whole card is marked as coming soon, everything
+          in it faded and unpressable; while only one is, just its buttons are unpressable. */}
       <Card className="stack">
-        <h2>{t("settings.display")}</h2>
-        <p className="note">{t("settings.displayNote")}</p>
-        <div className="fields">
-          <div className="field">
-            <span className="field-label">{t("settings.uiLanguage")}</span>
-            <div className="segmented" role="group" aria-label={t("settings.uiLanguage")}>
-              <button type="button" lang="he" aria-pressed={lang === "he"} onClick={() => setLang("he")}>עברית</button>
-              <button type="button" lang="en" aria-pressed={lang === "en"} onClick={() => setLang("en")}>English</button>
+        <h2 className="soon-title">{t("settings.display")}{later && <span className="soon">{t("common.soon")}</span>}</h2>
+        <div className={`stack ${later ? "later" : ""}`}>
+          <p className="note">{t("settings.displayNote")}</p>
+          <div className="fields">
+            <div className="field">
+              <span className="field-label">{t("settings.uiLanguage")}</span>
+              <div className="segmented" role="group" aria-label={t("settings.uiLanguage")}>
+                <button type="button" lang="he" aria-pressed={lang === "he"} disabled={later} onClick={() => setLang("he")}>עברית</button>
+                <button type="button" lang="en" aria-pressed={lang === "en"} disabled={!LANGUAGES_ON} onClick={() => setLang("en")}>English</button>
+              </div>
             </div>
-          </div>
-          <div className="field">
-            <span className="field-label">{t("settings.uiTheme")}</span>
-            <div className="segmented" role="group" aria-label={t("settings.uiTheme")}>
-              {([["light", "sun", "themeLight"], ["dark", "moon", "themeDark"], ["", "", "themeSystem"]] as const).map(([mode, icon, key]) => (
-                <button key={key} type="button" aria-pressed={theme === mode} onClick={() => setTheme(mode)}>{icon && <Icon name={icon} />}{t(`settings.${key}`)}</button>
-              ))}
+            <div className="field">
+              <span className="field-label">{t("settings.uiTheme")}</span>
+              <div className="segmented" role="group" aria-label={t("settings.uiTheme")}>
+                {([["light", "sun", "themeLight"], ["dark", "moon", "themeDark"], ["", "", "themeSystem"]] as const).map(([mode, icon, key]) => (
+                  <button key={key} type="button" aria-pressed={theme === mode} disabled={later || (!THEMES_ON && mode !== "light")} onClick={() => setTheme(mode)}>{icon && <Icon name={icon} />}{t(`settings.${key}`)}</button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </Card>
       <Card className="stack">
-        <h2>{t("settings.markets")}</h2>
-        <p className="note">{t("settings.marketsNote")}</p>
-        {draft.markets.length ? (
-          <div className="chips">
-            {draft.markets.map((m: any) => (
-              <span key={m.code} className="tag">{m.city ? `${m.city}, ` : ""}{marketLabel(m, lang, t)}
-                <button type="button" className="tag-x" aria-label={`${t("common.remove")} ${marketLabel(m, lang, t)}`} onClick={() => update((d) => { d.markets = d.markets.filter((x: any) => x.code !== m.code); })}>×</button>
-              </span>
-            ))}
-          </div>
-        ) : <p className="error-line">{t("settings.noMarket")}</p>}
-        <div className="row">
-          <select aria-label={t("settings.country")} value={country} onChange={(e) => setCountry(e.target.value)}>
-            <option value="">{t("settings.country")}</option>
-            {countries.map((c) => <option key={c.code} value={c.code}>{c.label}</option>)}
-          </select>
-          <input type="text" placeholder={t("settings.city")} aria-label={t("settings.city")} dir="auto" value={city} onChange={(e) => setCity(e.target.value)} />
-          <Btn disabled={full || !country} onClick={() => {
-            const picked = countries.find((c) => c.code === country);
-            if (!picked) return;
-            update((d) => { d.markets = [...d.markets.filter((m: any) => m.code !== picked.code), { code: picked.code, country: picked.country, city: city.trim(), label: picked.label }]; });
-            setCity("");
-          }}>{t("common.add")}</Btn>
-          {!draft.markets.some((m: any) => m.code === "REMOTE") && (
-            <Btn disabled={full} onClick={() => update((d) => { d.markets.push({ code: "REMOTE", country: "", city: "", label: "Remote" }); })}>{t("settings.addRemote")}</Btn>
-          )}
-        </div>
+        <MarketsEditor draft={draft} update={update} title={<h2>{t("settings.markets")}</h2>} />
       </Card>
 
       <Card className="stack">
         <h2>{t("settings.areas")}</h2>
-        <p className="note">{t("settings.areasNote")}</p>
-        {presets.map((p: any) => (
-          <div key={p.name} className="area-row">
-            <span>{areaName(p.name, lang)}</span>
-            <TierSelect unset value={draft.areas.find((a: any) => a.name === p.name)?.tier ?? ""} onChange={(v) => update((d) => {
-              d.areas = d.areas.filter((a: any) => a.name !== p.name);
-              if (v) d.areas.push({ name: p.name, places: p.places, tier: v });
-            })} />
-          </div>
-        ))}
-        {custom.map((a: any) => (
-          <div key={a.name} className="area-row">
-            <span dir="auto">{a.name}</span>
-            <div className="row">
-              <TierSelect value={a.tier} onChange={(v) => update((d) => { d.areas.find((x: any) => x.name === a.name).tier = v; })} />
-              <Btn onClick={() => update((d) => { d.areas = d.areas.filter((x: any) => x.name !== a.name); })}>{t("common.remove")}</Btn>
-            </div>
-          </div>
-        ))}
-        <form className="row" onSubmit={(e) => {
-          e.preventDefault();
-          const name = areaInput.trim();
-          if (!name) return;
-          update((d) => { d.areas = [...d.areas.filter((a: any) => a.name !== name), { name, places: [name.toLowerCase()], tier: areaTier }]; });
-          setAreaInput("");
-        }}>
-          <input type="text" placeholder={t("settings.areaName")} aria-label={t("settings.areaName")} dir="auto" value={areaInput} onChange={(e) => setAreaInput(e.target.value)} />
-          <TierSelect value={areaTier} onChange={setAreaTier} />
-          <Btn type="submit">{t("settings.addArea")}</Btn>
-        </form>
+        <AreasEditor draft={draft} update={update} />
       </Card>
 
       <Card className="stack">
@@ -201,13 +249,13 @@ export function Settings() {
           <Field label={t("settings.displayName")}><input type="text" dir="auto" value={draft.displayName} onChange={(e) => set("displayName", e.target.value)} /></Field>
           <Field label={t("settings.home")}><input type="text" dir="auto" value={draft.home} onChange={(e) => set("home", e.target.value)} /></Field>
           <Field label={t("settings.workMode")}>
-            <select value={draft.workMode} onChange={(e) => set("workMode", e.target.value)}>{["any", "remote", "hybrid", "onsite"].map((v) => <option key={v} value={v}>{t(`modes.${v}`)}</option>)}</select>
+            <Select value={draft.workMode} onChange={(v) => set("workMode", v)} options={["any", "remote", "hybrid", "onsite"].map((v) => ({ value: v, label: t(`modes.${v}`) }))} />
           </Field>
           <Field label={t("settings.seniority")} hint={t("settings.seniorityHint")}>
-            <select value={draft.seniority} onChange={(e) => update((d) => {
-              d.seniority = e.target.value;
+            <Select value={draft.seniority} onChange={(v) => update((d) => {
+              d.seniority = v;
               d.roles = d.roles.map((r: any) => (listedRole(r.id) ? fromList(listedRole(r.id)!, d.seniority) : r));
-            })}>{["any", "junior", "middle", "senior"].map((v) => <option key={v} value={v}>{t(`settings.levels.${v}`)}</option>)}</select>
+            })} options={["any", "junior", "middle", "senior"].map((v) => ({ value: v, label: t(`settings.levels.${v}`) }))} />
           </Field>
         </div>
         <label className="check"><input type="checkbox" checked={draft.relocate} onChange={(e) => set("relocate", e.target.checked)} />{t("settings.relocate")}</label>
@@ -271,7 +319,7 @@ export function Settings() {
           {number(t("settings.salaryTo"), draft.salaryMax, (n) => set("salaryMax", n))}
           <Field label={t("settings.currency")}><input type="text" dir="ltr" placeholder="ILS" value={draft.salaryCurrency} onChange={(e) => set("salaryCurrency", e.target.value)} /></Field>
           <Field label={t("settings.student")}>
-            <select value={draft.studentJobs} onChange={(e) => set("studentJobs", e.target.value)}>{["normal", "low", "exclude"].map((v) => <option key={v} value={v}>{t(`settings.studentOptions.${v}`)}</option>)}</select>
+            <Select value={draft.studentJobs} onChange={(v) => set("studentJobs", v)} options={["normal", "low", "exclude"].map((v) => ({ value: v, label: t(`settings.studentOptions.${v}`) }))} />
           </Field>
         </div>
         <Field label={t("settings.fields")} hint={t("settings.fieldsHint")}>
@@ -292,7 +340,6 @@ export function Settings() {
         </div>
         <Runner />
       </Card>
-      {saveBar}
     </Page>
   );
 }

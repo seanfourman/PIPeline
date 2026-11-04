@@ -72,6 +72,25 @@ describe("validateSettings", () => {
   });
 });
 
+describe("quick search choices", () => {
+  test("keeps the jobs page's choices, and drops what it cannot use", () => {
+    const markets = [{ code: "IL", country: "Israel" }];
+    expect(validateSettings({ markets, quickSearch: { days: "7", market: "IL", mode: "remote", areas: "all" } }).quickSearch)
+      .toEqual({ days: "7", market: "IL", mode: "remote", areas: "all" });
+    expect(validateSettings({ markets, quickSearch: { days: 3, market: "FR", mode: "space", areas: "?" } }).quickSearch)
+      .toEqual({ days: "14", market: "all", mode: "", areas: "relevant" });
+    expect(validateSettings({}).quickSearch).toEqual({ days: "14", market: "all", mode: "", areas: "relevant" });
+  });
+
+  test("they are the page's own, so the agent is not told them", () => {
+    const repo = tempRepo();
+    syncWorkspace(validateSettings({ quickSearch: { days: "1", mode: "onsite" } }), repo);
+    const text = readFileSync(path.join(repo, "CLAUDE.md"), "utf8");
+    expect(text).not.toContain("onsite");
+    expect(text).not.toContain("quickSearch");
+  });
+});
+
 describe("roles", () => {
   test("a role from the list searches at the level set", () => {
     const at = (seniority: string) => validateSettings({ seniority, roles: [{ id: "backend" }, { id: "graduate" }] }).roles;

@@ -107,9 +107,32 @@ export function loadState(settings: Settings) {
 // Only finished documents from the output folders are ever served.
 export function resolveDocument(requested: string): string | null {
   const rel = requested.replaceAll("\\", "/");
-  if (!/^(cv|cover_letters|reports)\/[^/]+\.(pdf|html)$/i.test(rel)) return null;
+  // The workflow's documents: CVs, letters and reports, and the final CV saved in an application's folder.
+  if (!/^(cv|cover_letters|reports)\/[^/]+\.(pdf|html)$/i.test(rel) && !/^documents\/applications\/[A-Za-z0-9_-]+\/[^/]+\.pdf$/i.test(rel)) return null;
   const abs = path.join(REPO, rel);
   return existsSync(abs) ? abs : null;
+}
+
+// Paths of documents named in some text, a command or a message, relative to the project: in the shapes
+// resolveDocument serves, after anything before them (an absolute path to the project, a quote).
+const DOCUMENT_PATH = /(?:cv|cover_letters|reports)\/[^\s"'`)\]/]+\.(?:pdf|html|tex)|documents\/applications\/[A-Za-z0-9_-]+\/[^\n"'`)\]/]+?\.pdf/gi;
+export const documentPaths = (text: string) => text.replaceAll("\\", "/").match(DOCUMENT_PATH) ?? [];
+
+// The documents a conversation made or changed that are there now, newest first: those its tools wrote or a
+// command of its named, and those Pip's messages name; a CV's or letter's .tex stands for its PDF. Tool results
+// are left out, since a listing or a search names files the conversation only looked at.
+export function conversationFiles(events: Record<string, unknown>[]): { path: string; name: string; modified: number }[] {
+  const named = events.flatMap((e) => [
+    ...(Array.isArray(e.files) ? e.files.map(String) : []),
+    ...(e.t === "text" ? documentPaths(String(e.text ?? "")) : []),
+  ]);
+  const found = new Map<string, { path: string; name: string; modified: number }>();
+  for (const raw of named) {
+    const rel = raw.replace(/\.tex$/i, ".pdf");
+    const abs = resolveDocument(rel);
+    if (abs && !found.has(rel)) found.set(rel, { path: rel, name: path.basename(rel), modified: statSync(abs).mtimeMs });
+  }
+  return [...found.values()].sort((a, b) => b.modified - a.modified);
 }
 
 type SearchOptions = { days: string; market: Market; workMode: Settings["workMode"]; seniority: Settings["seniority"] };

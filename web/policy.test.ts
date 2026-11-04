@@ -126,3 +126,26 @@ describe("other tools", () => {
     expect(decide("mcp__gmail__send", {}).decision).toBe("ask");
   });
 });
+
+describe("access", () => {
+  const auto = (tool: string, input: Record<string, unknown>) => decide(tool, input, new Set(), "auto").decision;
+  test("automatic edits anything inside the project but what changes the agent's rights", () => {
+    expect(write(".claude/skills/job-application-assistant/01-candidate-profile.md")).toBe("ask");
+    expect(auto("Write", { file_path: ".claude/skills/job-application-assistant/01-candidate-profile.md" })).toBe("allow");
+    expect(auto("Edit", { file_path: path.join(REPO, "notes/plan.md") })).toBe("allow");
+    for (const file of [".claude/settings.json", ".claude/commands/apply.md", "web/policy.ts", "CLAUDE.md", ".claude/skills/job-scraper/SKILL.md", "cv/../../outside.txt", "C:/Windows/evil.txt"]) {
+      expect(auto("Write", { file_path: file })).toBe("ask");
+    }
+  });
+  test("automatic still asks before commands, reads outside the project and unknown tools", () => {
+    expect(auto("Bash", { command: "rm -rf documents" })).toBe("ask");
+    expect(auto("Bash", { command: "python send_mail.py" })).toBe("ask");
+    expect(auto("Read", { file_path: "C:/Users/Sean-PC/.ssh/id_rsa" })).toBe("ask");
+    expect(auto("mcp__gmail__send", {})).toBe("ask");
+  });
+  test("full access allows everything", () => {
+    for (const [tool, input] of [["Bash", { command: "rm -rf documents" }], ["Write", { file_path: ".claude/settings.json" }], ["mcp__gmail__send", {}]] as const) {
+      expect(decide(tool, input, new Set(), "full").decision).toBe("allow");
+    }
+  });
+});

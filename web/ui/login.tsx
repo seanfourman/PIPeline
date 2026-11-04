@@ -1,6 +1,6 @@
 // The login. The forest, the fox and the sparks are painted by intro.ts; this file holds the form.
 import React, { useEffect, useRef, useState } from "react";
-import { useApp } from "./app";
+import { LANGUAGES_ON, THEMES_ON, useApp } from "./app";
 import type { Lang } from "./i18n";
 import { LANG_HOP, startIntro } from "./intro";
 import { api, Btn, Field, Icon } from "./kit";
@@ -89,14 +89,17 @@ export function Login({ onDone, intro }: { onDone: () => void; intro: boolean })
   return (
     <div className={`login ${nightShown ? "" : "morning"}`}>
       <canvas ref={bg} className="intro-bg" aria-hidden="true" />
-      {/* Always laid out left to right, so the buttons stay where they are when the language changes. */}
+      {/* Always laid out left to right, so the buttons stay where they are when the language changes. Each shows
+          only while it is on (app.tsx). */}
       <header className="login-top" dir="ltr">
         <div className="row">
-          <button type="button" className="theme" onClick={toggleTheme} aria-label={dark ? t("nav.light") : t("nav.dark")}><Icon name={dark ? "sun" : "moon"} /></button>
-          <div className="lang" role="group" aria-label={t("nav.language")} data-on={showing}>
-            <button type="button" lang="en" aria-pressed={showing === "en"} onClick={() => pickLang("en")}>English</button>
-            <button type="button" lang="he" aria-pressed={showing === "he"} onClick={() => pickLang("he")}>עברית</button>
-          </div>
+          {THEMES_ON && <button type="button" className="theme" onClick={toggleTheme} aria-label={dark ? t("nav.light") : t("nav.dark")}><Icon name={dark ? "sun" : "moon"} /></button>}
+          {LANGUAGES_ON && (
+            <div className="lang" role="group" aria-label={t("nav.language")} data-on={showing}>
+              <button type="button" lang="en" aria-pressed={showing === "en"} onClick={() => pickLang("en")}>English</button>
+              <button type="button" lang="he" aria-pressed={showing === "he"} onClick={() => pickLang("he")}>עברית</button>
+            </div>
+          )}
         </div>
       </header>
       <main className="login-stage">

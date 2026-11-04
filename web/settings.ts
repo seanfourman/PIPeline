@@ -23,6 +23,9 @@ export type Settings = {
   language: "he" | "en";
   // The server runs the automation, so none of this reaches the agent's files.
   automation: { enabled: boolean; email: string; maxPerDay: number; runAt: string; minScore: number };
+  // The quick search's own choices on the jobs page, kept from one visit to the next: how recent, which market
+  // ("all" or a code), the work type ("" follows workMode), and which areas show. Only the page uses these.
+  quickSearch: { days: "1" | "7" | "14" | "30"; market: string; mode: "" | "any" | "remote" | "hybrid" | "onsite"; areas: "relevant" | "listed" | "all" };
 };
 
 export const REMOTE = "REMOTE";
@@ -34,6 +37,7 @@ export const EMPTY_SETTINGS: Settings = {
   roles: [{ id: "software", label: "Software", query: "Software Engineer" }],
   salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he",
   automation: { enabled: false, email: "", maxPerDay: 3, runAt: "09:00", minScore: 60 },
+  quickSearch: { days: "14", market: "all", mode: "", areas: "relevant" },
 };
 
 // Ready-made areas for countries whose job locations are hard to type by hand.
@@ -107,6 +111,13 @@ export function validateSettings(input: any): Settings {
       maxPerDay: Math.min(wholeNumber(input?.automation?.maxPerDay, 1000) || 3, 10),
       runAt: /^([01]\d|2[0-3]):[0-5]\d$/.test(runAt) ? runAt : "09:00",
       minScore: wholeNumber(input?.automation?.minScore, 100) || 60,
+    },
+    // pick's first option is the one a missing or strange value gets; a market no longer chosen falls back to all.
+    quickSearch: {
+      days: pick(String(input?.quickSearch?.days ?? ""), ["14", "1", "7", "30"] as const),
+      market: markets.some((m) => m.code === input?.quickSearch?.market) ? input.quickSearch.market : "all",
+      mode: pick(input?.quickSearch?.mode, ["", "any", "remote", "hybrid", "onsite"] as const),
+      areas: pick(input?.quickSearch?.areas, ["relevant", "listed", "all"] as const),
     },
   };
 }

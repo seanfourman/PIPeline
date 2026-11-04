@@ -1,15 +1,17 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useApp } from "../app";
-import { api, Badge, Btn, Card, External, Icon, Page, safeUrl, Spinner } from "../kit";
-import { Pip, PipLying } from "../pip";
+import { api, Badge, Btn, Card, ClaudeMark, External, Icon, Page, safeUrl, ThinBar, useGoSlot } from "../kit";
+import { SaveNote, useAutoSave } from "../autosave";
+import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
-import { areaName, marketLabel } from "./settings";
+import { areaName, AreasEditor, marketLabel, MarketsEditor } from "./settings";
 
 type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; verdict?: string; status?: string };
 
 // Kept between visits to the screen, so leaving and coming back does not lose the results.
-// round counts the searches, so each one's results rise in afresh.
-const search = { q: null as string | null, days: "14", market: "all", mode: "", areas: "relevant", results: null as Job[] | null, failed: [] as string[], busy: false, round: 0 };
+// round counts the searches, so each one's results rise in afresh; chosen is whether the user's saved choices of
+// days, market, mode and areas have been taken in yet.
+const search = { q: null as string | null, days: "14", market: "all", mode: "", areas: "relevant", results: null as Job[] | null, failed: [] as string[], busy: false, round: 0, chosen: false };
 
 export const TIER_TONE: Record<string, string> = { near: "good", ok: "good", edge: "warn", far: "bad", unknown: "" };
 
@@ -63,7 +65,8 @@ function tint(name: string) {
 
 // A search result, as a plain row like a search engine's: the company's initial on a round tile, the title, the
 // company and place, chips for how long ago it was posted and its area, and two round buttons at its end, to
-// open the posting and to check it and apply. index is its place in the results, for rising in one after another.
+// open the posting and to check it and apply; under the pointer, or reached by the keyboard, a button's name
+// floats over it. index is its place in the results, for rising in one after another.
 function ResultRow({ job, index }: { job: Job; index: number }) {
   const { t, s, start } = useApp();
   const showTier = !(job.tier === "unknown" && !s.settings.areas?.length);
@@ -83,11 +86,140 @@ function ResultRow({ job, index }: { job: Job; index: number }) {
       </div>
       {href && (
         <div className="result-actions">
-          <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}><Icon name="open" /></a>
-          <button type="button" className="result-act primary" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}><Icon name="apply" /></button>
+          <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}>
+            <Icon name="open" /><span className="result-act-label" aria-hidden="true">{t("jobs.open")}</span>
+          </a>
+          <button type="button" className="result-act primary" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}>
+            <Icon name="apply" /><span className="result-act-label" aria-hidden="true">{t("jobs.apply")}</span>
+          </button>
         </div>
       )}
     </article>
+  );
+}
+
+// What lies buried in the earth under the results, as small pictures in the page's ink, one character a pixel:
+// a fish's and a little dinosaur's skeletons, a bone, a skull, a shell, a gem, a key, a coin, a worm, a boot, a
+// bottle, stones and a treasure chest.
+const BURIED = [
+  ["#...............", "##...#..#..#.##.", ".###########.###", "##...#..#..#.##.", "#..............."],
+  ["............##..", "...........#..#.", "..#.#.#.#.####..", ".#########......", "#..#.#.#.#......", "...#...#........", "..##..##........"],
+  ["##......##", ".########.", "##......##"],
+  ["..#####..", ".#.....#.", "#.##.##.#", "#.##.##.#", "#.......#", ".#.#.#.#.", "..#####.."],
+  [".#####.", "#.....#", "#.###.#", "#.#.#.#", "#.#...#", "#.#####", "#......"],
+  ["..#..", ".#.#.", "#...#", ".#.#.", "..#.."],
+  [".###.......", "#...#######", "#...#..#.#.", ".###......."],
+  [".###.", "#.#.#", "#.#.#", "#.#.#", ".###."],
+  [".##....##.", "#..#..#..#", "....##...."],
+  ["..###...", "..#.#...", "..#.#...", "..#.#...", ".##.###.", "#......#", "########"],
+  [".###.", "..#..", "..#..", ".#.#.", "#...#", "#...#", "#...#", "#####"],
+  ["..####.", ".#....#", "#.....#", ".#####."],
+  [".####.", "#....#", "######"],
+  [".#########.", "#.........#", "###########", "#....#....#", "#...###...#", "#....#....#", "#.........#", "###########"],
+];
+// A buried thing's pixel, and the grain of the specks and strata, in screen pixels.
+const EARTH_PX = 5;
+// The treasure chest, the last of them, is buried only once.
+const CHEST = BURIED.length - 1;
+// How far a thing's grey may stray from the earth's, toward white or black.
+const EARTH_SHADE = 0.35;
+
+// The earth under the results, almost all white, in light greys around one (its CSS colour), each thing its own
+// shade: a ragged line where it begins, sparse specks and faint strata, and the buried things scattered at
+// random across it, some fainter
+// as if deeper, each kept clear of the others, of the words, of the shaft and of Pip's room. Drawn again whenever
+// its size changes; the same each time for a size.
+function Earth() {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const el = canvas.current!;
+    const draw = () => {
+      const box = el.getBoundingClientRect();
+      const { width, height } = box;
+      const dpr = devicePixelRatio || 1;
+      el.width = Math.round(width * dpr);
+      el.height = Math.round(height * dpr);
+      const g = el.getContext("2d")!;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      let seed = 11;
+      const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      // Each thing in its own shade of the grey: up to 35% of the way toward white or toward black.
+      const grey = (getComputedStyle(el).color.match(/\d+/g) ?? ["123", "138", "150"]).slice(0, 3).map(Number);
+      const shade = () => {
+        const f = (rand() * 2 - 1) * EARTH_SHADE, to = f > 0 ? 255 : 0;
+        g.fillStyle = `rgb(${grey.map((v) => Math.round(v + (to - v) * Math.abs(f))).join(" ")})`;
+      };
+      const cols = Math.ceil(width / EARTH_PX), rows = Math.ceil(height / EARTH_PX);
+      const dot = (c: number, r: number, w = 1) => g.fillRect(c * EARTH_PX, r * EARTH_PX, w * EARTH_PX, EARTH_PX);
+      // Where the earth begins: a line two pixels deep with gaps, and tufts over it.
+      for (let c = 0; c < cols; c++) {
+        shade();
+        g.globalAlpha = 0.6;
+        if (rand() < 0.8) dot(c, 3);
+        if (rand() < 0.35) dot(c, 4);
+        if (rand() < 0.12) dot(c, 2);
+        g.globalAlpha = 0.22;
+        if (rand() < 0.25) dot(c, 5 + Math.floor(rand() * 3));
+      }
+      g.globalAlpha = 0.1;
+      for (let r = 22; r < rows; r += 16 + Math.floor(rand() * 9)) for (let c = 0; c < cols; c++) if (rand() < 0.45) { shade(); dot(c, r); }
+      for (let i = 0; i < (cols * rows) / 90; i++) {
+        shade();
+        g.globalAlpha = [0.12, 0.2, 0.3][Math.floor(rand() * 3)];
+        dot(Math.floor(rand() * cols), 8 + Math.floor(rand() * rows));
+      }
+      // The buried things, each where it touches nothing kept clear (with room around it), at most one try in
+      // twenty failing; flipped or not.
+      // Less room around things on a narrow screen, so some still fit.
+      const room = width < 600 ? 8 : 24;
+      const around = (sel: string) => [...(el.parentElement?.querySelectorAll<HTMLElement>(sel) ?? [])].map((e) => {
+        const r = e.getBoundingClientRect();
+        return { x0: r.left - box.left - room, y0: r.top - box.top - room, x1: r.right - box.left + room, y1: r.bottom - box.top + room };
+      });
+      const taken = [...around(".mine-title, .mine-count"), ...around(".mine-shaft"), ...around(".mine-room")];
+      const wanted = Math.max(8, Math.min(20, Math.round((width * height) / 34000)));
+      const order = BURIED.map((_, i) => i).sort(() => rand() - 0.5);
+      const again = order.filter((i) => i !== CHEST);
+      for (let n = 0, tries = 0; n < wanted && tries < wanted * 20; tries++) {
+        const art = BURIED[n < order.length ? order[n] : again[(n - order.length) % again.length]];
+        const w = art[0].length * EARTH_PX, h = art.length * EARTH_PX;
+        const x = Math.round((rand() * (width - w - 16) + 8) / EARTH_PX) * EARTH_PX;
+        const y = Math.round((40 + rand() * (height - h - 52)) / EARTH_PX) * EARTH_PX;
+        const spot = { x0: x - room, y0: y - room, x1: x + w + room, y1: y + h + room };
+        if (taken.some((t) => spot.x0 < t.x1 && spot.x1 > t.x0 && spot.y0 < t.y1 && spot.y1 > t.y0)) continue;
+        taken.push(spot);
+        const flip = rand() < 0.5;
+        shade();
+        g.globalAlpha = rand() < 0.35 ? 0.35 : 0.65;
+        art.forEach((row, r) => [...row].forEach((ch, c) => { if (ch === "#") g.fillRect(x + (flip ? row.length - 1 - c : c) * EARTH_PX, y + r * EARTH_PX, EARTH_PX, EARTH_PX); }));
+        n++;
+      }
+      g.globalAlpha = 1;
+    };
+    draw();
+    const sizes = new ResizeObserver(draw);
+    sizes.observe(el);
+    return () => sizes.disconnect();
+  }, []);
+  return <canvas ref={canvas} className="mine-earth" aria-hidden="true" />;
+}
+
+// The foot of the results: the earth across the whole page, from under the last result down to the page's bottom,
+// in black and white, with a shaft and its ladder going down to where Pip, grey in its lamp's light, digs beside
+// it; in the middle, a line that this is all of them (or that there were none) and how many there are, with any
+// hidden by area.
+function ResultsEnd({ count, hidden }: { count: number; hidden: number }) {
+  const { t } = useApp();
+  return (
+    <section className="mine" role="status" style={{ "--i": Math.min(count, 12) } as React.CSSProperties}>
+      <Earth />
+      <span className="mine-shaft" aria-hidden="true" />
+      <span className="mine-room" aria-hidden="true"><PipMiner outline className="mine-pip" /></span>
+      <div className="mine-words">
+        <p className="mine-title">{t(count ? "jobs.end" : "jobs.endNone")}</p>
+        <p className="mine-count">{t("jobs.count", { n: count })}{hidden ? t("jobs.hiddenCount", { n: hidden }) : ""}</p>
+      </div>
+    </section>
   );
 }
 
@@ -287,11 +419,82 @@ function RoleSuggestions({ onPick }: { onPick: (query: string) => void }) {
   );
 }
 
+// One of the search's options in the filters menu: its name over a row of round choices, the one in use filled.
+function Choice({ label, value, options, onPick }: { label: string; value: string; options: [string, string][]; onPick: (v: string) => void }) {
+  return (
+    <div className="choice" role="radiogroup" aria-label={label}>
+      <span className="choice-label">{label}</span>
+      <div className="choice-options">
+        {options.map(([v, text]) => (
+          <button key={v} type="button" role="radio" aria-checked={v === value} className="choice-option" onClick={() => onPick(v)}>{text}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// How long the where window takes to fade away; matches dialog-out in styles.css.
+const CLOSE_MS = 160;
+// How long a menu at the search box's end takes to fade away; matches panel-out in styles.css.
+const MENU_OUT_MS = 130;
+// Where to search, changed right on the jobs page in a window like a chat app's settings, rather than on the
+// settings screen: the markets and the areas' ratings, each change saved on its own a moment later (and at once
+// if the window closes first), with a quiet note by the title of how it went. A native modal dialog, so Escape,
+// the × and a click outside close it and the rest of the page waits behind. However it closes, it fades and
+// shrinks away first, its dimmed backdrop with it (closing), and only then goes.
+function WhereDialog({ onClose }: { onClose: () => void }) {
+  const { s, t, lang, refresh } = useApp();
+  const [draft, setDraft] = useState(() => structuredClone(s.settings));
+  const [closing, setClosing] = useState(false);
+  const box = useRef<HTMLDialogElement>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout>>();
+  const title = useId();
+  useEffect(() => {
+    box.current?.showModal();
+    return () => clearTimeout(closeTimer.current);
+  }, []);
+  const close = () => {
+    if (closing) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { onClose(); return; }
+    setClosing(true);
+    closeTimer.current = setTimeout(onClose, CLOSE_MS);
+  };
+  const update = (fn: (d: any) => void) => { const next = structuredClone(draft); fn(next); setDraft(next); };
+  // Each change saves itself a moment later, the rest of the settings as they are.
+  const saving = useAutoSave({ markets: draft.markets, areas: draft.areas }, async (where) => {
+    await api("settings", { ...s.settings, ...where, language: lang });
+    await refresh();
+  });
+  return (
+    <dialog ref={box} className={`where-dialog ${closing ? "closing" : ""}`} aria-labelledby={title}
+      onCancel={(e) => { e.preventDefault(); close(); }} onClick={(e) => { if (e.target === box.current) close(); }}>
+      <div className="where-sheet">
+        <header className="where-head">
+          <h2 id={title}>{t("jobs.whereTitle")}</h2>
+          <SaveNote state={saving} />
+          <button type="button" className="where-close" aria-label={t("common.close")} onClick={close}><Icon name="close" /></button>
+        </header>
+        <div className="where-scroll">
+          <div ref={body} className="where-body">
+            <section className="where-section">
+              <MarketsEditor draft={draft} update={update} title={<h3>{t("jobs.whereMarkets")}</h3>} />
+            </section>
+            <section className="where-section">
+              <h3>{t("settings.areas")}</h3>
+              <AreasEditor draft={draft} update={update} />
+            </section>
+          </div>
+          <ThinBar target={body} />
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 // How long the search takes to rise to the top, and how long Pip rides up on it, frightened, before he leaps.
 const RISE_MS = 700;
 const SCARED_MS = 330;
-// The search button's roll in or out of the box; matches .seek-go's transition in styles.css.
-const ROLL_MS = 450;
 
 // Pip running away, standing and frightened, from where he lay (x, the middle of his feet, and y, under them):
 // a leap down to the window's bottom, a squash as he lands, then a dash in hops, leaning into it, out past the
@@ -341,41 +544,20 @@ function EscapingPip({ x, y, onGone }: { x: number; y: number; onGone: () => voi
 // and how to search, and the sparkles, for Pip's two jobs that use Claude; once something is typed, the search
 // button flies in past them.
 function Quick() {
-  const { s, t, lang, err, start } = useApp();
+  const { s, t, lang, err, start, refresh } = useApp();
   const [, paint] = useState(0);
   const repaint = () => paint((n) => n + 1);
   const [menu, setMenu] = useState<"" | "filters" | "ai">("");
+  const [whereOpen, setWhereOpen] = useState(false);
   const menuBox = useRef<HTMLDivElement>(null);
   const { markets = [], roles = [], workMode = "any", areas: myAreas = [] } = s.settings;
   search.q ??= "";
   const [q, setQ] = useState(search.q ?? "");
   const typing = q.trim() !== "";
   const toggle = (which: "filters" | "ai") => setMenu(menu === which ? "" : which);
-  // The search button's place opens at once when something is typed. When the box is emptied it stays open
-  // while the button rolls back out (leaving), and closes after; an empty box has no words beside the caret, so
-  // closing it then moves nothing you can see.
-  const [leaving, setLeaving] = useState(false);
-  const leaveTimer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => clearTimeout(leaveTimer.current), []);
-  const emptied = () => {
-    clearTimeout(leaveTimer.current);
-    setLeaving(true);
-    // A little past the roll, so it has surely ended: the transition starts a frame or so after this.
-    leaveTimer.current = setTimeout(() => setLeaving(false), ROLL_MS + 40);
-  };
-  const slotOpen = typing || leaving;
-  // When the place opens or closes, the settings and the sparkles slide over by its width, 44 pixels and a gap,
-  // rather than jump.
-  const wasOpen = useRef(slotOpen);
-  useLayoutEffect(() => {
-    if (wasOpen.current === slotOpen) return;
-    wasOpen.current = slotOpen;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const out = document.documentElement.dir === "rtl" ? -1 : 1;
-    for (const el of menuBox.current?.querySelectorAll<HTMLElement>(".seek-icon, .seek-ai") ?? []) {
-      el.animate([{ translate: `${(slotOpen ? 50 : -50) * out}px 0` }, { translate: "0 0" }], { duration: 350, easing: "cubic-bezier(0.22, 0.8, 0.3, 1)" });
-    }
-  }, [slotOpen]);
+  // The search button's place, open while something is typed and while the button rolls back out; the settings
+  // and the sparkles slide over as it opens and closes (useGoSlot in kit.tsx).
+  const slotOpen = useGoSlot(typing, menuBox, ".seek-icon, .seek-ai");
   // A menu closes on a click outside the box's end, or on Escape.
   useEffect(() => {
     if (!menu) return;
@@ -385,6 +567,21 @@ function Quick() {
     addEventListener("keydown", escape);
     return () => { removeEventListener("pointerdown", away); removeEventListener("keydown", escape); };
   }, [menu]);
+  // A menu that closes stays a moment as it fades away (shut), rather than vanishing; with reduced motion it just
+  // goes. Worked out as the menu changes, so the closing one is never taken off the page and put back.
+  const [shut, setShut] = useState<typeof menu>("");
+  const [lastMenu, setLastMenu] = useState(menu);
+  if (lastMenu !== menu) {
+    setLastMenu(menu);
+    setShut(lastMenu && !matchMedia("(prefers-reduced-motion: reduce)").matches ? lastMenu : "");
+  }
+  useEffect(() => {
+    if (!shut) return;
+    const timer = setTimeout(() => setShut(""), MENU_OUT_MS);
+    return () => clearTimeout(timer);
+  }, [shut]);
+  const showing = (which: typeof menu) => menu === which || shut === which;
+  const panelClass = (which: typeof menu) => (menu === which ? "" : "closing");
   // The first search of a visit: everything rises from the middle of the page to the top (from where the box
   // was, rise). Pip rides up on the box for a moment, frightened, then leaps off it and runs away (EscapingPip).
   // He is back on the box the next time the page opens.
@@ -414,11 +611,17 @@ function Quick() {
   }, [pip.phase]);
   const noMarket = !markets.length;
   const hint = useHint(t("jobs.hint"), roles.map((r: any) => String(r.query)));
+  // The choices in the filters menu are the user's, kept in the saved settings: taken from there once, and saved
+  // again whenever one is picked (set, below).
+  const saved = s.settings.quickSearch;
+  if (!search.chosen && saved) {
+    Object.assign(search, { days: saved.days, market: saved.market, mode: saved.mode, areas: saved.areas, chosen: true });
+  }
   search.mode ||= workMode;
   if (search.market !== "all" && !markets.some((m: any) => m.code === search.market)) search.market = "all";
   const excluded = myAreas.filter((a: any) => a.tier === "far").map((a: any) => areaName(a.name, lang));
   const where = noMarket ? t("jobs.noMarket")
-    : markets.map((m: any) => (m.city ? `${m.city}, ${marketLabel(m, lang, t)}` : marketLabel(m, lang, t))).join(", ") + (excluded.length ? `. ${t("jobs.hidden", { names: excluded.join(", ") })}` : "");
+    : markets.map((m: any) => (m.city ? `${m.city}, ${marketLabel(m, lang, t)}` : marketLabel(m, lang, t))).join(" · ");
 
   const run = async (query = q) => {
     if (!asked) {
@@ -441,7 +644,12 @@ function Quick() {
     search.busy = false;
     repaint();
   };
-  const set = (key: "days" | "market" | "mode" | "areas") => (e: React.ChangeEvent<HTMLSelectElement>) => { search[key] = e.target.value; repaint(); };
+  const set = (key: "days" | "market" | "mode" | "areas") => (value: string) => {
+    search[key] = value;
+    repaint();
+    const quickSearch = { days: search.days, market: search.market, mode: search.mode, areas: search.areas };
+    api("settings", { ...s.settings, quickSearch, language: lang }).then(() => refresh()).catch(() => {});
+  };
   const results = search.results ?? [];
   const shown = results.filter((j) => {
     if (search.areas === "all") return true;
@@ -451,82 +659,97 @@ function Quick() {
   const hidden = results.length - shown.length;
 
   return (
-    <div ref={page} className={`seek ${asked ? "asked" : ""}`}>
-      <Sky />
-      {pip.phase === "escape" && <EscapingPip x={pip.x!} y={pip.y!} onGone={() => setPip({ phase: "gone" })} />}
-      <h1 className="seek-title">{t("jobs.prompt")}</h1>
-      <form className={`seek-box ${typing ? "typing" : ""} ${slotOpen ? "slot-open" : ""}`} onSubmit={(e) => { e.preventDefault(); setMenu(""); if (typing) run(); }}>
-        {(pip.phase === "rest" || pip.phase === "scared") && <PipLying className="seek-pip" scared={pip.phase === "scared"} />}
-        {/* Empty, the box takes the page's direction, so the hint starts on the page's side; typed words take their own. */}
-        <input
-          type="search" value={q} placeholder={hint} aria-label={t("jobs.query")} dir={q ? "auto" : undefined} disabled={noMarket}
-          onChange={(e) => { if (typing && !e.target.value.trim()) emptied(); setQ(e.target.value); search.q = e.target.value; }}
-        />
-        <div className="seek-tools" ref={menuBox}>
-          <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
-          <button type="button" className="seek-ai" aria-label={t("jobs.ai")} aria-expanded={menu === "ai"} onClick={() => toggle("ai")}><Icon name="ai" /></button>
-          {/* The search button's place, closed until something is typed. */}
-          <span className="seek-go-slot">
-            <button type="submit" className="seek-go" aria-label={t("jobs.search")} aria-hidden={!typing} tabIndex={typing ? undefined : -1} disabled={!typing || search.busy || noMarket}><Icon name="jobs" /></button>
-          </span>
-          {menu === "filters" && (
-            <div className="seek-panel" role="group" aria-label={t("jobs.menu")}>
-              <p className="seek-where">{where} <a href="#/settings">{t("jobs.change")}</a></p>
-              {!noMarket && <>
-                <label className="field"><span className="field-label">{t("jobs.where")}</span>
-                  <select value={search.market} onChange={set("market")}>
-                    {markets.length > 1 && <option value="all">{t("jobs.allMarkets")}</option>}
-                    {markets.map((m: any) => <option key={m.code} value={m.code}>{marketLabel(m, lang, t)}</option>)}
-                  </select>
-                </label>
-                <label className="field"><span className="field-label">{t("jobs.mode")}</span>
-                  <select value={search.mode} onChange={set("mode")}>
-                    {["any", "remote", "hybrid", "onsite"].map((v) => <option key={v} value={v}>{t(`modes.${v}`)}</option>)}
-                  </select>
-                </label>
-                <label className="field"><span className="field-label">{t("jobs.posted")}</span>
-                  <select value={search.days} onChange={set("days")}>
-                    {["1", "7", "14", "30"].map((v) => <option key={v} value={v}>{t(`jobs.days.d${v}`)}</option>)}
-                  </select>
-                </label>
-                {myAreas.length > 0 && (
-                  <label className="field"><span className="field-label">{t("jobs.areaFilter")}</span>
-                    <select value={search.areas} onChange={set("areas")}>
-                      {["relevant", "listed", "all"].map((v) => <option key={v} value={v}>{t(`jobs.areas.${v}`)}</option>)}
-                    </select>
-                  </label>
-                )}
-              </>}
-            </div>
-          )}
-          {menu === "ai" && (
-            <div className="seek-panel" role="group" aria-label={t("jobs.ai")}>
-              <p className="seek-more">{t("jobs.more")}</p>
-              <button type="button" className="seek-action" onClick={() => start("/job-scraper")}><strong>{t("jobs.smart")}</strong><small>{t("jobs.smartNote")}</small></button>
-              <button type="button" className="seek-action" onClick={() => start("/rank")}><strong>{t("jobs.rank")}</strong><small>{t("jobs.rankNote")}</small></button>
-            </div>
-          )}
+    <>
+      <div ref={page} className={`seek ${asked ? "asked" : ""}`}>
+        <Sky />
+        {pip.phase === "escape" && <EscapingPip x={pip.x!} y={pip.y!} onGone={() => setPip({ phase: "gone" })} />}
+        {whereOpen && <WhereDialog onClose={() => setWhereOpen(false)} />}
+        <h1 className="seek-title">{t("jobs.prompt")}</h1>
+        <form className={`seek-box ${typing ? "typing" : ""} ${slotOpen ? "slot-open" : ""}`} onSubmit={(e) => { e.preventDefault(); setMenu(""); if (typing) run(); }}>
+          {(pip.phase === "rest" || pip.phase === "scared") && <PipLying className="seek-pip" scared={pip.phase === "scared"} />}
+          {/* Empty, the box takes the page's direction, so the hint starts on the page's side; typed words take their own. */}
+          <input
+            type="search" value={q} placeholder={hint} aria-label={t("jobs.query")} dir={q ? "auto" : undefined} disabled={noMarket}
+            onChange={(e) => { setQ(e.target.value); search.q = e.target.value; }}
+          />
+          <div className="seek-tools" ref={menuBox}>
+            <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
+            <button type="button" className="seek-ai" aria-label={t("jobs.ai")} aria-expanded={menu === "ai"} onClick={() => toggle("ai")}><Icon name="ai" /></button>
+            {/* The search button's place, closed until something is typed. */}
+            <span className="seek-go-slot">
+              <button type="submit" className="seek-go" aria-label={t("jobs.search")} aria-hidden={!typing} tabIndex={typing ? undefined : -1} disabled={!typing || search.busy || noMarket}><Icon name="jobs" /></button>
+            </span>
+            {/* Where, as a row that opens the window for changing it: the markets, with the areas hidden under them;
+                then the search's options as rows of choices. */}
+            {showing("filters") && (
+              <div className={`seek-panel seek-filters ${panelClass("filters")}`} role="group" aria-label={t("jobs.menu")}>
+                <button type="button" className="where-row" onClick={() => { setMenu(""); setWhereOpen(true); }}>
+                  <span className="where-mark"><Icon name="pin" /></span>
+                  <span className="where-text">
+                    <span className="where-place">{where}</span>
+                    {excluded.length > 0 && <span className="where-hidden">{t("jobs.hidden", { names: excluded.join(", ") })}</span>}
+                  </span>
+                  <span className="where-change">{t("jobs.change")}<Icon name="onward" /></span>
+                </button>
+                {!noMarket && <>
+                  {markets.length > 1 && (
+                    <Choice label={t("jobs.where")} value={search.market} onPick={set("market")}
+                      options={[["all", t("jobs.allMarkets")], ...markets.map((m: any): [string, string] => [m.code, marketLabel(m, lang, t)])]} />
+                  )}
+                  <Choice label={t("jobs.posted")} value={search.days} onPick={set("days")} options={["1", "7", "14", "30"].map((v): [string, string] => [v, t(`jobs.days.d${v}`)])} />
+                  <Choice label={t("jobs.mode")} value={search.mode} onPick={set("mode")} options={["any", "remote", "hybrid", "onsite"].map((v): [string, string] => [v, t(`modes.${v}`)])} />
+                  {myAreas.length > 0 && (
+                    <Choice label={t("jobs.areaFilter")} value={search.areas} onPick={set("areas")} options={["relevant", "listed", "all"].map((v): [string, string] => [v, t(`jobs.areas.${v}`)])} />
+                  )}
+                </>}
+              </div>
+            )}
+            {showing("ai") && (
+              <div className={`seek-panel seek-ai-panel ${panelClass("ai")}`} role="group" aria-label={t("jobs.ai")}>
+                {/* Claude's mark over the two jobs, and a warning that they use the user's Claude tokens. */}
+                <header className="ai-head">
+                  <span className="ai-claude"><ClaudeMark /></span>
+                  <strong>{t("jobs.aiTitle")}</strong>
+                </header>
+                <p className="ai-warn" role="note"><Icon name="warn" /><span>{t("jobs.aiNote")}</span></p>
+                {([["smart", "/job-scraper"], ["rank", "/rank"]] as const).map(([job, command]) => (
+                  <button key={job} type="button" className="seek-action" onClick={() => start(command)}>
+                    <span className="action-text"><strong>{t(`jobs.${job}`)}</strong><small>{t(`jobs.${job}Note`)}</small></span>
+                    <Icon name="onward" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </form>
+        {noMarket ? (
+          <p className="seek-note">{t("jobs.needMarket")} <a href="#/settings">{t("jobs.toSettings")}</a></p>
+        ) : (
+          <RoleSuggestions onPick={run} />
+        )}
+        {search.failed.length > 0 && <p className="error-line">{t("jobs.failed", { list: search.failed.join(", ") })}</p>}
+        {search.results !== null && !search.busy && shown.length > 0 && (
+          <div key={search.round} className="seek-results">
+            <div className="results">{shown.map((j, i) => <ResultRow key={j.id ?? j.url} job={j} index={i} />)}</div>
+          </div>
+        )}
+      </div>
+      {/* While it searches, in the middle of the page: Pip's head in a turning ring, nothing written. */}
+      {search.busy && (
+        <div className="seek-loading" role="status" aria-label={t("jobs.searching")}>
+          <span className="seek-ring" aria-hidden="true" />
+          <PipMark className="seek-loading-mark" />
         </div>
-      </form>
-      {noMarket ? (
-        <p className="seek-note">{t("jobs.needMarket")} <a href="#/settings">{t("jobs.toSettings")}</a></p>
-      ) : (
-        <RoleSuggestions onPick={run} />
       )}
-      {search.busy && <div className="row note seek-status" role="status"><Spinner />{t("jobs.searching")}</div>}
-      {search.failed.length > 0 && <p className="error-line">{t("jobs.failed", { list: search.failed.join(", ") })}</p>}
-      {search.results !== null && !search.busy && (
-        <div key={search.round} className="seek-results">
-          <p className="note" role="status">{t("jobs.count", { n: shown.length })}{hidden ? t("jobs.hiddenCount", { n: hidden }) : ""}</p>
-          {shown.length > 0 && <div className="results">{shown.map((j, i) => <ResultRow key={j.id ?? j.url} job={j} index={i} />)}</div>}
-        </div>
-      )}
-    </div>
+      {/* Outside the search's column, so the earth can reach the page's sides and foot. */}
+      {search.results !== null && !search.busy && <ResultsEnd key={search.round} count={shown.length} hidden={hidden} />}
+    </>
   );
 }
 
-// The search on its own page, with no title.
-export const Jobs = () => <div className="page"><Quick /></div>;
+// The search on its own page, with no title; the page fills the window, so the earth under the results reaches its
+// foot.
+export const Jobs = () => <div className="page jobs-page"><Quick /></div>;
 
 // The saved jobs, a tab of their own in the sidebar.
 export function SavedJobs() {

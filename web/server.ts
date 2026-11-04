@@ -1,14 +1,15 @@
 // Local web interface for the job-search workspace. Listens on this computer only.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { createSession, getSession, listSessions, runUnattended } from "./agent";
+import { createSession, getSession, isAccess, listSessions, runUnattended } from "./agent";
 import { clearedCookie, createAuth, sessionCookie } from "./auth";
 import { buildInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
-import { loadState, resolveDocument, searchJobs } from "./data";
+import { conversationFiles, loadState, resolveDocument, searchJobs } from "./data";
 import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, listSources, readChecks, readDocument, readEditableFile, readSource, saveChecks, saveDocument, saveEditableFile, saveSource, setApplicationStatus } from "./edit";
 import { REPO } from "./policy";
 import { loadSettings, REGION_PRESETS, saveSettings } from "./settings";
+import { getUpload, saveUpload, UploadError } from "./uploads";
 
 const PORT = Number(process.env.JOB_WEB_PORT ?? 4174);
 const HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
@@ -126,6 +127,23 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (parts[0] === "file") return json(readEditableFile(url.searchParams.get("path")));
     if (parts[0] === "automation") return json(automationStatus());
     if (parts[0] === "sessions" && parts[1] && parts[2] === "events") return eventStream(parts[1], req);
+    if (parts[0] === "uploads" && parts[1]) {
+      const upload = getUpload(parts[1]);
+      if (!upload) return json({ error: "not found" }, 404);
+      // Like /file: a PDF opens in the browser's viewer, which the page's policy would stop; anything else is
+      // shown sandboxed, so nothing in it can run.
+      return new Response(Bun.file(upload.file), {
+        headers: {
+          "Content-Type": upload.type, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "private, max-age=86400",
+          ...(upload.kind === "pdf" ? {} : { "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self'" }),
+          "Content-Disposition": `inline; filename="${upload.name.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(upload.name)}`,
+        },
+      });
+    }
+    if (parts[0] === "sessions" && parts[1] && parts[2] === "files") {
+      const session = getSession(parts[1]);
+      return session ? json({ files: conversationFiles(session.events) }) : json({ error: "not found" }, 404);
+    }
     if (parts[0] === "search") {
       try {
         const p = url.searchParams;
@@ -138,6 +156,15 @@ async function api(req: Request, url: URL): Promise<Response> {
   }
 
   const body = await req.json().catch(() => ({})) as Record<string, any>;
+  // A file attached in the chat, its bytes in base64 inside the JSON, like every other write here.
+  if (parts[0] === "uploads" && !parts[1]) {
+    try {
+      return json(saveUpload(String(body.name ?? ""), String(body.data ?? "")));
+    } catch (err) {
+      if (err instanceof UploadError) return json({ error: `upload_${err.message}` }, 400);
+      throw err;
+    }
+  }
   if (parts[0] === "settings") return json(saveSettings(body, REPO));
   if (parts[0] === "profile" || parts[0] === "rules") return json(saveDocument(parts[0], body.text, body.base));
   if (parts[0] === "checks") return json(saveChecks(body));
@@ -173,21 +200,31 @@ async function api(req: Request, url: URL): Promise<Response> {
   }
   if (parts[0] === "sessions" && !parts[1]) {
     const prompt = String(body.prompt ?? "").trim();
-    if (!prompt) return json({ error: "empty" }, 400);
-    return json(createSession(prompt, body.model).summary());
+    const uploads = attached(body.files);
+    if (!prompt && !uploads.length) return json({ error: "empty" }, 400);
+    return json(createSession(prompt, body.model, { access: isAccess(body.access) ? body.access : "ask", uploads }).summary());
   }
   const session = parts[0] === "sessions" ? getSession(parts[1]) : undefined;
   if (!session) return json({ error: "not found" }, 404);
   if (parts[2] === "message") {
     const text = String(body.text ?? "").trim();
-    if (!text) return json({ error: "empty" }, 400);
-    session.send(text);
+    const uploads = attached(body.files);
+    if (!text && !uploads.length) return json({ error: "empty" }, 400);
+    session.send(text, uploads);
     return json({ ok: true });
   }
   if (parts[2] === "respond") return json({ ok: session.respond(String(body.requestId), body) });
+  if (parts[2] === "access") {
+    if (!isAccess(body.access)) return json({ error: "bad access" }, 400);
+    session.setAccess(body.access);
+    return json(session.summary());
+  }
   if (parts[2] === "interrupt") { await session.interrupt(); return json({ ok: true }); }
   return json({ error: "not found" }, 404);
 }
+
+// The uploads a message names, by id, up to five; one that is not there is left out.
+const attached = (ids: unknown) => (Array.isArray(ids) ? ids.slice(0, 5).map((id) => getUpload(String(id))).filter((u) => u !== null) : []);
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -198,13 +235,15 @@ function document(url: URL) {
   const abs = resolveDocument(url.searchParams.get("path") ?? "");
   if (!abs) return new Response("Not found", { status: 404 });
   const isHtml = abs.toLowerCase().endsWith(".html");
+  // Saving a CV from the browser keeps the name employers should see; download=1 saves rather than shows it.
+  const name = /[\\/]cv[\\/][^\\/]+\.pdf$/i.test(abs) ? "Sean Fourman - Resume.pdf" : path.basename(abs);
+  const how = url.searchParams.get("download") === "1" ? "attachment" : "inline";
   return new Response(Bun.file(abs), {
     headers: {
       "Content-Type": isHtml ? "text/html; charset=utf-8" : "application/pdf",
       "X-Content-Type-Options": "nosniff",
       "Cache-Control": "no-store",
-      // Saving a CV from the browser keeps the name employers should see.
-      ...(/[\\/]cv[\\/][^\\/]+\.pdf$/i.test(abs) ? { "Content-Disposition": 'inline; filename="Sean Fourman - Resume.pdf"' } : {}),
+      "Content-Disposition": `${how}; filename="${name.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`,
       ...(isHtml ? { "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:" } : {}),
     },
   });

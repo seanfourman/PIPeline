@@ -134,6 +134,64 @@ const BACK_LEAP = blocks([
   "...D...D...",
 ]);
 
+// Stone, wood and earth, for Pip's pickaxe (PipMiner).
+const M: Record<string, string> = { stone: "#a4abb3", stoneDark: "#7f8790", beam: "#a8713f", light: "#ddb07c" };
+// Pip's hard hat, between the ears, with its lamp in front; and the pickaxe, raised (a) and struck into what it
+// digs (b), where bits of earth fly.
+const HAT: Record<string, string> = { Y: "#ffc94a", H: "#d6962a", L: "#fffbe6" };
+const hat = (x0: number, y0: number, rows: string[]): Px[] => rows.flatMap((row, dy) => [...row].map((ch, dx): Px => [x0 + dx, y0 + dy, HAT[ch]]));
+const HELMET: Px[] = [...hat(7, 0, ["YYYYYYYY"]), ...hat(6, 1, ["YYYYYYYYYY"]), ...hat(5, 2, ["HHHHHHHHHHHH"]), ...hat(10, 0, ["LL", "LL"])];
+// A pickaxe held at the hand (hx, hy), out to one side (side: 1 right, -1 left): a wooden handle and a curved iron
+// head across its end, bulging away from the handle and its two points bending back, darker at the points.
+// Raised, the handle slants up and out; struck, it lies level and the head stands upright, with bits of earth
+// flying off past it.
+function pickaxe(hx: number, hy: number, side: 1 | -1) {
+  const at = (c: string) => ([x, y]: number[]): Px => [hx + side * x, hy + y, c];
+  const raised = [
+    ...[[1, -1], [2, -2], [3, -3], [4, -4], [5, -5], [6, -6], [7, -7]].map(at(M.beam)),
+    ...[[4, -11], [5, -11], [6, -10], [7, -10], [8, -9], [8, -8], [9, -8], [10, -7], [10, -6], [11, -5], [11, -4]].map(at(M.stone)),
+    ...[[3, -10], [10, -3]].map(at(M.stoneDark)),
+  ];
+  const struck = [
+    ...[[1, 0], [2, 0], [3, 0], [4, 0], [5, 0], [6, 0], [7, 0], [8, 0]].map(at(M.beam)),
+    ...[[9, -4], [9, -3], [10, -2], [10, -1], [9, 0], [10, 0], [10, 1], [10, 2], [9, 3], [9, 4]].map(at(M.stone)),
+    ...[[8, -5], [8, 5]].map(at(M.stoneDark)),
+    ...[[12, -2], [13, 0], [12, 2], [14, -1], [13, 3]].map(at(M.light)),
+  ];
+  return { raised, struck };
+}
+// Out to Pip's left, so its tail stays on the right.
+const { raised: PICK_UP, struck: PICK_DOWN } = pickaxe(1, 11, -1);
+
+// The edge of a shape's pixels: those with a side that touches nothing of it, in the text's colour.
+const INK = "currentColor";
+function edgeOf(px: Px[]): Px[] {
+  const on = new Set(px.map(([x, y]) => `${x},${y}`));
+  return px.filter(([x, y]) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => !on.has(`${x + dx},${y + dy}`))).map(([x, y]): Px => [x, y, INK]);
+}
+const inInk = (px: Px[]): Px[] => px.map(([x, y]): Px => [x, y, INK]);
+// Pip in the hard hat drawn as lines in the text's colour: the edge of the whole fox, of the hat and of the cream
+// chest and tail tip, with the eyes, the nose and the pickaxe.
+const MINER_LINES = [...edgeOf([...FRONT, ...HELMET]), ...edgeOf(HELMET), ...edgeOf(FRONT.filter(([, , c]) => c === C.W)), ...inInk(nose)];
+
+// Pip in the hard hat, swinging the pickaxe out to its left (dig-a raised, dig-b struck, with bits of earth
+// flying), its tail on the right, on its own, for a mine the page draws round it; outline draws it all as lines
+// in the text's colour (its CSS color).
+export function PipMiner({ className = "", outline = false }: { className?: string; outline?: boolean }) {
+  const paint = outline ? inInk : (px: Px[]) => px;
+  return (
+    <svg className={`pip pip-digging ${className}`} viewBox="-13 -1 35 20" shapeRendering="crispEdges" aria-hidden="true">
+      <g className="pip-bob">
+        <Pixels px={outline ? MINER_LINES : [...FRONT, ...HELMET]} />
+        <Pixels px={paint(eyesOpen)} className="pip-open" />
+        <Pixels px={paint(eyesShut)} className="pip-shut" />
+      </g>
+      <Pixels px={paint(PICK_UP)} className="dig-a" />
+      <Pixels px={paint(PICK_DOWN)} className="dig-b" />
+    </svg>
+  );
+}
+
 // Lying flat: its back curving down from behind the ears and out to a big round rump, its tail along its front.
 // The eyes are left out, for the two that lie like this to add.
 const LYING: Px[] = [

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { classifyLocation, matchesQuery, parseCsv, portalArgs, readAts, resolveDocument } from "./data";
+import { classifyLocation, documentPaths, matchesQuery, parseCsv, portalArgs, readAts, resolveDocument } from "./data";
 import { REGION_PRESETS, type Area, type Tier } from "./settings";
 
 const israel = (tiers: Tier[]): Area[] => REGION_PRESETS.IL.map((a, i) => ({ ...a, tier: tiers[i] }));
@@ -127,8 +127,21 @@ describe("parseCsv", () => {
 
 describe("resolveDocument", () => {
   test("refuses anything outside the output folders", () => {
-    for (const bad of [".claude/settings.json", "documents/cv/resume.pdf", "cv/../documents/cv/a.pdf", "cv/sub/a.pdf", "cv/a.tex", "../secret.pdf", "web/data/token"]) {
+    for (const bad of [
+      ".claude/settings.json", "documents/cv/resume.pdf", "cv/../documents/cv/a.pdf", "cv/sub/a.pdf", "cv/a.tex", "../secret.pdf", "web/data/token",
+      "documents/applications/../../secret.pdf", "documents/applications/a/b/c.pdf", "documents/applications/a/notes.md", "documents/postings/a/p.pdf",
+    ]) {
       expect(resolveDocument(bad)).toBeNull();
     }
+  });
+});
+
+describe("documentPaths", () => {
+  test("finds the documents a command or a message names, from the project", () => {
+    expect(documentPaths('mkdir -p documents/applications/acme_dev && cp cv/main_acme_dev.pdf "documents/applications/acme_dev/Sean Fourman - Resume.pdf"'))
+      .toEqual(["cv/main_acme_dev.pdf", "documents/applications/acme_dev/Sean Fourman - Resume.pdf"]);
+    expect(documentPaths("Saved C:\\Users\\Sean-PC\\Desktop\\bismillah\\ai-job-search\\cv\\main_acme_dev.tex and `cover_letters/acme.pdf`."))
+      .toEqual(["cv/main_acme_dev.tex", "cover_letters/acme.pdf"]);
+    expect(documentPaths("nothing here, not even CV_RULES.md")).toEqual([]);
   });
 });
