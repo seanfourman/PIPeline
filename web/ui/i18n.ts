@@ -98,8 +98,16 @@ const he = {
       convo: "השיחה עם פיפ", bigger: "להגדיל", smaller: "להקטין",
     },
     search: {
-      title: "איפה מחפשים?", short: "חיפוש", text: "המדינה והעיר, רמת הניסיון והתפקידים. אפשר לשנות הכל אחר כך בהגדרות.", roles: "תפקידים",
+      title: "איפה מחפשים?", short: "חיפוש", text: "המדינה והעיר, רמת הניסיון והתפקידים.", roles: "תפקידים",
       tabs: { places: "מיקום", level: "רמה", roles: "תפקידים", industries: "תעשיות" }, all: "הכל",
+      levelWho: { any: "בלי סינון", junior: "בתחילת הדרך", middle: "כמה שנות ניסיון", senior: "הרבה ניסיון" },
+      levelSearch: "החיפוש: {query}",
+      rolesFind: "לחפש ברשימה או להוסיף כל תפקיד", addOwn: "להוסיף כתפקיד משלך:",
+      industriesNote: "משרות דאטה ופיתוח אצל {n} מעסיקים גדולים, שמעט מגישים אליהן.", onlyHightech: "רק הייטק", employers: "{n} מעסיקים",
+      industry: {
+        health: "בריאות", insurance: "ביטוח", finance: "פיננסים", government: "ממשלה", local: "עיריות", academia: "אקדמיה",
+        telecom: "תקשורת", retail: "קמעונאות", industry: "תעשייה", energy: "אנרגיה", transport: "תחבורה", defense: "ביטחון",
+      },
     },
     mail: {
       title: "משרות במייל?", short: "מייל",
@@ -474,8 +482,16 @@ const en: Dict = {
       convo: "The conversation with Pip", bigger: "Enlarge", smaller: "Shrink",
     },
     search: {
-      title: "Where should I look?", short: "Search", text: "The country and city, your level, and the roles. You can change all of it later in the settings.", roles: "Roles",
+      title: "Where should I look?", short: "Search", text: "The country and city, your level, and the roles.", roles: "Roles",
       tabs: { places: "Place", level: "Level", roles: "Roles", industries: "Industries" }, all: "All",
+      levelWho: { any: "No filter", junior: "Starting out", middle: "A few years in", senior: "Many years in" },
+      levelSearch: "The search: {query}",
+      rolesFind: "Search the list or add any role", addOwn: "Add as your own role:",
+      industriesNote: "Data and development jobs at {n} large employers, which few people apply to.", onlyHightech: "High-tech only", employers: "{n} employers",
+      industry: {
+        health: "Health", insurance: "Insurance", finance: "Finance", government: "Government", local: "Cities", academia: "Academia",
+        telecom: "Telecom", retail: "Retail", industry: "Industry", energy: "Energy", transport: "Transport", defense: "Defense",
+      },
     },
     mail: {
       title: "Jobs by email?", short: "Email",

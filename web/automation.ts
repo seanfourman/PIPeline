@@ -15,6 +15,8 @@ const STATE_FILE = path.join(APP_DIR, "automation.json");
 const MAIL_FILE = path.join(os.homedir(), ".ai-job-search", "mail.json");
 const STEP_TIMEOUT = 30 * 60 * 1000;
 const APPLY_TIMEOUT = 40 * 60 * 1000;
+// The portals check reads a few hundred employers' pages, from AllJobs one at a time.
+const PORTALS_TIMEOUT = 60 * 60 * 1000;
 const KEPT_RUNS = 20;
 const KEPT_TRIED = 500;
 
@@ -165,7 +167,7 @@ export function createAutomation(deps: Deps) {
     try {
       await step("search", words.title.search, SEARCH_PROMPT, STEP_TIMEOUT);
       if (deps.scanPortals) {
-        const result = await deps.scanPortals(words.title.portals, STEP_TIMEOUT);
+        const result = await deps.scanPortals(words.title.portals, PORTALS_TIMEOUT);
         entry.steps.push({ step: "portals", session: result.id, ok: result.ok, note: result.ok ? undefined : result.text.slice(0, 200) });
         saveRun(entry);
       }

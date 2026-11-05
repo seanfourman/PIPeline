@@ -65,8 +65,9 @@ const language = () => (loadSettings().language === "en" ? "en" as const : "he" 
 
 const automation = createAutomation({
   loadSettings, loadState, runSession: runUnattended, sendMail: (mail) => sendMail(mail),
-  // The daily run's portals check: the employers and the Israeli boards, which the run's agent doesn't search.
-  scanPortals: (title, timeout) => runTask(title, (steps, signal) => scanPortals({ steps, signal, lang: language(), ask: askFor(steps), boards: true }), timeout),
+  // The daily run's portals check: the employers and the Israeli boards, which the run's agent doesn't search. An
+  // employer that had nothing at its last check rests three days (scraper.ts).
+  scanPortals: (title, timeout) => runTask(title, (steps, signal) => scanPortals({ steps, signal, lang: language(), ask: askFor(steps), boards: true, rest: 3 }), timeout),
 });
 // Only the address leaves the server. The password is written once and never read back.
 const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), mailUser: readMailAccount()?.user ?? "" });

@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Fetch } from "./boards";
 import { ChatbotError } from "./chatbots";
+import { PORTALS } from "./portals";
 import type { Run } from "./ranker";
 import { fitSystem, parseFits, scanPortals, scrapeJobs, type Search } from "./scraper";
 import { EMPTY_SETTINGS, validateSettings, type Settings } from "./settings";
@@ -89,12 +90,15 @@ describe("scraper", () => {
     await expect(failing).rejects.toMatchObject({ code: "ai_none" });
   });
 
+  // The insurers, with every one but the Phoenix switched off.
+  const onlyPhoenix = () => validateSettings({
+    ...settings, roles: [{ id: "analyst" }], industries: ["insurance"],
+    portals: { off: PORTALS.filter((p) => p.industry === "insurance" && p.id !== "phoenix").map((p) => p.id) },
+  });
+
   test("the portals check reads each employer, judges what fits the roles, stores it with its portal, and keeps each one's result", async () => {
     const checks = path.join(mkdtempSync(path.join(os.tmpdir(), "job-portals-")), "portals.json");
-    const portalSettings = validateSettings({
-      ...settings, roles: [{ id: "analyst" }], industries: ["insurance"],
-      portals: { off: ["harel", "migdal", "clal", "menora", "menora-pension", "aig", "shomera", "passportcard"] },
-    });
+    const portalSettings = onlyPhoenix();
     // Of the insurers, only the Phoenix is on: its page has a data category with one analyst job.
     const fetch: Fetch = async (url) => (url.endsWith("cid=173831")
       ? `<a href="/x?cid=173831&amp;JobCategoriesFilter=1806">דאטה (1)</a><div class="job-content-top-date">לפני שעה</div><a href="/Search/UploadSingle.aspx?JobID=5"><h2>אנליסט/ית נתונים</h2></a>`
@@ -108,6 +112,19 @@ describe("scraper", () => {
     expect(JSON.parse(readFileSync(checks, "utf8")).phoenix).toMatchObject({ found: 1, kept: 1 });
     expect(text).toContain("בדיקת פורטלים");
     expect(text).toContain("נשמרו 1 משרות חדשות.");
+  });
+
+  test("the daily run leaves an employer that had nothing at its last check alone for a few days", async () => {
+    const checks = path.join(mkdtempSync(path.join(os.tmpdir(), "job-portals-")), "portals.json");
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => { asked.push(url); return null; };
+    const scan = (rest?: number) => scanPortals({ ask: async () => "[]", steps: steps().steps, signal: never, lang: "en", settings: onlyPhoenix(), run: fakeTools().run, fetch, system: "rules", today: "2026-11-05", checks, rest });
+    writeFileSync(checks, JSON.stringify({ phoenix: { checked: new Date().toISOString(), found: 0, kept: 0 } }));
+    await scan(3);
+    expect(asked).toEqual([]);
+    writeFileSync(checks, JSON.stringify({ phoenix: { checked: new Date(Date.now() - 4 * 86_400_000).toISOString(), found: 0, kept: 0 } }));
+    await scan(3);
+    expect(asked).toEqual(["https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=173831"]);
   });
 
   test("the portals check with nothing to read says so", async () => {

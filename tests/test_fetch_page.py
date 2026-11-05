@@ -192,6 +192,42 @@ class RobotsGate(FetchPageFixture):
                 self.assertNotIn("/blocked", self.server.paths)
                 self.assertFalse(self.out.exists())
 
+    def test_robots_cache_asks_for_the_policy_once_for_many_pages(self):
+        """--robots-cache: the gate still runs before every page, from a policy
+        read once; a run without the flag reads it again and keeps nothing."""
+        import robots_check
+
+        fetch_page.gate = self._orig_gate
+        self.addCleanup(setattr, robots_check, "CACHE_DIR", None)
+        original = fetch_page.ROBOTS_CACHE
+        fetch_page.ROBOTS_CACHE = self.tmp / "robots"
+        self.addCleanup(setattr, fetch_page, "ROBOTS_CACHE", original)
+        self.server.paths.clear()
+        for _ in range(2):
+            code, out, err = self.run_main(f"{self.base}/ok.html", "--out", str(self.out), "--robots-cache")
+            self.assertEqual(code, 0, out + err)
+        self.assertEqual(self.server.paths.count("/robots.txt"), 1)
+        self.assertEqual(self.server.paths.count("/ok.html"), 2)
+        code, out, err = self.run_main(f"{self.base}/ok.html", "--out", str(self.out))
+        self.assertEqual(code, 0, out + err)
+        self.assertIsNone(robots_check.CACHE_DIR)
+        self.assertEqual(self.server.paths.count("/robots.txt"), 2)
+
+    def test_robots_cache_still_refuses_a_disallowed_redirect(self):
+        import robots_check
+
+        fetch_page.gate = self._orig_gate
+        self.addCleanup(setattr, robots_check, "CACHE_DIR", None)
+        original = fetch_page.ROBOTS_CACHE
+        fetch_page.ROBOTS_CACHE = self.tmp / "robots"
+        self.addCleanup(setattr, fetch_page, "ROBOTS_CACHE", original)
+        for _ in range(2):
+            self.server.paths.clear()
+            code, out, err = self.run_main(f"{self.base}/redirect", "--out", str(self.out), "--robots-cache")
+            self.assertEqual(code, 1, out + err)
+            self.assertIn("DISALLOWED", out)
+            self.assertNotIn("/blocked", self.server.paths)
+
     def test_allowed_redirect_still_fetches_the_posting(self):
         fetch_page.gate = self._orig_gate
         for path in ("curl", "urllib"):

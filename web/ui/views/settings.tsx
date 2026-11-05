@@ -38,11 +38,16 @@ type Update = (fn: (d: any) => void) => void;
 // screen's, and the jobs page's window for changing it there. Its heading (title) with a light link for remote
 // work at the line's end, the markets chosen as round tags with a pin and an ×, and a row to add one, a country
 // to find in a list and a city, with a round + at its start. With 3 chosen, the link and the row give way to a
-// note that that is the most, and that removing one makes room.
+// note that that is the most, and that removing one makes room. bare: on the introduction's board, whose pins, ×
+// and + are drawn in its pixels.
 const MAX_MARKETS = 3;
+const PLACE_PIN = ["..XXXXX..", ".XX...XX.", "XX..X..XX", "XX.XXX.XX", "XX..X..XX", ".XX...XX.", "..XX.XX..", "...XXX...", "....X...."];
+const PLACE_X = ["XX...XX", "XXX.XXX", ".XXXXX.", "..XXX..", ".XXXXX.", "XXX.XXX", "XX...XX"];
+const PLACE_PLUS = ["..XX..", "..XX..", "XXXXXX", "XXXXXX", "..XX..", "..XX.."];
 
-export function MarketsEditor({ draft, update, title }: { draft: any; update: Update; title: React.ReactNode }) {
+export function MarketsEditor({ draft, update, title, bare = false }: { draft: any; update: Update; title: React.ReactNode; bare?: boolean }) {
   const { t, lang } = useApp();
+  const plus = bare ? <PixelArt className="place-plus" rows={PLACE_PLUS} /> : <Icon name="plus" />;
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
   const countries = COUNTRY_CODES.map((code) => ({ code, label: regionName(code, lang), country: regionName(code, "en") })).sort((a, b) => a.label.localeCompare(b.label, lang));
@@ -60,22 +65,24 @@ export function MarketsEditor({ draft, update, title }: { draft: any; update: Up
         {title}
         {!full && !draft.markets.some((m: any) => m.code === "REMOTE") && (
           <button type="button" className="add-link" onClick={() => update((d) => { d.markets.push({ code: "REMOTE", country: "", city: "", label: "Remote" }); })}>
-            <Icon name="plus" />{t("settings.addRemote")}
+            {plus}{t("settings.addRemote")}
           </button>
         )}
       </div>
       {draft.markets.length ? (
         <div className="chips">
           {draft.markets.map((m: any) => (
-            <span key={m.code} className="tag place-tag"><Icon name="pin" />{m.city ? `${m.city}, ` : ""}{marketLabel(m, lang, t)}
-              <button type="button" className="tag-x" aria-label={`${t("common.remove")} ${marketLabel(m, lang, t)}`} onClick={() => update((d) => { d.markets = d.markets.filter((x: any) => x.code !== m.code); })}><Icon name="close" /></button>
+            <span key={m.code} className="tag place-tag">{bare ? <PixelArt className="place-pin" rows={PLACE_PIN} /> : <Icon name="pin" />}{m.city ? `${m.city}, ` : ""}{marketLabel(m, lang, t)}
+              <button type="button" className="tag-x" aria-label={`${t("common.remove")} ${marketLabel(m, lang, t)}`} onClick={() => update((d) => { d.markets = d.markets.filter((x: any) => x.code !== m.code); })}>
+                {bare ? <PixelArt className="place-x" rows={PLACE_X} /> : <Icon name="close" />}
+              </button>
             </span>
           ))}
         </div>
       ) : <p className="error-line">{t("settings.noMarket")}</p>}
       {full ? <p className="note" role="status">{t("settings.marketsFull", { n: MAX_MARKETS })}</p> : (
         <div className="add-row">
-          <button type="button" className="add-go" aria-label={t("common.add")} disabled={!country} onClick={add}><Icon name="plus" /></button>
+          <button type="button" className="add-go" aria-label={t("common.add")} disabled={!country} onClick={add}>{plus}</button>
           {/* Found by its name in either language, or its code. */}
           <Select className="country" label={t("settings.country")} placeholder={t("settings.country")} value={country} onChange={setCountry}
             options={countries.map((c) => ({ value: c.code, label: c.label, keywords: `${c.country} ${c.code}` }))} />

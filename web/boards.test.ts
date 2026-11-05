@@ -38,6 +38,19 @@ describe("reading the boards' pages", () => {
     expect(parseAllJobs(html, today, 70365)[0].company).toBe("");
   });
 
+  test("AllJobs: the employers in the footer are not the company of a last posting that names none", () => {
+    const html = allJobsBox(1, "מפתח/ת BI", 55370, "הטכניון", "חיפה") + allJobsBox(2, "סטודנט/ית לצוות המחשוב", 0, "", "חיפה").replace(/<div class="T14">[\s\S]*?<\/div>/, "")
+      + `<footer><a class="footer__link" href="https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=29512">אורמת דרושים</a></footer>`;
+    expect(parseAllJobs(html, today).map((p) => p.company)).toEqual(["הטכניון", ""]);
+  });
+
+  test("AllJobs: an employer's page keeps its last posting, though similar companies follow the list", () => {
+    const own = (id: number, title: string) => allJobsBox(id, title, 0, "", "יבנה").replace(/<div class="T14">[\s\S]*?<\/div>/, "");
+    const html = own(1, "כלכלן/ית תכנון ובקרה") + own(2, "קניין/ית קבלנות משנה") + `<div class="jobs-paging"><a href="#">1</a></div>
+      <div class="similarCompaniesContainer"><a href="/Employer/HP/default.aspx?cid=83241">תנובה</a></div>`;
+    expect(parseAllJobs(html, today, 29512).map((p) => p.title)).toEqual(["כלכלן/ית תכנון ובקרה", "קניין/ית קבלנות משנה"]);
+  });
+
   test("AllJobs: an employer's page keeps only that employer's postings", () => {
     const html = allJobsBox(1, "מפתח/ת BI", 70365, "הראל", "רמת גן") + allJobsBox(2, "מפתח/ת BI", 999, "אחרת", "חיפה");
     expect(parseAllJobs(html, today, 70365).map((p) => p.url)).toEqual(["https://www.alljobs.co.il/Search/UploadSingle.aspx?JobID=1"]);
@@ -86,13 +99,13 @@ describe("reading the boards' pages", () => {
 describe("an employer's own jobs", () => {
   const roles = [{ id: "analyst", label: "Data Analyst", query: "Junior Data Analyst" }];
 
-  test("on AllJobs: its page, then only the categories the roles' fields are filed under, and only titles for the roles", async () => {
+  test("on AllJobs: its page, full, then only the categories the roles' fields are filed under, and only titles for the roles", async () => {
     const asked: string[] = [];
     const fetch: Fetch = async (url) => {
       asked.push(url);
       if (url.endsWith("cid=70365")) {
         return `<a href="/x?cid=70365&amp;JobCategoriesFilter=366">ביטוח (105)</a><a href="/x?cid=70365&amp;JobCategoriesFilter=1806">דאטה (3)</a>`
-          + allJobsBox(1, "נציג/ת שימור", 70365, "הראל", "רמת גן");
+          + Array.from({ length: 10 }, (_, i) => allJobsBox(10 + i, "נציג/ת שימור", 70365, "הראל", "רמת גן")).join("");
       }
       if (url.includes("JobCategoriesFilter=1806")) return allJobsBox(2, "אנליסט/ית נתונים", 70365, "הראל", "רמת גן") + allJobsBox(3, "מתאם/ת פגישות", 70365, "הראל", "רמת גן");
       return "";
@@ -100,6 +113,17 @@ describe("an employer's own jobs", () => {
     const found = await readEmployer(portalById("harel")!, roles, { fetch, today });
     expect(asked).toEqual(["https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=70365", "https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=70365&JobCategoriesFilter=1806"]);
     expect(found).toEqual([expect.objectContaining({ title: "אנליסט/ית נתונים", company: "הראל", portal: "harel" })]);
+  });
+
+  test("on AllJobs: a page with room left has all of the employer's jobs, so no category of them is read", async () => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      return `<a href="/x?cid=70365&amp;JobCategoriesFilter=1806">דאטה (1)</a>` + allJobsBox(1, "אנליסט/ית נתונים", 70365, "הראל", "רמת גן");
+    };
+    const found = await readEmployer(portalById("harel")!, roles, { fetch, today });
+    expect(asked).toEqual(["https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=70365"]);
+    expect(found.map((p) => p.title)).toEqual(["אנליסט/ית נתונים"]);
   });
 
   test("on AllJobs: an employer with no jobs now gives none, though its page shows others'", async () => {

@@ -19,13 +19,17 @@ Properties, each pinned by tests/test_fetch_page.py:
     GET, including redirect targets, and a non-zero gate exits 1 with its
     message; no flag skips it. The retry is for firewalls on sites whose
     published policy allows access, never for sites that said no.
+  * --robots-cache, for a caller that reads many pages from one site (the web
+    app's boards and employers), keeps each site's policy for an hour in the
+    system temp directory, so the file is asked for once rather than before
+    every page; the gate still decides every path (robots_check.py).
   * Fetched content never lands in the repo. --out defaults to the system temp
     directory and a path that resolves inside the repo root is refused.
   * Bounded: 45 s, 5 redirects, 10 MB - on both the curl and the urllib path,
     and the size cap is applied after Content-Encoding is undone.
 
 Usage:
-  python3 tools/fetch_page.py <url> [--out PATH] [--text] [--max-chars N]
+  python3 tools/fetch_page.py <url> [--out PATH] [--text] [--max-chars N] [--robots-cache]
 
 Prints `HTTP <code> size=<bytes> saved=<path>` and exits 0 whatever the HTTP
 status - the status is information for the escalation order, not a failure.
@@ -57,10 +61,12 @@ from urllib.parse import quote, urljoin, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import robots_check  # noqa: E402
 from page_decode import decode_page  # noqa: E402
 from robots_check import BROWSER, gate  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
+ROBOTS_CACHE = Path(tempfile.gettempdir()) / "ai-job-search-robots"
 ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 ACCEPT_LANGUAGE = "en-GB,en;q=0.9"
 TIMEOUT_SECONDS = 45
@@ -206,7 +212,11 @@ def main(argv=None) -> int:
                         help="where to save the body (default: system temp dir; never inside the repo)")
     parser.add_argument("--text", action="store_true", help="also print the tag-stripped text")
     parser.add_argument("--max-chars", type=int, default=6000, help="cap for --text (default 6000)")
+    parser.add_argument("--robots-cache", action="store_true",
+                        help="keep each site's robots.txt for an hour, for a caller reading many pages from one site")
     args = parser.parse_args(argv)
+    # Set on every run, so one run's choice never carries into the next in the same process; never inside the repo.
+    robots_check.CACHE_DIR = ROBOTS_CACHE if args.robots_cache and not _inside_repo(ROBOTS_CACHE) else None
 
     scheme = urlsplit(args.url).scheme.lower()
     if scheme not in ("http", "https"):

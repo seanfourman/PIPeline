@@ -9,8 +9,12 @@ means the browser-header retry runs against a site that said no, which is the
 exact boundary this tool exists to hold.
 """
 
+import json
+import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -397,6 +401,98 @@ class TestUndecodableRules(unittest.TestCase):
         rc, msg = self._gate(body, "https://tr.indeed.example/cmp/x/reviews")
         self.assertEqual(rc, 0, msg)
 
+
+class TestKeptPolicy(unittest.TestCase):
+    """A caller that reads many pages from one site has its policy kept an hour.
+
+    Only the request for robots.txt is saved: every path is still decided against
+    the policy, only a policy read is kept (a 404 or a body that passed the
+    checks), never a failure, a kept body is checked again before it is used,
+    and without CACHE_DIR every check reads the file afresh, as before.
+    """
+
+    POLICY = "User-agent: *\nDisallow: /private\n"
+
+    def setUp(self):
+        import robots_check
+
+        self.rc = robots_check
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.addCleanup(setattr, robots_check, "CACHE_DIR", robots_check.CACHE_DIR)
+        self.addCleanup(setattr, robots_check, "_fetch", robots_check._fetch)
+        robots_check.CACHE_DIR = self.dir
+        self.calls = []
+        self.answer = (self.POLICY, 200)
+
+        def fetch(url, ua):
+            self.calls.append(url)
+            if isinstance(self.answer, Exception):
+                raise self.answer
+            return self.answer
+
+        robots_check._fetch = fetch
+
+    def test_a_policy_read_is_kept_and_still_decides_every_path(self):
+        self.assertEqual(self.rc.gate("https://kept.example/jobs")[0], 0)
+        rc, msg = self.rc.gate("https://kept.example/private/x")
+        self.assertEqual(rc, 1, msg)
+        self.assertIn("DISALLOWED", msg)
+        self.assertEqual(self.calls, ["https://kept.example/robots.txt"])
+
+    def test_a_404_is_kept_too(self):
+        self.answer = ("nope", 404)
+        for _ in range(2):
+            self.assertEqual(self.rc.gate("https://none.example/jobs")[0], 0)
+        self.assertEqual(len(self.calls), 1)
+
+    def test_a_failure_is_never_kept(self):
+        self.answer = RuntimeError("curl exit 28")
+        rc, msg = self.rc.gate("https://down.example/jobs")
+        self.assertEqual(rc, 1)
+        self.assertIn("UNCONFIRMED", msg)
+        self.answer = (self.POLICY, 200)
+        self.assertEqual(self.rc.gate("https://down.example/jobs")[0], 0)
+        self.assertEqual(self.calls[-1], "https://down.example/robots.txt")
+
+    def test_a_soft_200_is_never_kept(self):
+        self.answer = ("<html>404</html>", 200)
+        self.assertEqual(self.rc.gate("https://soft.example/jobs")[0], 1)
+        self.assertEqual(self.rc.gate("https://soft.example/jobs")[0], 1)
+        self.assertEqual(len(self.calls), 4)  # both agents, both times
+
+    def test_a_kept_policy_is_read_again_after_an_hour(self):
+        self.rc.gate("https://old.example/jobs")
+        kept = self.rc._kept_file("https://old.example/robots.txt")
+        data = json.loads(kept.read_text(encoding="utf-8"))
+        data["at"] -= self.rc.CACHE_SECONDS + 1
+        kept.write_text(json.dumps(data), encoding="utf-8")
+        self.rc.gate("https://old.example/jobs")
+        self.assertEqual(len(self.calls), 2)
+
+    def test_a_kept_body_is_checked_again_before_use(self):
+        """A kept file changed to hold what a fresh one would be refused for is
+        not used: the policy is read again, and obeyed."""
+        self.rc.gate("https://tampered.example/jobs")
+        kept = self.rc._kept_file("https://tampered.example/robots.txt")
+        data = json.loads(kept.read_text(encoding="utf-8"))
+        data["body"] = "<html>anything goes</html>"
+        kept.write_text(json.dumps(data), encoding="utf-8")
+        rc, msg = self.rc.gate("https://tampered.example/private/x")
+        self.assertEqual(rc, 1, msg)
+        self.assertEqual(len(self.calls), 2)
+
+    def test_each_address_keeps_its_own(self):
+        for url in ("https://a.example/jobs", "http://a.example/jobs", "https://a.example:8443/jobs", "https://b.example/jobs"):
+            self.rc.gate(url)
+        self.assertEqual(len(self.calls), 4)
+
+    def test_without_a_cache_every_check_reads_the_file(self):
+        self.rc.CACHE_DIR = None
+        for _ in range(2):
+            self.rc.gate("https://fresh.example/jobs")
+        self.assertEqual(len(self.calls), 2)
+        self.assertEqual(os.listdir(self.dir), [])
 
 
 class TestArgumentHardening(unittest.TestCase):

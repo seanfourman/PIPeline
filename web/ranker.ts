@@ -78,7 +78,7 @@ export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scra
   }
   // Saved outside the project, as fetch_page.py insists: what comes back is untrusted.
   const file = path.join(scratch, `${crypto.randomUUID()}.html`);
-  const page = await run([PYTHON, "tools/fetch_page.py", url, "--out", file], { signal });
+  const page = await run([PYTHON, "tools/fetch_page.py", url, "--out", file, "--robots-cache"], { signal });
   if (page.code === 1) return { status: "unreachable", fetch_error: "robots.txt does not allow fetching this page" };
   if (page.code !== 0) return { status: "unreachable", fetch_error: oneLine(page.err || page.out || "fetch failed") };
   const status = Number(/^HTTP (\d{3}) size=/m.exec(page.out)?.[1] ?? 0);

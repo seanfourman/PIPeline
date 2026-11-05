@@ -11,13 +11,14 @@ import { employersToRead, INDUSTRIES, portalOn, PORTALS, webPortals, type How, t
 type Check = { checked: string; found: number; kept: number; error?: string };
 type Update = (fn: (d: any) => void) => void;
 
-// The industries to search and the low-tech switch, here, on the settings screen and in the introduction.
-export function IndustryPicker({ draft, update, bare = false }: { draft: any; update: Update; bare?: boolean }) {
+// The industries to search and the low-tech switch, here and on the settings screen; the introduction has tiles of its
+// own for both (IndustryTiles in welcome.tsx).
+export function IndustryPicker({ draft, update }: { draft: any; update: Update }) {
   const { t, lang } = useApp();
   const chosen: string[] = draft.industries ?? [];
   return (
     <div className="stack">
-      {!bare && <h2>{t("settings.industries")}</h2>}
+      <h2>{t("settings.industries")}</h2>
       <p className="note">{t("settings.industriesNote")}</p>
       <div className="chips">
         {INDUSTRIES.map((i) => {

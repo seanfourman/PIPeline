@@ -20,9 +20,11 @@ const SEARCH_FROM = 12;
 // finds a name in either language (keywords). The options go by with the arrow keys and Enter.
 //
 // The panel is a popover: it stands above everything, a window it is in too, and Escape or a click outside closes
-// it. It is put in that window, or else the page's body: inside a label, a click on an option would count as one
-// on the box, and outside an open window it could not be clicked at all. It opens under the box, or over it when
-// there is more room above (data-side), and fades and grows in and out (styles.css).
+// it. It is put in that window, or in the nearest part of the page that keeps its lists itself (data-popovers: the
+// introduction, which gives them its own look, and its conversation, which keeps the site's), or else the page's
+// body: inside a label, a click on an option would count as one on the box, and outside an open window it could not
+// be clicked at all. It opens under the box, or over it when there is more room above (data-side), and fades and
+// grows in and out (styles.css).
 //
 // compact makes the box a round button with only the choice's icon, named by the label and the choice.
 export function Select({ value, options, onChange, label, placeholder, className = "", disabled, compact = false }: {
@@ -47,7 +49,7 @@ export function Select({ value, options, onChange, label, placeholder, className
   const shown = words ? options.filter((o) => `${o.label} ${o.keywords ?? ""}`.toLocaleLowerCase().includes(words)) : options;
   const current = Math.min(active, shown.length - 1);
 
-  useLayoutEffect(() => { setHome(box.current?.closest("dialog") ?? document.body); }, []);
+  useLayoutEffect(() => { setHome(box.current?.closest("dialog") ?? box.current?.closest<HTMLElement>("[data-popovers]") ?? document.body); }, []);
 
   useEffect(() => {
     const el = panel.current;

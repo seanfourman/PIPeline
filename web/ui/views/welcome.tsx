@@ -14,10 +14,10 @@ import { api, Btn, External, Field, Spinner } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, type Mood } from "../pip";
 import { ENGLISH_NAME, englishOnly } from "../../names";
-import { fromList, listedRole, ROLE_FIELDS } from "../../roles";
+import { INDUSTRIES, PORTALS } from "../../portals";
+import { fromList, type Level, type ListedRole, listedRole, matchListed, type Role, ROLE_FIELDS, roleQuery } from "../../roles";
 import { Conversation, readBase64 } from "./chat";
 import { Digits, PixelArt, Tick } from "./home";
-import { IndustryPicker } from "./portals";
 import { AiKeys, MarketsEditor } from "./settings";
 
 const STEPS = ["hello", "name", "ai", "cv", "search", "mail", "done"] as const;
@@ -52,9 +52,11 @@ const BACK = ["X...", "XX..", ".XX.", "..XX", ".XX.", "XX..", "X..."];
 // star, a page, an envelope and a paper plane (drawn going on along a right-to-left line, turned round in English
 // like the site's onward icon). The colours are in the CSS, by key. Sean keeps it short: only what a new user must
 // hear (he took out lines on the portals and on checking CVs as too much), so ask him before adding one; a line goes
-// here, in i18n.ts (welcome.hello.points, both languages) and its colour in the CSS.
+// here, in i18n.ts (welcome.hello.points, both languages) and its colour in the CSS. The magnifier is the level's
+// search box's too (LevelEffect).
+const FIND = ["..XXX...", ".X...X..", ".X...X..", ".X...X..", "..XXXX..", ".....XX.", "......XX"];
 const POINTS: { key: string; rows: string[]; turn?: boolean }[] = [
-  { key: "search", rows: ["..XXX...", ".X...X..", ".X...X..", ".X...X..", "..XXXX..", ".....XX.", "......XX"] },
+  { key: "search", rows: FIND },
   { key: "rank", rows: ["....X....", "...XXX...", "XXXXXXXXX", ".XXXXXXX.", "..XXXXX..", ".XXX.XXX.", ".X.....X."] },
   { key: "cv", rows: ["XXXXX..", "X...XX.", "X.XX..X", "X.....X", "X.XXX.X", "X.....X", "XXXXXXX"] },
   { key: "mail", rows: ["XXXXXXXXX", "XX.....XX", "X.X...X.X", "X..X.X..X", "X...X...X", "X.......X", "XXXXXXXXX"] },
@@ -296,7 +298,8 @@ function ConversationBox({ id }: { id: string }) {
     <>
       {big && <div className="big-chat-shade" ref={shade} onClick={() => resize(false)} />}
       {big && <div className="welcome-convo-room" ref={room} />}
-      <div className={`welcome-convo ${big ? "big" : ""}`} ref={box} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? t("welcome.cv.convo") : undefined}>
+      {/* Its lists (the access to pick) stay in it, in the site's look, not the board's (select.tsx). */}
+      <div className={`welcome-convo ${big ? "big" : ""}`} ref={box} data-popovers="" role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? t("welcome.cv.convo") : undefined}>
         {/* A bar over it, as a window's: what it is, and at its end the way to make it big or small again. */}
         <div className="welcome-convo-bar">
           <span>{t("welcome.cv.convo")}</span>
@@ -424,7 +427,242 @@ const TAB_PICTURES: Record<SearchTab, string[]> = {
   roles: ["...XXX...", "...X.X...", "XXXXXXXXX", "X.......X", "X.......X", "XXXXXXXXX", "X.......X", "XXXXXXXXX"],
   industries: ["X........", "X.X.X....", "XXXXXXXXX", "X.X.X.X.X", "X.......X", "X.XX.XX.X", "XXXXXXXXX"],
 };
-const LEVELS = ["any", "junior", "middle", "senior"];
+const LEVELS: Level[] = ["any", "junior", "middle", "senior"];
+// A level's picture, the tab's steps as three bars climbing: its own lit and the others in outline, all of them lit
+// for any level. They climb the way the cards run, turned round in Hebrew by the CSS.
+const STEP_HEIGHTS = [4, 7, 10];
+const steps = (on: (step: number, x: number, y: number, top: number) => boolean) =>
+  Array.from({ length: 10 }, (_, y) => STEP_HEIGHTS.map((h, i) => [0, 1, 2, 3].map((x) => (y >= 10 - h && on(i, x, y, 10 - h) ? "X" : ".")).join("")).join("."));
+function LevelSteps({ level }: { level: Level }) {
+  const lit = (step: number) => level === "any" || LEVELS.indexOf(level) === step + 1;
+  return (
+    <span className="level-steps">
+      <PixelArt className="level-step-off" rows={steps((i, x, y, top) => !lit(i) && (x === 0 || x === 3 || y === top || y === 9))} />
+      <PixelArt className="level-step-on" rows={steps(lit)} />
+    </span>
+  );
+}
+
+// How long the level's word takes to type into the search box, a letter at a time, and to delete, and the pause
+// before its first letter.
+const TYPE_MS = 85;
+const DELETE_MS = 45;
+const TYPE_START_MS = 260;
+
+// The word as the box shows it at the moment: the one before deleted a letter at a time, and the new one typed in
+// the same way, from the tab's opening too; all at once for those who ask for less motion.
+function useTyped(word: string) {
+  const [shown, setShown] = useState("");
+  useEffect(() => {
+    if (shown === word) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setShown(word); return; }
+    const typing = word.startsWith(shown);
+    const timer = setTimeout(() => setShown(typing ? word.slice(0, shown.length + 1) : shown.slice(0, -1)),
+      typing ? (shown ? TYPE_MS : TYPE_START_MS) : DELETE_MS);
+    return () => clearTimeout(timer);
+  }, [shown, word]);
+  return shown;
+}
+
+// What the level does to the search: one of the roles chosen from the list, or Backend before any is, searched as
+// it will be, in a box like a search's. The word the level adds is typed in as it changes, each letter dropping into
+// place, the caret where the letters go meanwhile and at the end after; once typed, the highlighter is drawn over
+// it. The tab has no heading, for all of it to fit on the board without scrolling: the cards say what the level is.
+function LevelEffect({ roles, level }: { roles: any[]; level: Level }) {
+  const { t } = useApp();
+  const role = roles.map((r) => listedRole(r.id)).find((r) => r && !r.fixed) ?? listedRole("backend")!;
+  const added = roleQuery(role, level).slice(0, -role.title.length).trim();
+  const shown = useTyped(added);
+  const typing = shown !== added;
+  const caret = <span className={`level-caret ${typing ? "typing" : ""}`} />;
+  return (
+    <div className="level-query" dir="ltr" role="img" aria-label={t("welcome.search.levelSearch", { query: roleQuery(role, level) })}>
+      <PixelArt className="level-query-find" rows={FIND} />
+      <span>
+        {shown && <span className={`level-added ${typing ? "" : "inked"}`}>{[...shown].map((c, i) => <span key={i} className="level-letter">{c}</span>)}</span>}
+        {typing && caret}
+        {shown && <span className="level-gap" />}
+        {role.title}
+        {!typing && caret}
+      </span>
+    </div>
+  );
+}
+
+// The roles, as a notebook's index: the fields down the start side, the open one in the highlighter, each with how
+// many of its roles are chosen, and the open field's roles beside them, a block each in rows of three, green with a
+// tick once chosen. A box above them finds roles in the whole list by any of their names, in either language, and
+// offers what is typed as a role of one's own when the list has none of that name, which the search then looks for
+// as typed (roles.ts). Enter does what the box offers. One's own roles have a field at the end while there are any,
+// where a click removes one. All of it fits the panel of the tallest board, as the level's does.
+const OWN = "own";
+// The most roles the box's finds show: rows of three, one of them taken by the offer of one's own when there is one.
+const FOUND_MOST = 9;
+// Names compared word by word from the start of a word, whatever stands between the words, so "dev" finds Backend
+// Developer and ".net" .NET, but "bi" not Mobile.
+const plain = (s: string) => ` ${s.toLowerCase().split(/[\s/.,()\-]+/).filter(Boolean).join(" ")}`;
+const LISTED_ROLES = ROLE_FIELDS.flatMap((f) => f.roles);
+const namesOf = (r: ListedRole) => [r.title, r.he, r.en, r.hebrew ?? ""].map(plain);
+const fieldOf = (r: ListedRole) => ROLE_FIELDS.find((f) => f.roles.includes(r))!.id;
+
+function RolesPicker({ draft, update }: { draft: any; update: (fn: (d: any) => void) => void }) {
+  const { t, lang } = useApp();
+  const roles: Role[] = draft.roles;
+  const own = roles.filter((r) => !listedRole(r.id));
+  const picked = (id: string) => roles.some((x) => x.id === id);
+  const [field, setField] = useState(() => ROLE_FIELDS.find((f) => f.roles.some((r) => picked(r.id)))?.id ?? ROLE_FIELDS[0].id);
+  const [query, setQuery] = useState("");
+  const typed = plain(query);
+  const words = typed.trim() ? typed : "";
+  const exact = words ? (matchListed(query, draft.seniority) ?? LISTED_ROLES.find((r) => namesOf(r).includes(words))) : undefined;
+  const offer = Boolean(words) && !exact && !own.some((r) => plain(r.query) === words || plain(r.label) === words);
+  const found = words ? LISTED_ROLES.filter((r) => namesOf(r).some((n) => n.includes(words))) : [];
+  const ownFound = words ? own.filter((r) => plain(r.label).includes(words) || plain(r.query).includes(words)) : [];
+  const open = field === OWN && !own.length ? ROLE_FIELDS[0].id : field;
+  const index = [
+    ...ROLE_FIELDS.map((f) => ({ id: f.id, name: f[lang], n: f.roles.filter((r) => picked(r.id)).length })),
+    ...(own.length ? [{ id: OWN, name: t("settings.ownRoles"), n: own.length }] : []),
+  ];
+  const toggle = (r: ListedRole) => update((d) => {
+    d.roles = picked(r.id) ? d.roles.filter((x: Role) => x.id !== r.id) : [...d.roles, fromList(r, d.seniority)];
+  });
+  const remove = (r: Role) => update((d) => { d.roles = d.roles.filter((x: Role) => x.id || x.query !== r.query); });
+  const take = () => {
+    const typed = query.trim();
+    if (exact) {
+      if (!picked(exact.id)) toggle(exact);
+      setField(fieldOf(exact));
+    } else if (offer) {
+      update((d) => { d.roles.push({ label: typed, query: typed }); });
+      setField(OWN);
+    } else return;
+    setQuery("");
+  };
+  const pick = (r: ListedRole) => (
+    <button key={r.id} type="button" className="role-pick" dir="auto" aria-pressed={picked(r.id)} onClick={() => toggle(r)}>
+      {picked(r.id) && <Tick />}<span>{r[lang]}</span>
+    </button>
+  );
+  const mine = (r: Role) => (
+    <button key={r.query} type="button" className="role-pick" dir="auto" aria-pressed="true" aria-label={`${t("common.remove")} ${r.label}`} onClick={() => remove(r)}>
+      <Tick /><span>{r.label}</span>
+    </button>
+  );
+  const shown = words
+    ? [...found.map(pick), ...ownFound.map(mine)].slice(0, offer ? FOUND_MOST - 3 : FOUND_MOST)
+    : open === OWN ? own.map(mine) : ROLE_FIELDS.find((f) => f.id === open)!.roles.map(pick);
+  return (
+    <div className="roles-picker">
+      <div className="role-index" role="group" aria-label={t("welcome.search.tabs.roles")}>
+        {index.map((f) => (
+          <button key={f.id} type="button" aria-pressed={!words && open === f.id} onClick={() => { setField(f.id); setQuery(""); }}>
+            <span>{f.name}</span>{f.n > 0 && <span className="welcome-count on">{f.n}</span>}
+          </button>
+        ))}
+      </div>
+      <div className="role-side">
+        <label className="role-find">
+          <input type="text" dir={query ? "auto" : undefined} maxLength={60} value={query} placeholder={t("welcome.search.rolesFind")} aria-label={t("welcome.search.rolesFind")}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); take(); }
+              else if (e.key === "Escape" && query) { e.preventDefault(); setQuery(""); }
+            }} />
+          <PixelArt className="role-find-icon" rows={FIND} />
+        </label>
+        <div className="role-grid" role="group" aria-label={words ? t("welcome.search.rolesFind") : index.find((f) => f.id === open)!.name}>
+          {shown}
+          {offer && (
+            <button type="button" className="role-pick role-add" onClick={take}>
+              <PixelArt className="tick" rows={PLUS} /><span>{t("welcome.search.addOwn")} <bdi>{query.trim()}</bdi></span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The industries outside high-tech, as tiles (portals.ts): green while their employers are read, which is every one
+// until some are turned off. Lit as the settings have it: in the industries chosen, none meaning all, and outside
+// high-tech only while that is on, except defence, which is read either way. A change writes both back: the tiles
+// lit as the industries, with high-tech kept among them for the daily run to go on searching it (settings.ts), or
+// none for all of them; and outside high-tech on while any tile but defence is lit. With none lit, no employer is.
+const TILES = INDUSTRIES.filter((i) => i.id !== "hightech");
+const TILE_PICTURES: Record<string, string[]> = {
+  health: ["...XXX...", "...X.X...", "XXXX.XXXX", "X.......X", "XXXX.XXXX", "...X.X...", "...XXX..."],
+  insurance: ["....X....", "..XXXXX..", ".XXXXXXX.", "XXXXXXXXX", "....X....", "....X....", "..X.X....", "...X....."],
+  finance: ["XXXXXXXXX", "X.......X", "X..XXX..X", "X.X...X.X", "X..XXX..X", "X.......X", "XXXXXXXXX"],
+  government: ["....X....", "..XX.XX..", "XX.....XX", "XXXXXXXXX", ".X.X.X.X.", ".X.X.X.X.", ".X.X.X.X.", "XXXXXXXXX"],
+  local: ["....X....", "...XXX...", "..XX.XX..", ".XX...XX.", "XXXXXXXXX", ".X.....X.", ".X.XXX.X.", ".X.X.X.X."],
+  academia: ["XX.....XX", "X.XX.XX.X", "X...X...X", "X...X...X", "X...X...X", "XXX.X.XXX", "...XXX..."],
+  telecom: [".X.....X.", "..X...X..", "...X.X...", "XXXXXXXXX", "X.......X", "X.......X", "XXXXXXXXX", ".X.....X."],
+  retail: ["XX.......", ".X.......", ".XXXXXXXX", "..X....X.", "..XXXXXX.", "..X......", "..XXXXXX.", "...X..X.."],
+  industry: [".......XX", "......XX.", "X..X..XX.", "XX.XX.XX.", "XXXXXXXXX", "X.......X", "X.XX.XX.X", "XXXXXXXXX"],
+  energy: ["....XXXX.", "...XXXX..", "..XXXX...", ".XXXXXXX.", "....XXX..", "...XXX...", "..XX.....", ".X......."],
+  transport: ["XXXXXXXXX", "X.X.X.X.X", "XXXXXXXXX", "X.......X", "XXXXXXXXX", ".XX...XX."],
+  defense: ["XXXXXXXXX", "X...X...X", "X...X...X", "X...X...X", ".X..X..X.", ".X..X..X.", "..X.X.X..", "...XXX..."],
+};
+// How many of each industry's employers are read, and of them all, in round hundreds once there are a hundred
+// ("100+").
+const EMPLOYERS: Record<string, number> = Object.fromEntries(TILES.map((i) => [i.id, PORTALS.filter((p) => p.kind === "employer" && p.how === "read" && p.industry === i.id).length]));
+const ALL_EMPLOYERS = Object.values(EMPLOYERS).reduce((a, b) => a + b, 0);
+const ALL_SAID = ALL_EMPLOYERS >= 100 ? `${Math.floor(ALL_EMPLOYERS / 100) * 100}+` : String(ALL_EMPLOYERS);
+const tilesLit = (d: any) => {
+  const chosen: string[] = d.industries ?? [];
+  return TILES.map((i) => i.id).filter((id) => (!chosen.length || chosen.includes(id)) && (d.lowTech !== false || id === "defense"));
+};
+// How long the tiles' wave lasts, coming in or turned over all at once: a step of 35ms between them (styles.css)
+// and the last one's hop.
+const WAVE_MS = TILES.length * 35 + 340;
+
+// The tiles, under what they are about and a switch of two, all of them or high-tech only. They come in with a wave,
+// and the switch turns them over in another (switched), the grid drawn again for it to start over.
+function IndustryTiles({ draft, update }: { draft: any; update: (fn: (d: any) => void) => void }) {
+  const { t, lang } = useApp();
+  const lit = tilesLit(draft);
+  const [waves, setWaves] = useState(0);
+  const [wave, setWave] = useState(true);
+  useEffect(() => {
+    if (!wave) return;
+    const timer = setTimeout(() => setWave(false), WAVE_MS);
+    return () => clearTimeout(timer);
+  }, [wave, waves]);
+  const light = (on: (id: string) => boolean) => update((d) => {
+    const ids = TILES.map((i) => i.id).filter(on);
+    d.industries = ids.length === TILES.length ? [] : ["hightech", ...ids];
+    d.lowTech = ids.some((id) => id !== "defense");
+  });
+  const all = (on: boolean) => { light(() => on); setWaves((n) => n + 1); setWave(true); };
+  return (
+    <>
+      <div className="ind-head">
+        <div className="ind-words">
+          <span className="ind-title">{t("settings.lowTech")}</span>
+          <span className="ind-note">{t("welcome.search.industriesNote", { n: ALL_SAID })}</span>
+        </div>
+        <div className={`segmented ${waves ? "moved" : ""}`} role="group" aria-label={t("settings.lowTech")}>
+          <button type="button" aria-pressed={lit.length === TILES.length} onClick={() => all(true)}>{t("welcome.search.all")}</button>
+          <button type="button" aria-pressed={!lit.length} onClick={() => all(false)}>{t("welcome.search.onlyHightech")}</button>
+        </div>
+      </div>
+      <div key={waves} className={`ind-grid ${wave ? "wave" : ""} ${wave && waves ? "switched" : ""}`} role="group" aria-label={t("welcome.search.tabs.industries")}>
+        {TILES.map((i, n) => {
+          const on = lit.includes(i.id);
+          return (
+            <button key={i.id} type="button" className="ind-tile" style={{ "--i": n } as React.CSSProperties} aria-pressed={on}
+              aria-label={`${i[lang]}, ${t("welcome.search.employers", { n: EMPLOYERS[i.id] })}`}
+              onClick={() => light((id) => (id === i.id ? !on : lit.includes(id)))}>
+              <span className="ind-count"><Digits n={EMPLOYERS[i.id]} /></span>
+              <PixelArt className="ind-icon" rows={TILE_PICTURES[i.id]} />
+              <span className="ind-name">{t(`welcome.search.industry.${i.id}`)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
 
 function SearchStep({ next, back }: { next: () => void; back: () => void }) {
   const { s, t, lang, refresh } = useApp();
@@ -434,13 +672,13 @@ function SearchStep({ next, back }: { next: () => void; back: () => void }) {
   const [tab, setTab] = useState<SearchTab>("places");
   const at = SEARCH_TABS.indexOf(tab);
   const last = at === SEARCH_TABS.length - 1;
-  const chosen = (ids: string[]) => draft.roles.filter((x: any) => ids.includes(x.id)).length;
   const count = (n: number | string, on: boolean) => <span className={`welcome-count ${on ? "on" : ""}`}>{n}</span>;
+  const lit = tilesLit(draft).length;
   const status: Record<SearchTab, React.ReactNode> = {
     places: draft.markets.length ? <Tick /> : null,
     level: <Tick />,
     roles: count(draft.roles.length, draft.roles.length > 0),
-    industries: count(draft.industries?.length || t("welcome.search.all"), Boolean(draft.industries?.length)),
+    industries: lit === TILES.length ? count(t("welcome.search.all"), false) : count(lit, lit > 0),
   };
   return (
     <>
@@ -453,39 +691,28 @@ function SearchStep({ next, back }: { next: () => void; back: () => void }) {
         ))}
       </div>
       <div key={tab} className="search-panel" id="search-panel" role="tabpanel" aria-labelledby={`search-tab-${tab}`}>
-        {tab === "places" && <MarketsEditor draft={draft} update={update} title={<h2 className="welcome-sub">{t("settings.markets")}</h2>} />}
+        {tab === "places" && <MarketsEditor bare draft={draft} update={update} title={<h2 className="welcome-sub">{t("settings.markets")}</h2>} />}
         {tab === "level" && (
           <>
-            <h2 className="welcome-sub">{t("settings.seniority")}</h2>
-            <div className="segmented" role="group" aria-label={t("settings.seniority")}>
+            <div className="level-picks" role="group" aria-label={t("settings.seniority")}>
               {LEVELS.map((v) => (
-                <button key={v} type="button" aria-pressed={draft.seniority === v} onClick={() => update((d) => {
+                <button key={v} type="button" className="level-pick" aria-pressed={draft.seniority === v} onClick={() => update((d) => {
                   d.seniority = v;
                   d.roles = d.roles.map((r: any) => (listedRole(r.id) ? fromList(listedRole(r.id)!, v) : r));
-                })}>{t(`settings.levels.${v}`)}</button>
+                })}>
+                  <LevelSteps level={v} />
+                  <span className="level-words">
+                    <span className="level-name">{t(`settings.levels.${v}`)}</span>
+                    <span className="level-who">{t(`welcome.search.levelWho.${v}`)}</span>
+                  </span>
+                </button>
               ))}
             </div>
+            <LevelEffect roles={draft.roles} level={draft.seniority} />
           </>
         )}
-        {tab === "roles" && ROLE_FIELDS.map((field) => {
-          const n = chosen(field.roles.map((r) => r.id));
-          return (
-            <div key={field.id} className="role-field">
-              <h3 className="role-field-name">{field[lang]}{n > 0 && count(n, true)}</h3>
-              <div className="chips">
-                {field.roles.map((r) => {
-                  const on = draft.roles.some((x: any) => x.id === r.id);
-                  return (
-                    <button key={r.id} type="button" className="role-pick" dir="auto" aria-pressed={on} onClick={() => update((d) => {
-                      d.roles = on ? d.roles.filter((x: any) => x.id !== r.id) : [...d.roles, fromList(r, d.seniority)];
-                    })}>{r[lang]}</button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-        {tab === "industries" && <IndustryPicker bare draft={draft} update={update} />}
+        {tab === "roles" && <RolesPicker draft={draft} update={update} />}
+        {tab === "industries" && <IndustryTiles draft={draft} update={update} />}
       </div>
       <Actions back={() => (at > 0 ? setTab(SEARCH_TABS[at - 1]) : back())} note={<SaveNote state={saving} />}>
         <Btn kind="cta" disabled={last && (!draft.markets.length || !draft.roles.length)} onClick={() => (last ? next() : setTab(SEARCH_TABS[at + 1]))}>{t("welcome.next")}</Btn>
@@ -599,7 +826,8 @@ export function Welcome() {
     ),
   };
   return (
-    <div className="welcome">
+    // The lists its boxes open are put here, so they take the board's look (select.tsx, styles.css).
+    <div className="welcome" data-popovers="">
       <Forest />
       <main className="welcome-stage">
         {/* The board is centred in the window, as tall as its step, with Pip on its top edge; the steps under it are

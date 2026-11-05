@@ -1,8 +1,9 @@
 // The Israeli job boards the system reads itself (portals.ts): AllJobs, Drushim and JobMaster searched for a role, and
 // an employer's own list of jobs read for the fields of the roles in the settings. Every page comes through the
-// project's own fetcher (tools/fetch_page.py: browser headers, robots.txt enforced, nothing saved in the project),
-// one page at a time per site with a pause between them. What the pages say is third-party data: only a posting's
-// title, company, place, date and link are taken from them, and a link only when it points at the board itself.
+// project's own fetcher (tools/fetch_page.py: browser headers, robots.txt enforced, each site's kept for an hour,
+// nothing saved in the project), one page at a time per site with a pause between them. What the pages say is
+// third-party data: only a posting's title, company, place, date and link are taken from them, and a link only when
+// it points at the board itself.
 import { readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -67,8 +68,9 @@ export function postedOn(words: string, today: string) {
 // ---------- the boards' pages ----------
 
 // AllJobs, a search or an employer's page: each posting is a link to UploadSingle.aspx with its title, after the box's
-// date and before the employer's link and the place. cid keeps only the postings of that employer, since its page
-// also shows others'.
+// date and before the employer's link and the place. A box ends where the next posting starts or where the list
+// does: at its pages' numbers (jobs-paging), the similar companies after them or the page's footer, whose links to
+// employers' pages are no posting's. cid keeps only the postings of that employer, since its page also shows others'.
 export function parseAllJobs(html: string, today: string, cid?: number): Posting[] {
   const links = [...html.matchAll(/<a\b[^>]*href=["'][^"']*UploadSingle\.aspx\?JobID=(\d+)[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi)];
   const firsts: { id: string; at: number; title: string }[] = [];
@@ -79,8 +81,9 @@ export function parseAllJobs(html: string, today: string, cid?: number): Posting
     taken.add(m[1]);
     firsts.push({ id: m[1], at: m.index!, title });
   }
+  const ends = [...html.matchAll(/class=["'][^"']*\b(?:jobs-paging|similarCompaniesContainer)\b|<footer\b/gi)].map((m) => m.index!);
   return firsts.flatMap((f, i): Posting[] => {
-    const box = html.slice(f.at, firsts[i + 1]?.at ?? html.length);
+    const box = html.slice(f.at, Math.min(firsts[i + 1]?.at ?? html.length, ends.find((at) => at > f.at) ?? html.length));
     const before = html.slice(firsts[i - 1]?.at ?? 0, f.at);
     // The employer's own link, exactly its page: not its pages' numbers (&page=2) nor its categories.
     const company = [...box.matchAll(/<a\b[^>]*href=["'][^"']*Employer\/HP\/Default\.aspx\?cid=(\d+)["'][^>]*>([\s\S]*?)<\/a>/gi)].find((m) => text(m[2]) && !/^\d+$/.test(text(m[2])));
@@ -166,7 +169,7 @@ export function pageFetcher(run: Run = runTool): Fetch {
   return (url, signal) => inTurn(new URL(url).host, async () => {
     const out = path.join(os.tmpdir(), `ai-job-search-page-${crypto.randomUUID()}.html`);
     try {
-      const got = await run([PYTHON, "tools/fetch_page.py", url, "--out", out], { signal });
+      const got = await run([PYTHON, "tools/fetch_page.py", url, "--out", out, "--robots-cache"], { signal });
       const status = Number(got.out.match(/HTTP (\d+)/)?.[1] ?? 0);
       if (got.code !== 0 || status < 200 || status >= 300) return null;
       return readFileSync(out, "utf8");
@@ -197,20 +200,22 @@ export async function searchBoard(board: Board, query: string, days: number, o: 
 // its analysts under finance and economics as often as under data.
 const CATEGORY: Record<string, RegExp> = {
   software: /תוכנה|מחשבים|מערכות מידע|אינטרנט ודיגיטל|הייטק/,
+  hardware: /חומרה|אלקטרוניקה|תוכנה|הייטק/,
   data: /דאטה|\bAI\b|ניתוח מערכות|מערכות מידע|כספים וכלכלה|מדעים מדו?ייקים|סטטיסטיקה|מחקר/,
   quality: /אבטחת איכות|QA/,
   infra: /מחשבים|מערכות מידע|תקשורת|תשתיות/,
   security: /סייבר|אבטחת מידע|מחשבים/,
-  product: /אינטרנט ודיגיטל|ניתוח מערכות|מוצר|עיצוב/,
+  product: /אינטרנט ודיגיטל|ניתוח מערכות|מוצר|עיצוב|פרויקטים/,
   start: /סטודנטים|ללא ניסיון/,
 };
 
 export type Found = Posting & { portal: string };
 
-// An employer's postings for the roles: on AllJobs its page, then the page of each of its categories the roles'
-// fields are filed under (a second page of one that has more than ten); on Drushim a search for its name, keeping
-// that company's postings. Only titles with one of the roles' words are kept, so the judging that follows reads
-// only those.
+// An employer's postings for the roles: on AllJobs its page, then, when that is full, the page of each of its
+// categories the roles' fields are filed under (a second page of one that has more than ten), since a page with
+// room left already has all of them; on Drushim a search for its name, keeping that company's postings. Only titles
+// with one of the roles' words are kept, so the judging that follows reads only those.
+const PAGE_JOBS = 10;
 export async function readEmployer(p: Portal, roles: Role[], o: { fetch: Fetch; today: string; signal?: AbortSignal }): Promise<Found[]> {
   const words = titleWords(roles);
   const all: Posting[] = [];
@@ -222,9 +227,10 @@ export async function readEmployer(p: Portal, roles: Role[], o: { fetch: Fetch; 
     // An employer with no jobs now has no categories, and its page shows other employers' jobs instead.
     const categories = allJobsCategories(first);
     if (!categories.length) return [];
-    all.push(...parseAllJobs(first, o.today, cid));
+    const own = parseAllJobs(first, o.today, cid);
+    all.push(...own);
     const fields = fieldsOf(roles);
-    const wanted = categories.filter((c) => fields.some((f) => CATEGORY[f]?.test(c.name)));
+    const wanted = own.length < PAGE_JOBS ? [] : categories.filter((c) => fields.some((f) => CATEGORY[f]?.test(c.name)));
     for (const c of wanted) {
       if (o.signal?.aborted) break;
       for (let page = 1; page <= (c.count > 10 ? 2 : 1); page++) {

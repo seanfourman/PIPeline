@@ -1751,6 +1751,134 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
   background: var(--edge); color: #fff; font: 800 15px/1 var(--pixel);
 }
 .welcome-count.on { background: var(--w-on); }
+/* The level (SearchStep): a card for each, as wide as the panel together, its steps in gold beside its name in
+   pixel letters and who it is for, green once chosen; under them a role's search as it will go out, in a box like a
+   search's with a caret blinking at its end, the word the level adds in the page's highlighter, typed in letter by
+   letter as it changes. All of it fits the panel of the tallest board without scrolling, in the middle of its
+   height. */
+.search-panel:has(> .level-picks) { justify-content: center; }
+.level-picks { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; }
+.level-pick {
+  --ring-c: var(--w-field-ring); display: flex; align-items: center; justify-content: center; gap: 10px; padding: 10px 10px 12px;
+  border: 0; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-field-shade);
+  font: inherit; cursor: pointer;
+}
+.level-words { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; }
+.level-pick:hover { background: var(--w-chip-hi); }
+.level-pick[aria-pressed="true"] { --ring-c: var(--w-on-lo); background: var(--w-on); color: var(--w-on-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-on-lo); }
+.level-pick:focus-visible { outline: 2px solid var(--w-focus); outline-offset: 6px; }
+.level-steps { flex: none; display: grid; }
+.level-steps > svg { grid-area: 1 / 1; width: 28px; height: auto; }
+:root[dir="rtl"] .level-steps { transform: scaleX(-1); }
+.level-step-on { color: var(--cta-lo); }
+.level-step-off { color: var(--w-chip-lo); }
+.level-pick[aria-pressed="true"] .level-step-on { color: #fff; }
+.level-pick[aria-pressed="true"] .level-step-off { color: rgb(255 255 255 / 45%); }
+.level-name { font: 700 21px/1.1 var(--pixel); }
+.level-who { color: var(--board-ink-2); font-size: 13px; }
+.level-pick[aria-pressed="true"] .level-who { color: rgb(255 255 255 / 85%); }
+.level-query {
+  --ring-c: var(--w-field-ring); display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 8px 14px;
+  background: var(--w-chip-hi); color: var(--board-ink); box-shadow: var(--ring); font: 700 21px/1.1 var(--pixel);
+}
+.level-query-find { flex: none; width: 18px; height: auto; color: var(--board-ink-2); }
+/* The word the level adds (LevelEffect), typed: each letter drops a block into place as it comes; once all are in,
+   the highlighter runs over them from the left in a few strokes, behind the letters. The caret stays lit while
+   letters come and go and blinks once they stop. A chosen card's lit steps hop as the switch's words do
+   (switch-hop). */
+.level-added { position: relative; isolation: isolate; display: inline-block; }
+.level-added.inked::before {
+  content: ""; position: absolute; z-index: -1; inset: 0 -3px; background: var(--w-mark);
+  transform-origin: left center; animation: level-ink 0.24s steps(6);
+}
+.level-letter { display: inline-block; animation: level-letter-in 0.12s steps(1); }
+.level-gap { display: inline-block; width: 0.3em; }
+.level-caret { display: inline-block; width: 3px; height: 1em; margin-inline-start: 2px; vertical-align: -0.12em; background: currentColor; animation: level-caret 1s steps(1) infinite; }
+.level-caret.typing { animation: none; }
+.level-pick[aria-pressed="true"] .level-step-on { animation: switch-hop 0.32s 0.05s ease-out; }
+@keyframes level-ink { from { transform: scaleX(0); } }
+@keyframes level-letter-in { from { transform: translateY(calc(var(--px) * -1)); } }
+@keyframes level-caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .level-added.inked::before, .level-letter, .level-caret, .level-pick .level-step-on { animation: none; }
+}
+/* The roles (RolesPicker): the fields down the start side as a notebook's index, in pixel letters, the open one in
+   the page's highlighter and each with how many of its roles are chosen, the rows close enough for every field and
+   one's own to fit the panel of the tallest board; beside them the box to find a role, its
+   magnifier at the start, and under it the open field's roles, a block each in rows of three, green with the
+   board's tick once chosen rather than the site's ✓. What is typed and not on the list is offered on a row of its
+   own, in the board's green, with a plus. On a narrow screen the index goes above, its fields side by side. */
+.roles-picker { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 20px; align-items: start; }
+.role-index { display: flex; flex-direction: column; }
+.role-index button {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 21px; padding: 0 8px;
+  border: 0; background: none; color: var(--board-ink-2); font: 700 17px/1.1 var(--pixel); text-align: start; cursor: pointer;
+}
+.role-index button:hover { background: var(--w-chip-hi); color: var(--board-ink); }
+.role-index button[aria-pressed="true"] { background: var(--w-mark); color: var(--board-ink); }
+.role-index button:focus-visible { outline: 2px solid var(--w-focus); outline-offset: 2px; }
+.role-index .welcome-count { min-width: 18px; height: 18px; padding: 0 4px; font-size: 13px; }
+.role-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.role-find { position: relative; display: block; }
+/* The room for the magnifier on the page's start side, where it stands, whichever way what is typed runs. */
+.welcome-board .role-find input[type="text"]:not(.welcome-convo *) { width: 100%; min-height: 40px; padding: 6px 38px 6px 12px; }
+:root[dir="ltr"] .welcome-board .role-find input[type="text"]:not(.welcome-convo *) { padding: 6px 12px 6px 38px; }
+.role-find-icon { position: absolute; top: 50%; inset-inline-start: 13px; width: 16px; height: auto; translate: 0 -50%; color: var(--board-ink-2); pointer-events: none; }
+.role-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
+.welcome-board .role-grid .role-pick { justify-content: center; gap: 6px; min-height: 30px; padding: 3px 8px; font: 700 17px/1.1 var(--pixel); }
+.role-grid .role-pick[aria-pressed="true"]::before { content: none; }
+.role-grid .role-pick .tick { flex: none; width: 12px; margin: 0; }
+.role-grid .role-pick > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.welcome-board .role-grid .role-add { --ring-c: var(--w-on); grid-column: 1 / -1; justify-content: flex-start; color: var(--w-on); }
+@media (max-width: 640px) {
+  .roles-picker { grid-template-columns: minmax(0, 1fr); }
+  .role-index { flex-flow: row wrap; gap: 2px; }
+  .role-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* The industries (IndustryTiles): what they are about, and a switch of two beside it, all of them or high-tech only;
+   under them a tile for each industry outside high-tech, in rows of six, its picture in pixels over its name, and in
+   its corner how many of its employers are read. Green while they are read, as everything chosen on the board, the
+   picture gold; a click turns one off or on. The tiles come in with their pictures hopping one after another, and
+   the switch turns them over in the same wave: until its turn each keeps the look it had (ind-was-off, ind-was-on).
+   All of it fits the panel of the tallest board. */
+.ind-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ind-words { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ind-title { color: var(--board-ink); font: 700 21px/1.1 var(--pixel); }
+.ind-note { color: var(--board-ink-2); font-size: 14px; line-height: 1.4; }
+.ind-head .segmented { flex: none; }
+.ind-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.ind-tile {
+  --ring-c: var(--w-field-ring); --icon: var(--w-faint); position: relative; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 5px; min-height: 58px; padding: 6px 4px 5px; border: 0; background: var(--w-field); color: var(--board-ink-2);
+  box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-field-shade); font: 700 17px/1.1 var(--pixel); cursor: pointer;
+}
+.ind-tile:hover { background: var(--w-chip-hi); color: var(--board-ink); }
+.ind-tile[aria-pressed="true"] {
+  --ring-c: var(--w-on-lo); --icon: var(--cta); background: var(--w-on); color: var(--w-on-ink);
+  box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-on-lo);
+}
+.ind-tile[aria-pressed="true"]:hover { filter: brightness(1.08); }
+.ind-tile:focus-visible { outline: 2px solid var(--w-focus); outline-offset: 6px; }
+.ind-icon { flex: none; width: 27px; height: 24px; color: var(--icon); }
+.ind-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ind-count { position: absolute; top: 6px; inset-inline-end: 7px; opacity: 0.85; }
+.ind-count .digits { height: 12px; }
+.ind-grid.wave .ind-tile[aria-pressed="true"] .ind-icon { animation: switch-hop 0.32s calc(var(--i) * 35ms) ease-out backwards; }
+.ind-grid.switched .ind-tile[aria-pressed="true"] { animation: ind-was-off 1ms calc(var(--i) * 35ms) backwards; }
+.ind-grid.switched .ind-tile[aria-pressed="false"] { animation: ind-was-on 1ms calc(var(--i) * 35ms) backwards; }
+@keyframes ind-was-off {
+  from, to { --ring-c: var(--w-field-ring); --icon: var(--w-faint); background: var(--w-field); color: var(--board-ink-2); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-field-shade); }
+}
+@keyframes ind-was-on {
+  from, to { --ring-c: var(--w-on-lo); --icon: var(--cta); background: var(--w-on); color: var(--w-on-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-on-lo); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ind-grid .ind-tile, .ind-grid .ind-icon { animation: none !important; }
+}
+@media (max-width: 640px) {
+  .ind-head { flex-wrap: wrap; }
+  .ind-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 /* A form (the name, the email) keeps to the rules as the text does: one rule left empty above it, as the page's gap
    and this margin make, each label on a rule, each field two rules tall, and every line under them a rule. */
 .welcome-board .welcome-form { gap: 0; margin-top: calc(var(--rule) - 14px); }
@@ -1777,10 +1905,29 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board :is(input:focus, .select:focus-visible, .select.open):not(.select-find *, .welcome-convo *) { --ring-c: var(--w-focus); outline: none; box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade); }
 .welcome-board input:not(.welcome-convo *)::placeholder, .welcome-board .select-blank:not(.welcome-convo *) { color: var(--w-faint); }
 .welcome-board .select:not(.welcome-convo *) > .icon { color: var(--board-ink-2); }
-.welcome-board .select-panel:not(.welcome-convo *) { --ring-c: var(--edge); border: 0; border-radius: 0; background: var(--w-field); box-shadow: var(--ring), 0 10px 0 rgb(0 0 0 / 12%); }
-.welcome-board .select-find:not(.welcome-convo *) { border-radius: 0; background: var(--w-chip-hi); }
-.welcome-board .select-option:not(.welcome-convo *) { border-radius: 0; }
-.welcome-board .select-option.active:not(.welcome-convo *) { background: var(--w-chip); }
+/* The lists those boxes open, which Select puts on the introduction's page rather than in the board (data-popovers):
+   square and white in the board's dark edge, with a hard shadow under it; the box to find in, parchment in an edge
+   of its own; the option the keys or the pointer are on, parchment, and the one chosen in the board's green. The
+   conversation's lists keep the site's look. */
+.welcome .select-panel:not(.welcome-convo *) {
+  --ring-c: var(--edge); padding: 8px; border: 0; border-radius: 0; background: var(--w-field); color: var(--board-ink);
+  box-shadow: var(--ring), 0 10px 0 rgb(0 0 0 / 14%);
+}
+.welcome .select-find:not(.welcome-convo *) { --ring-c: var(--w-field-ring); margin: 4px 4px 10px; border-radius: 0; background: var(--w-chip-hi); box-shadow: var(--ring); }
+.welcome .select-find:not(.welcome-convo *) .icon { color: var(--board-ink-2); }
+.welcome .select-find:not(.welcome-convo *) input::placeholder { color: var(--w-faint); }
+.welcome .select-option:not(.welcome-convo *) { border-radius: 0; color: var(--board-ink); font-size: 15px; }
+.welcome .select-option.active:not(.welcome-convo *) { background: var(--w-chip); }
+.welcome .select-option[aria-selected="true"]:not(.welcome-convo *) { color: var(--w-on-lo); }
+.welcome .select-option[aria-selected="true"]:not(.welcome-convo *) .icon { color: var(--w-on); }
+/* Its bar to scroll by, a block as the page's (welcome-rail) but of the board's wood: lit at its corner, in the
+   dark edge, and lighter under the pointer. */
+.welcome .select-panel:not(.welcome-convo *) .select-scroll:has(> .thin-bar) .select-list { padding-inline-end: 24px; }
+.welcome .select-panel:not(.welcome-convo *) .thin-bar { --ring-c: var(--edge); width: 16px; }
+.welcome .select-panel:not(.welcome-convo *) .thin-bar::before {
+  inset: 3px 4px; border-radius: 0; background: var(--frame); box-shadow: var(--ring), inset 2px 2px 0 0 var(--frame-hi);
+}
+.welcome .select-panel:not(.welcome-convo *) :is(.thin-bar:hover, .thin-bar.dragging)::before { inset: 3px 4px; background: color-mix(in srgb, var(--frame), var(--frame-hi)); }
 
 /* Buttons other than the main one: parchment in a wooden edge, lit along the top, pressing in. */
 .welcome-board .btn:not(.cta, .welcome-convo *) {
@@ -1896,6 +2043,15 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .tag:not(.welcome-convo *) { --ring-c: var(--w-field-ring); gap: 7px; border-radius: 0; padding: 5px 9px; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring); }
 .welcome-board .tag:not(.welcome-convo *) .tick, .welcome-ok .tick { width: calc(var(--px) * 4); margin: 0; color: var(--w-on); }
 .welcome-board .tag-x:not(.welcome-convo *) { color: var(--board-ink-2); }
+/* A place chosen (MarketsEditor, bare): its name in pixel letters, a gold pin before it and an × of the board's
+   pixels after it, red under the pointer; the + to add one, the same pixels. */
+.welcome-board .place-tag:not(.welcome-convo *) { gap: 8px; padding-block: 5px 6px; padding-inline: 10px 6px; font: 700 18px/1.1 var(--pixel); }
+.place-pin { flex: none; width: 14px; height: auto; color: var(--cta-lo); }
+.welcome-board .place-tag:not(.welcome-convo *) .tag-x { padding: 3px; }
+.welcome-board .place-tag:not(.welcome-convo *) .tag-x:hover { color: var(--w-bad); }
+.place-x { display: block; width: 10px; height: auto; }
+.place-plus { flex: none; width: 12px; height: auto; }
+.welcome-board .add-go .place-plus { width: 16px; }
 .welcome-board .role-pick { --ring-c: var(--w-field-ring); padding: 6px 12px; border: 0; border-radius: 0; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring); }
 .welcome-board .role-pick:hover { background: var(--w-chip-hi); }
 .welcome-board .role-pick[aria-pressed="true"] { --ring-c: var(--w-on-lo); background: var(--w-on); color: var(--w-on-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-on-lo); }

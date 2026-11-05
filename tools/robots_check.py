@@ -22,16 +22,27 @@ Rules implemented (RFC 9309), deliberately on the cautious side:
   * only an http or https URL with a host is checked at all; anything else
     is unconfirmed without a request, and curl itself is pinned to http(s)
     on the first hop and on every redirect
+  * a caller that sets CACHE_DIR (fetch_page.py --robots-cache) has each
+    site's policy kept there for an hour: only a policy read, a 404 or a body
+    that passed the checks above, never a failure, and a kept body is checked
+    again before it is used. Every path is still decided against the policy;
+    only the request for the file is saved. Unset, every check reads it afresh.
 
 Usage:  python3 tools/robots_check.py <url>
 Exit 0 = the retry may proceed. Exit 1 = do not retry; go to escalation step 3.
 """
 
-import re, subprocess, sys
+import contextlib, hashlib, json, os, re, subprocess, sys, tempfile, time
+from pathlib import Path
 from urllib.parse import urlsplit, unquote
 
 BROWSER = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
            '(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36')
+
+# Where each site's policy is kept, when a caller asks for it, and for how long.
+# RFC 9309 lets a crawler keep one for a day; an hour is kept.
+CACHE_DIR = None
+CACHE_SECONDS = 3600
 
 def _fetch(url, ua):
     """curl, not urllib: some hosts (jobup.ch) hang urllib indefinitely while
@@ -165,6 +176,47 @@ def _match(pattern, path):
             return len(pattern)      # a prefix match is enough without '$'
     return len(pattern) if reach[-1] else -1
 
+def _kept_file(robots):
+    return Path(CACHE_DIR) / (hashlib.sha256(robots.encode('utf-8')).hexdigest()[:32] + '.json')
+
+def _kept(robots):
+    """The policy kept for this robots.txt within the hour: ('missing', '') for a
+    404, ('body', text) for a file, None when there is none to use - no cache,
+    none kept, too old, for another address, or a body that no longer passes
+    the checks a fresh one must."""
+    if not CACHE_DIR:
+        return None
+    try:
+        kept = json.loads(_kept_file(robots).read_text(encoding='utf-8'))
+        if kept['robots'] != robots or not 0 <= time.time() - float(kept['at']) < CACHE_SECONDS:
+            return None
+        if kept['kind'] == 'missing':
+            return ('missing', '')
+        body = kept['body']
+        if kept['kind'] == 'body' and isinstance(body, str) and is_robots_body(body) and not has_undecodable_rule(body):
+            return ('body', body)
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return None
+
+def _keep(robots, kind, body=''):
+    """Keep a policy read, written whole or not at all; one that cannot be kept
+    only means the next check reads the file again."""
+    if not CACHE_DIR:
+        return
+    tmp = None
+    try:
+        folder = Path(CACHE_DIR)
+        folder.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile('w', encoding='utf-8', dir=folder, suffix='.tmp', delete=False) as f:
+            tmp = f.name
+            json.dump({'robots': robots, 'at': time.time(), 'kind': kind, 'body': body}, f)
+        os.replace(tmp, _kept_file(robots))
+    except OSError:
+        if tmp:
+            with contextlib.suppress(OSError):
+                Path(tmp).unlink(missing_ok=True)
+
 def allowed(text, agent, path):
     g = _groups(text)
     rules = g.get(agent.lower()) or g.get('*') or []
@@ -187,23 +239,30 @@ def gate(url):
     if parts.query:
         path += '?' + unquote(parts.query)
     robots = f'{parts.scheme}://{parts.netloc}/robots.txt'
-    body, last = None, 'no attempt'
-    for ua in ('Claude-User', BROWSER):
-        try:
-            text, code = _fetch(robots, ua)
-        except Exception as e:
-            last = type(e).__name__; continue
-        if code == 404:
-            return 0, 'ALLOWED - no robots.txt published'
-        if code == 200:
-            if not is_robots_body(text):
-                last = 'HTTP 200 but the body is not a robots.txt'
-                continue
-            if has_undecodable_rule(text):
-                last = 'HTTP 200 but a User-agent/Allow/Disallow line is not valid UTF-8'
-                continue
-            body = text; break
-        last = 'HTTP %d' % code
+    kept = _kept(robots)
+    if kept and kept[0] == 'missing':
+        return 0, 'ALLOWED - no robots.txt published'
+    body, last = (kept[1] if kept else None), 'no attempt'
+    if body is None:
+        for ua in ('Claude-User', BROWSER):
+            try:
+                text, code = _fetch(robots, ua)
+            except Exception as e:
+                last = type(e).__name__; continue
+            if code == 404:
+                _keep(robots, 'missing')
+                return 0, 'ALLOWED - no robots.txt published'
+            if code == 200:
+                if not is_robots_body(text):
+                    last = 'HTTP 200 but the body is not a robots.txt'
+                    continue
+                if has_undecodable_rule(text):
+                    last = 'HTTP 200 but a User-agent/Allow/Disallow line is not valid UTF-8'
+                    continue
+                body = text
+                _keep(robots, 'body', body)
+                break
+            last = 'HTTP %d' % code
     if body is None:
         return 1, 'UNCONFIRMED (%s) - do not retry, go to step 3' % last
     for a in ('Claude-User', '*'):

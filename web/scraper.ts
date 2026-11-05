@@ -228,8 +228,10 @@ const boardsOnly: Search = (role, settings) => searchJobs(role, "14", "all", set
 
 // The employers on the portals page read, four at a time (each site still one page at a time, boards.ts), and the
 // user's own careers pages; with boards, the Israeli boards searched for every role as well. checks is where each
-// portal's result is kept.
-export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; boards?: boolean; search?: Search; checks?: string }) {
+// portal's result is kept. rest, for the daily run, is the days an employer whose last check found nothing, and
+// didn't fail, is left alone: most of those have no jobs open at all, and each is one more page from a site that is
+// read a page at a time.
+export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; boards?: boolean; search?: Search; checks?: string; rest?: number }) {
   const { steps, signal, lang, run = runTool } = o;
   const settings = o.settings ?? loadSettings();
   const fetch = o.fetch ?? pageFetcher(run);
@@ -245,8 +247,12 @@ export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fe
   const failed = new Set<string>();
   const checks = readPortalChecks(o.checks);
   const checkedAt = new Date().toISOString();
+  const resting = (id: string) => {
+    const c = checks[id];
+    return Boolean(o.rest && c && !c.error && !c.found && Date.now() - Date.parse(c.checked) < o.rest * 86_400_000);
+  };
   const lists = [
-    ...employers.map((p) => ({ id: p.id, name: lang === "he" ? p.he : p.en, read: () => readEmployer(p, settings.roles, { fetch, today, signal }) })),
+    ...employers.filter((p) => !resting(p.id)).map((p) => ({ id: p.id, name: lang === "he" ? p.he : p.en, read: () => readEmployer(p, settings.roles, { fetch, today, signal }) })),
     ...own.map((p) => ({ id: p.id, name: p.name, read: () => readOwnPage(p.id, p.name, p.url, settings.roles, { fetch, today, signal }) })),
   ];
   const perPortal = new Map<string, Found[]>();
