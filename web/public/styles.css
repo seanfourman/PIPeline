@@ -1719,10 +1719,38 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .note:not(.welcome-convo *) { color: var(--board-ink-2); font-size: 14px; }
 .welcome-board .error-line:not(.welcome-convo *) { color: var(--w-bad); font-weight: 600; }
 .welcome-board a:not(.welcome-convo *) { color: var(--w-on); font-weight: 600; }
-.welcome-form, .welcome-section { display: flex; flex-direction: column; gap: 14px; }
-/* Sections apart by a dashed line of the board's blocks. */
-.welcome-section { padding-top: 18px; border-top: var(--px) dashed color-mix(in srgb, var(--board-ink) 18%, transparent); }
+.welcome-form { display: flex; flex-direction: column; gap: 14px; }
 .welcome-board .fields:not(.welcome-convo *) { gap: 18px; }
+/* Where to search, in tabs like a notebook's dividers (SearchStep): four tabs of the board's parchment over a white
+   panel, one rule left empty above them, the first flush with the panel's edge; the open tab white and joined to the
+   panel, its edge open below, and a change of tab only a change of what is on the panel, at once. Each has
+   its picture in gold and what is chosen on it so far, a tick or a count (green once something is). The board
+   keeps its full height on every tab and the panel fills it to the page's foot, so a change of tab changes only
+   what is in the panel; a long one scrolls on the page. */
+.welcome-board:has(.search-tabs) { height: var(--w-max); }
+.search-tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: calc(var(--rule) - 14px); }
+.search-tab {
+  --ring-c: var(--w-field-ring); position: relative; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px 10px;
+  border: 0; background: var(--w-chip); color: var(--board-ink-2); box-shadow: var(--ring); font: 800 19px/1.1 var(--pixel); cursor: pointer;
+}
+.search-tab:hover { background: var(--w-chip-hi); color: var(--board-ink); }
+.search-tab.here {
+  z-index: 1; margin-bottom: calc(var(--px) * -1); padding-bottom: calc(10px + var(--px)); background: var(--w-field); color: var(--board-ink);
+  box-shadow: 0 calc(var(--px) * -1) 0 0 var(--ring-c), calc(var(--px) * -1) 0 0 0 var(--ring-c), var(--px) 0 0 0 var(--ring-c);
+}
+.search-tab:focus-visible { outline: 2px solid var(--w-focus); outline-offset: 3px; }
+.search-tab-picture { flex: none; width: 22px; height: auto; color: var(--cta-lo); }
+.search-tab .tick { width: 16px; margin: 0; color: var(--w-on); }
+.search-panel {
+  --ring-c: var(--w-field-ring); display: flex; flex-direction: column; gap: 16px; flex: 1 0 auto; padding: 18px 20px 20px;
+  margin-top: -14px; background: var(--w-field); box-shadow: var(--ring);
+}
+.search-panel .role-field-name { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+.welcome-count {
+  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px;
+  background: var(--edge); color: #fff; font: 800 15px/1 var(--pixel);
+}
+.welcome-count.on { background: var(--w-on); }
 /* A form (the name, the email) keeps to the rules as the text does: one rule left empty above it, as the page's gap
    and this margin make, each label on a rule, each field two rules tall, and every line under them a rule. */
 .welcome-board .welcome-form { gap: 0; margin-top: calc(var(--rule) - 14px); }
@@ -1875,6 +1903,11 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .add-row { gap: 14px; }
 .welcome-board .add-go { --ring-c: var(--w-on-lo); width: 46px; height: 46px; border-radius: 0; background: var(--w-on); color: var(--w-on-ink); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-on-hi); }
 .welcome-board .add-go:hover { background: var(--w-on); filter: brightness(1.08); }
+/* Before a country is picked there is nothing to add: a parchment block, faint, rather than a faded green one. */
+.welcome-board .add-go:disabled {
+  --ring-c: var(--w-field-ring); opacity: 1; filter: none; background: var(--w-chip); color: var(--w-faint);
+  box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-chip-hi);
+}
 .welcome-board .add-link { border-radius: 0; color: var(--w-on); font-family: var(--pixel); font-size: 19px; font-weight: 700; }
 .welcome-board .add-link:hover { background: none; text-decoration: underline; }
 

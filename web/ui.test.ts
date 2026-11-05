@@ -13,9 +13,61 @@ const paths = (value: unknown, prefix = ""): string[] =>
     ? Object.entries(value).flatMap(([key, v]) => paths(v, prefix ? `${prefix}.${key}` : key))
     : [`${prefix}:${Array.isArray(value) ? `list${value.length}` : typeof value}`];
 
+// The keys an object in this source names twice, as "line: key". Strings and comments are skipped and braces
+// counted; a key is a name, or a quoted one, followed by a colon right after "{" or ",".
+function duplicateKeys(src: string) {
+  const found: string[] = [];
+  const objects: Set<string>[] = [];
+  let line = 1;
+  let keyNext = false;
+  const add = (key: string) => {
+    const keys = objects[objects.length - 1];
+    if (!keys) return;
+    if (keys.has(key)) found.push(`${line}: ${key}`);
+    keys.add(key);
+  };
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === "\n") { line++; continue; }
+    if (c === "/" && src[i + 1] === "/") { while (i < src.length && src[i] !== "\n") i++; i--; continue; }
+    if (c === "/" && src[i + 1] === "*") { const end = src.indexOf("*/", i + 2); line += src.slice(i, end).split("\n").length - 1; i = end + 1; continue; }
+    if (c === '"' || c === "'" || c === "`") {
+      let j = i + 1;
+      let text = "";
+      while (j < src.length && src[j] !== c) {
+        if (src[j] === "\\") { text += src[j + 1]; j += 2; continue; }
+        if (src[j] === "\n") line++;
+        text += src[j];
+        j++;
+      }
+      if (keyNext && c !== "`" && /^\s*:/.test(src.slice(j + 1, j + 40))) add(text);
+      i = j;
+      keyNext = false;
+      continue;
+    }
+    if (c === "{") { objects.push(new Set()); keyNext = true; continue; }
+    if (c === "}") { objects.pop(); keyNext = false; continue; }
+    if (c === ",") { keyNext = true; continue; }
+    if (/\s/.test(c)) continue;
+    if (keyNext && /[A-Za-z_$]/.test(c)) {
+      const m = src.slice(i, i + 80).match(/^([A-Za-z_$][\w$]*)\s*:(?!:)/);
+      if (m) { add(m[1]); i += m[0].length - 1; }
+    }
+    keyNext = false;
+  }
+  return found;
+}
+
 describe("the two languages", () => {
   test("have the same keys, and the same kind of value under each", () => {
     expect(paths(DICTS.en)).toEqual(paths(DICTS.he));
+  });
+
+  // A name twice in one object keeps only the last, without a word: the remote market's label once lost to the
+  // phone access section of the same name, in both languages alike, and showing it broke the page.
+  test("never name the same key twice in one object", () => {
+    expect(duplicateKeys(readFileSync(path.join(import.meta.dir, "ui", "i18n.ts"), "utf8"))).toEqual([]);
+    expect(duplicateKeys('const a = { x: "1", y: { x: 2 }, "x": 3 };')).toEqual(["1: x"]);
   });
 
   test("fill in values, and keep the same placeholders", () => {

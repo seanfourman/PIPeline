@@ -17,7 +17,7 @@ const nextTime = (times: string[]) => ["13:00", "17:00", "21:00", "09:00"].find(
 const regionName = (code: string, lang: Lang) => { try { return new Intl.DisplayNames([lang], { type: "region" }).of(code) ?? code; } catch { return code; } };
 
 // Country names come from the code, so they follow the interface language whatever was saved.
-export const marketLabel = (m: { code: string; label?: string }, lang: Lang, t: (k: string) => string) => (m.code === "REMOTE" ? t("settings.remote") : regionName(m.code, lang));
+export const marketLabel = (m: { code: string; label?: string }, lang: Lang, t: (k: string) => string) => (m.code === "REMOTE" ? t("settings.remoteMarket") : regionName(m.code, lang));
 export const areaName = (name: string, lang: Lang) => (lang === "en" ? AREA_NAMES_EN[name] ?? name : name);
 
 // An area's rating, as a list to drop down: a round button in the rating's colour, with its dot, and the ratings

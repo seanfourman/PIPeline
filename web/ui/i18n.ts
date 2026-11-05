@@ -97,7 +97,10 @@ const he = {
       },
       convo: "השיחה עם פיפ", bigger: "להגדיל", smaller: "להקטין",
     },
-    search: { title: "איפה מחפשים?", short: "חיפוש", text: "המדינה והעיר, רמת הניסיון והתפקידים. אפשר לשנות הכל אחר כך בהגדרות.", roles: "תפקידים" },
+    search: {
+      title: "איפה מחפשים?", short: "חיפוש", text: "המדינה והעיר, רמת הניסיון והתפקידים. אפשר לשנות הכל אחר כך בהגדרות.", roles: "תפקידים",
+      tabs: { places: "מיקום", level: "רמה", roles: "תפקידים", industries: "תעשיות" }, all: "הכל",
+    },
     mail: {
       title: "משרות במייל?", short: "מייל",
       text: "כל יום אחפש, אדרג ואכין קורות חיים למשרות הכי מתאימות, ואשלח לך אותם למייל. למעסיק לא נשלח כלום. בהגדרות אפשר להפעיל את זה גם אחר כך, ולבחור עד שלוש שעות ריצה ביום.",
@@ -297,7 +300,7 @@ const he = {
     display: "תצוגה", displayNote: "משתנה מיד, בלי לשמור.", uiLanguage: "שפה", uiTheme: "מצב תצוגה",
     themeLight: "בהיר", themeDark: "כהה", themeSystem: "לפי המחשב",
     markets: "איפה לחפש", marketsFull: "יש כבר {n} שווקים, וזה המקסימום. כדי להוסיף אחר, אפשר להסיר אחד.", noMarket: "עוד לא נבחרה מדינה.",
-    country: "בחירת מדינה", city: "עיר באנגלית, לא חובה", addRemote: "הוספת עבודה מרחוק", remote: "מרחוק מכל מקום",
+    country: "בחירת מדינה", city: "עיר באנגלית, לא חובה", addRemote: "הוספת עבודה מרחוק", remoteMarket: "מרחוק מכל מקום",
     areas: "אזורים", areasNote: "המשרות מסומנות לפי האזור, ואזור לא רלוונטי מוסתר.", areasHint: "כותבים את השם כפי שהוא מופיע במשרות, בדרך כלל באנגלית.",
     areaName: "למשל Rehovot או Yokneam", areaTier: "דירוג האזור", addArea: "הוספת אזור",
     prefs: "העדפות", displayName: "שם להצגה", home: "עיר מגורים", workMode: "סוג עבודה", seniority: "רמת ניסיון",
@@ -470,7 +473,10 @@ const en: Dict = {
       },
       convo: "The conversation with Pip", bigger: "Enlarge", smaller: "Shrink",
     },
-    search: { title: "Where should I look?", short: "Search", text: "The country and city, your level, and the roles. You can change all of it later in the settings.", roles: "Roles" },
+    search: {
+      title: "Where should I look?", short: "Search", text: "The country and city, your level, and the roles. You can change all of it later in the settings.", roles: "Roles",
+      tabs: { places: "Place", level: "Level", roles: "Roles", industries: "Industries" }, all: "All",
+    },
     mail: {
       title: "Jobs by email?", short: "Email",
       text: "Every day I'll search, rank, and write CVs for the best matches, then email them to you. Nothing goes to an employer. In the settings you can turn this on later too, and pick up to three run times a day.",
@@ -669,7 +675,7 @@ const en: Dict = {
     display: "Display", displayNote: "Changes at once, no need to save.", uiLanguage: "Language", uiTheme: "Theme",
     themeLight: "Light", themeDark: "Dark", themeSystem: "Same as the computer",
     markets: "Where to search", marketsFull: "That's {n} markets, the most there can be. Remove one to add another.", noMarket: "No country chosen yet.",
-    country: "Choose a country", city: "City in English, optional", addRemote: "Add remote work", remote: "Remote from anywhere",
+    country: "Choose a country", city: "City in English, optional", addRemote: "Add remote work", remoteMarket: "Remote from anywhere",
     areas: "Areas", areasNote: "Jobs are marked by area, and areas marked not relevant are hidden.", areasHint: "Type the name as it appears in postings, usually in English.",
     areaName: "For example Rehovot or Yokneam", areaTier: "Area rating", addArea: "Add area",
     prefs: "Preferences", displayName: "Display name", home: "Home city", workMode: "Work type", seniority: "Experience level",

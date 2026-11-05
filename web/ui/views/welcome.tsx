@@ -13,7 +13,6 @@ import { jump, OFF_BOARD, type Point } from "../jump";
 import { api, Btn, External, Field, Spinner } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, type Mood } from "../pip";
-import { Select } from "../select";
 import { ENGLISH_NAME, englishOnly } from "../../names";
 import { fromList, listedRole, ROLE_FIELDS } from "../../roles";
 import { Conversation, readBase64 } from "./chat";
@@ -413,50 +412,83 @@ function CvStep({ next, back, onConversation }: { next: () => void; back: () => 
   );
 }
 
-// Where to search, as on the settings screen: the markets, the level, and the roles from the ready-made list. /setup
-// may have chosen roles already; they show here picked.
+// Where to search, as on the settings screen, in tabs like a notebook's dividers: the markets, the level, the roles
+// from the ready-made list, and the industries, one at a time on a panel the open tab is joined to, each tab with its
+// picture and what is chosen on it so far. The way on and back go from tab to tab before they leave the step, which
+// needs a market and a role. /setup may have chosen roles already; they show here picked.
+const SEARCH_TABS = ["places", "level", "roles", "industries"] as const;
+type SearchTab = (typeof SEARCH_TABS)[number];
+const TAB_PICTURES: Record<SearchTab, string[]> = {
+  places: ["..XXXXX..", ".XX...XX.", "XX..X..XX", "XX.XXX.XX", "XX..X..XX", ".XX...XX.", "..XX.XX..", "...XXX...", "....X...."],
+  level: ["......XXX", "......X.X", "...XXXX.X", "...X....X", "XXXX....X", "X.......X", "XXXXXXXXX"],
+  roles: ["...XXX...", "...X.X...", "XXXXXXXXX", "X.......X", "X.......X", "XXXXXXXXX", "X.......X", "XXXXXXXXX"],
+  industries: ["X........", "X.X.X....", "XXXXXXXXX", "X.X.X.X.X", "X.......X", "X.XX.XX.X", "XXXXXXXXX"],
+};
+const LEVELS = ["any", "junior", "middle", "senior"];
+
 function SearchStep({ next, back }: { next: () => void; back: () => void }) {
   const { s, t, lang, refresh } = useApp();
   const [draft, setDraft] = useState<any>(() => structuredClone(s.settings));
   const saving = useAutoSave(draft, async (d) => { await api("settings", { ...d, language: lang }); await refresh(); });
   const update = (fn: (d: any) => void) => { const n = structuredClone(draft); fn(n); setDraft(n); };
+  const [tab, setTab] = useState<SearchTab>("places");
+  const at = SEARCH_TABS.indexOf(tab);
+  const last = at === SEARCH_TABS.length - 1;
+  const chosen = (ids: string[]) => draft.roles.filter((x: any) => ids.includes(x.id)).length;
+  const count = (n: number | string, on: boolean) => <span className={`welcome-count ${on ? "on" : ""}`}>{n}</span>;
+  const status: Record<SearchTab, React.ReactNode> = {
+    places: draft.markets.length ? <Tick /> : null,
+    level: <Tick />,
+    roles: count(draft.roles.length, draft.roles.length > 0),
+    industries: count(draft.industries?.length || t("welcome.search.all"), Boolean(draft.industries?.length)),
+  };
   return (
     <>
-      <div className="welcome-section">
-        <MarketsEditor draft={draft} update={update} title={<h2 className="welcome-sub">{t("settings.markets")}</h2>} />
-      </div>
-      <div className="welcome-section">
-        <Field label={t("settings.seniority")}>
-          <Select value={draft.seniority} onChange={(v) => update((d) => {
-            d.seniority = v;
-            d.roles = d.roles.map((r: any) => (listedRole(r.id) ? fromList(listedRole(r.id)!, v) : r));
-          })} options={["any", "junior", "middle", "senior"].map((v) => ({ value: v, label: t(`settings.levels.${v}`) }))} />
-        </Field>
-      </div>
-      <div className="welcome-section">
-        <h2 className="welcome-sub">{t("welcome.search.roles")}</h2>
-        {ROLE_FIELDS.map((field) => (
-          <div key={field.id} className="role-field">
-            <h3 className="role-field-name">{field[lang]}</h3>
-            <div className="chips">
-              {field.roles.map((r) => {
-                const on = draft.roles.some((x: any) => x.id === r.id);
-                return (
-                  <button key={r.id} type="button" className="role-pick" dir="auto" aria-pressed={on} onClick={() => update((d) => {
-                    d.roles = on ? d.roles.filter((x: any) => x.id !== r.id) : [...d.roles, fromList(r, d.seniority)];
-                  })}>{r[lang]}</button>
-                );
-              })}
-            </div>
-          </div>
+      <div className="search-tabs" role="tablist" aria-label={t("welcome.search.title")}>
+        {SEARCH_TABS.map((x) => (
+          <button key={x} type="button" role="tab" id={`search-tab-${x}`} aria-selected={tab === x} aria-controls="search-panel"
+            className={`search-tab ${tab === x ? "here" : ""}`} onClick={() => setTab(x)}>
+            <PixelArt className="search-tab-picture" rows={TAB_PICTURES[x]} />{t(`welcome.search.tabs.${x}`)}{status[x]}
+          </button>
         ))}
       </div>
-      <div className="welcome-section">
-        <h2 className="welcome-sub">{t("settings.industries")}</h2>
-        <IndustryPicker bare draft={draft} update={update} />
+      <div key={tab} className="search-panel" id="search-panel" role="tabpanel" aria-labelledby={`search-tab-${tab}`}>
+        {tab === "places" && <MarketsEditor draft={draft} update={update} title={<h2 className="welcome-sub">{t("settings.markets")}</h2>} />}
+        {tab === "level" && (
+          <>
+            <h2 className="welcome-sub">{t("settings.seniority")}</h2>
+            <div className="segmented" role="group" aria-label={t("settings.seniority")}>
+              {LEVELS.map((v) => (
+                <button key={v} type="button" aria-pressed={draft.seniority === v} onClick={() => update((d) => {
+                  d.seniority = v;
+                  d.roles = d.roles.map((r: any) => (listedRole(r.id) ? fromList(listedRole(r.id)!, v) : r));
+                })}>{t(`settings.levels.${v}`)}</button>
+              ))}
+            </div>
+          </>
+        )}
+        {tab === "roles" && ROLE_FIELDS.map((field) => {
+          const n = chosen(field.roles.map((r) => r.id));
+          return (
+            <div key={field.id} className="role-field">
+              <h3 className="role-field-name">{field[lang]}{n > 0 && count(n, true)}</h3>
+              <div className="chips">
+                {field.roles.map((r) => {
+                  const on = draft.roles.some((x: any) => x.id === r.id);
+                  return (
+                    <button key={r.id} type="button" className="role-pick" dir="auto" aria-pressed={on} onClick={() => update((d) => {
+                      d.roles = on ? d.roles.filter((x: any) => x.id !== r.id) : [...d.roles, fromList(r, d.seniority)];
+                    })}>{r[lang]}</button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+        {tab === "industries" && <IndustryPicker bare draft={draft} update={update} />}
       </div>
-      <Actions back={back} note={<SaveNote state={saving} />}>
-        <Btn kind="cta" disabled={!draft.markets.length || !draft.roles.length} onClick={next}>{t("welcome.next")}</Btn>
+      <Actions back={() => (at > 0 ? setTab(SEARCH_TABS[at - 1]) : back())} note={<SaveNote state={saving} />}>
+        <Btn kind="cta" disabled={last && (!draft.markets.length || !draft.roles.length)} onClick={() => (last ? next() : setTab(SEARCH_TABS[at + 1]))}>{t("welcome.next")}</Btn>
       </Actions>
     </>
   );
