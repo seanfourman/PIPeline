@@ -2,8 +2,8 @@
 
 You are recording what happened to a job application: progress updates (interview invitations, stages completed, offers) and final resolutions (hired, rejected, no response). The data lands in two places the framework already reads but nothing systematically writes:
 
-- `job_search_tracker.csv` - the status column that `/scrape` and `/rank` use for dedup and exclusion
-- `documents/applications/<company>_<role>/` - the per-application archive (posting, submitted drafts, `outcome.md`) that `/setup` Path A mines to calibrate `04-job-evaluation.md` and surface STAR candidates
+- `user/job_search_tracker.csv` - the status column that `/scrape` and `/rank` use for dedup and exclusion
+- `user/documents/applications/<company>_<role>/` - the per-application archive (posting, submitted drafts, `outcome.md`) that `/setup` Path A mines to calibrate `user/profile/04-job-evaluation.md` and surface STAR candidates
 
 `/outcome` writes the data; `/setup` interprets it. This command never edits the evaluation framework or profile files itself.
 
@@ -31,7 +31,7 @@ Follow these steps **in order**.
 
 ## Step 1: Load State and Identify the Application
 
-1. Read `job_search_tracker.csv`. If it does not exist, create it with the standard header:
+1. Read `user/job_search_tracker.csv`. If it does not exist, create it with the standard header:
    ```
    date,company,sector,role,role_type,channel,status,contact_person,fit_rating,notes,cv_file,cover_letter_file,source,deadline
    ```
@@ -43,7 +43,7 @@ Follow these steps **in order**.
 
    **Deadline urgency is the one clock that does apply to a drafted row.** Show the `deadline` column when the row has one and leave it blank otherwise. Mark a deadline within 7 days with 🔥 and one that has already passed with ⚠, on the same 7-day threshold `/rank` Step 3 uses so the two commands never disagree. A passed deadline on a `drafted` row is the failure this column exists to catch - documents written, never sent, and now unsendable - so name it in one line under the table rather than leaving the user to compare dates. This changes nothing about the follow-up offer: a drafted row is still never chased, because nobody is late replying to something that was never sent.
 
-4. Derive the archive folder name: `documents/applications/<company>_<role>/` by the **Subfolder naming** rule in `documents/README.md`. Check whether the folder and an `outcome.md` already exist - if so, you are updating, not creating.
+4. Derive the archive folder name: `user/documents/applications/<company>_<role>/` by the **Subfolder naming** rule in `user/documents/README.md`. Check whether the folder and an `outcome.md` already exist - if so, you are updating, not creating.
 
 ---
 
@@ -58,7 +58,7 @@ Canonical spellings for the tracker CSV `status` column (underscores, never spac
 - **`drafted`** is open but distinct — nothing was sent, so no follow-up is ever due.
 - Readers must also accept the legacy space spellings `no response` and `offer declined` on read, so that existing trackers keep working without a migration. Never write them — they are the same values as `no_response` and `offer_declined`, not separate statuses, equally **Final**, and every rule that names one applies to the other.
 
-> Distinct from the archive `Status:` enum in `documents/README.md`
+> Distinct from the archive `Status:` enum in `user/documents/README.md`
 > (`in_progress` | `hired` | `offer_declined` | `rejected` | `no_response` | `interview_only`),
 > which describes the per-application `outcome.md` file, not this column. The two enums
 > are never written to the same field.
@@ -73,7 +73,7 @@ Ask the user what happened, then classify:
 - Interview invitation / stage scheduled or completed (phone screen, technical, case, final round)
 - Offer received (not yet accepted or declined)
 
-**Resolutions** (application closed) — these map to the archive `Status:` enum in `documents/README.md` that `/setup` parses (distinct from the tracker CSV column; see **Tracker status vocabulary** above):
+**Resolutions** (application closed) — these map to the archive `Status:` enum in `user/documents/README.md` that `/setup` parses (distinct from the tracker CSV column; see **Tracker status vocabulary** above):
 - `hired` - accepted an offer
 - `offer_declined` - received an offer, turned it down
 - `rejected` - explicit rejection at any stage
@@ -106,7 +106,7 @@ Enter this branch from the `followup` argument (Step 0) or from the offer under 
 **Logging.** Once the user confirms they will send it (or have sent it), log it in the same turn - an unlogged follow-up breaks the next run's quiet-days math:
 
 - Append `followed up YYYY-MM-DD` to the row's `notes` column (Step 4's rule applies: append a dated note, never restructure the CSV).
-- Save the final note as `followup_YYYY-MM-DD.md` in the application's archive folder. Safe by documented convention: `/setup` reads only the four named archive files and ignores extras (the same rule that covers `/interview`'s prep files), and `documents/applications/**` is gitignored personal data.
+- Save the final note as `followup_YYYY-MM-DD.md` in the application's archive folder. Safe by documented convention: `/setup` reads only the four named archive files and ignores extras (the same rule that covers `/interview`'s prep files), and `user/documents/applications/**` is gitignored personal data.
 
 If the user decides not to send, log nothing.
 
@@ -150,7 +150,7 @@ Wait for the user's explicit response before writing anything.
 **Execution.** For each application the user confirms:
 
 1. **Update Tracker:** update the row's `status` column to `no_response` (using the canonical spelling from **Tracker status vocabulary**). Append `stale resolved no_response (YYYY-MM-DD)` to `notes`. Follow Step 4's rule: never restructure the CSV, preserve all other columns intact.
-2. **Update Archive:** derive `documents/applications/<company>_<role>/` per the **Subfolder naming** rule. If the folder exists, update or write `outcome.md` with:
+2. **Update Archive:** derive `user/documents/applications/<company>_<role>/` per the **Subfolder naming** rule. If the folder exists, update or write `outcome.md` with:
    - `**Status:** no_response`
    - `**Date resolved:** YYYY-MM-DD`
    - Append to `## Notes`: `- Stale resolution: marked no_response after [N] days quiet (YYYY-MM-DD)`
@@ -161,11 +161,11 @@ Wait for the user's explicit response before writing anything.
 
 ## Step 3: Archive the Application Materials
 
-Create or update `documents/applications/<company>_<role>/`. All content here is personal data - the folder is already gitignored (`documents/applications/**`), so nothing needs redacting.
+Create or update `user/documents/applications/<company>_<role>/`. All content here is personal data - the folder is already gitignored (`user/documents/applications/**`), so nothing needs redacting.
 
-1. **`cv_draft.tex` and `cover_letter.tex`** - copy (never move) the submitted files. Locate them via the tracker row's `cv_file`/`cover_letter_file` columns; if those are empty, look for `cv/main_<company>_<role>.*` and `cover_letters/cover_<company>_<role>.*`, deriving `<company>_<role>` by the **Subfolder naming** rule in `documents/README.md`. **Never widen those globs to the company alone** - two roles at one company both match it, and the first hit wins silently. If a file already exists in the archive, leave it - the archived version is what was actually submitted. If nothing matches (application made outside `/apply`), skip with a note rather than widening the search: a sibling role's CV recorded as what you submitted is worse than no file at all.
+1. **`cv_draft.tex` and `cover_letter.tex`** - copy (never move) the submitted files. Locate them via the tracker row's `cv_file`/`cover_letter_file` columns; if those are empty, look for `user/cv/main_<company>_<role>.*` and `user/cover_letters/cover_<company>_<role>.*`, deriving `<company>_<role>` by the **Subfolder naming** rule in `user/documents/README.md`. **Never widen those globs to the company alone** - two roles at one company both match it, and the first hit wins silently. If a file already exists in the archive, leave it - the archived version is what was actually submitted. If nothing matches (application made outside `/apply`), skip with a note rather than widening the search: a sibling role's CV recorded as what you submitted is worse than no file at all.
 2. **`job_posting.md`** - if it already exists, leave it. Otherwise try WebFetch on the tracker row's `source` URL, retrying a 403 with browser headers per `.claude/skills/job-application-assistant/09-web-research.md`, run the result through `python3 tools/posting_guard.py` (`--html` on a saved page, `--text` otherwise) and save the **cleaned** text plus a `## posting_guard` section with the verdict and finding counts only, exactly as `/apply` Step 6b does. If the URL is dead (postings expire fast - this is exactly why the archive matters), ask the user to paste the posting, or write a stub noting the posting is unavailable. **Never reconstruct a posting from memory.**
-3. **`outcome.md`** - write or update it in exactly the format documented in `documents/README.md`, so `/setup` Path A parses it without special cases:
+3. **`outcome.md`** - write or update it in exactly the format documented in `user/documents/README.md`, so `/setup` Path A parses it without special cases:
 
 ```markdown
 # Outcome: <Company> — <Role>
@@ -202,11 +202,11 @@ Update the matched row's `status` column using the canonical spellings from **Tr
 
 ## Step 5: Calibration Handoff
 
-Count the `outcome.md` files under `documents/applications/` with a **final** status (not `in_progress`).
+Count the `outcome.md` files under `user/documents/applications/` with a **final** status (not `in_progress`).
 
 - If 3 or more are resolved (or 2+ share a pattern - same role type rejected twice, same sector going silent), suggest:
   > "You now have <N> resolved applications on record. Run `/setup` (Path A) to fold them into your evaluation framework - it calibrates fit scoring from what actually got interviews, and mines your interview feedback for STAR examples."
-- Do **not** write anything into `04-job-evaluation.md` or other skill files yourself. `/setup` Path A owns that merge - it is read-before-write and idempotent, and duplicating its logic here would race it.
+- Do **not** write anything into `user/profile/04-job-evaluation.md` or other skill files yourself. `/setup` Path A owns that merge - it is read-before-write and idempotent, and duplicating its logic here would race it.
 
 ---
 
@@ -216,7 +216,7 @@ Summarize what was recorded:
 
 > **Outcome recorded for <Role> at <Company>.**
 >
-> - `documents/applications/<company>_<role>/outcome.md` - status: <status>, <what changed>
+> - `user/documents/applications/<company>_<role>/outcome.md` - status: <status>, <what changed>
 > - Archived: <which of cv_draft.tex / cover_letter.tex / job_posting.md were copied or fetched, and which were skipped and why>
 > - Tracker: status → <new status>
 >
@@ -237,7 +237,7 @@ If the recorded status is `hired`, congratulate the user warmly first - this is 
 1. **Write data, don't interpret it.** The archive and tracker are the outputs; calibration belongs to `/setup`. This command never edits profile or framework files.
 2. **The archived version is the submitted version.** Existing files in the application folder are never overwritten by fresher drafts.
 3. **Never fabricate.** A dead posting URL gets a user-pasted copy or an explicit "unavailable" stub, not a reconstruction. Feedback is recorded as the user reports it.
-4. **Stay schema-compatible.** `outcome.md` follows the format in `documents/README.md` exactly (`in_progress` is the one addition, for open applications); the tracker keeps its columns.
+4. **Stay schema-compatible.** `outcome.md` follows the format in `user/documents/README.md` exactly (`in_progress` is the one addition, for open applications); the tracker keeps its columns.
 5. **Idempotent updates.** Re-running on the same application appends new stages and notes; it never duplicates folders, rows, or history.
 6. **Follow-ups: draft only, never send.** The follow-up branch produces text for the user to send themselves. It never emails, messages, or submits anything, and it must not be wired to tools that do.
 7. **Follow-ups: no new claims.** Every substantive statement in a follow-up or thank-you note comes from the archived submitted materials. Rule 3 applies with no exceptions.

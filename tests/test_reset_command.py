@@ -47,9 +47,9 @@ BASH = find_bash()
 
 
 def tracked_document_subfolders():
-    """Names of documents/ subfolders tracked in git (ignores local noise)."""
+    """Names of the documents/ subfolders a user's folder starts with, as tracked in templates/user/."""
     out = subprocess.run(
-        ["git", "ls-files", "documents/"],
+        ["git", "ls-files", "templates/user/documents/"],
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -57,7 +57,7 @@ def tracked_document_subfolders():
     ).stdout
     folders = set()
     for line in out.splitlines():
-        parts = line.split("/")
+        parts = line.split("/")[2:]
         if len(parts) >= 3:  # documents/<subfolder>/<file...>
             folders.add(parts[1])
     return folders
@@ -73,7 +73,7 @@ class TestResetCoversEveryDocumentsSubfolder(unittest.TestCase):
 
     def test_preview_lists_every_subfolder(self):
         missing = [
-            f for f in sorted(self.folders) if f"documents/{f}/" not in self.text
+            f for f in sorted(self.folders) if f"user/documents/{f}/" not in self.text
         ]
         self.assertEqual(
             missing,
@@ -92,14 +92,14 @@ class TestResetCoversEveryDocumentsSubfolder(unittest.TestCase):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             for folder in self.folders:
-                path = root / "documents" / folder
+                path = root / "user" / "documents" / folder
                 path.mkdir(parents=True)
                 (path / ".gitkeep").write_text("Keep scaffold.\n")
                 (path / "user.txt").write_text("Remove document.\n")
             result = subprocess.run([BASH, "-c", script], cwd=root, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             for folder in self.folders:
-                path = root / "documents" / folder
+                path = root / "user" / "documents" / folder
                 self.assertEqual([entry.name for entry in path.iterdir()], [".gitkeep"])
                 self.assertEqual((path / ".gitkeep").read_text(), "Keep scaffold.\n")
 
@@ -114,13 +114,18 @@ def setup_step3_skill_files():
     """Skill files /setup Step 3 populates, derived from its own headings.
 
     Step 3's targets are written as '### <n>. <verb> `<target>`', where the
-    target is either a bare filename resolved against .claude/skills/ or a
+    target is a bare filename resolved against .claude/skills/, a file in the
+    user's own folder (shipped clean under templates/user/), or a
     repo-relative path. Non-skill targets (CLAUDE.md, cv/main_example.tex)
     are dropped: /reset profile's scope is skill files only.
     """
     step3 = section(SETUP.read_text(encoding="utf-8"), "## Step 3:", "## Step 4:")
     files = set()
     for target in re.findall(r"^###\s+\d+\.\s+\w+\s+`([^`]+)`", step3, re.MULTILINE):
+        if target.startswith("user/"):
+            if (REPO / "templates" / target).exists() and Path(target).name != "CLAUDE.md" and not target.startswith("user/cv/"):
+                files.add(Path(target).name)
+            continue
         if (REPO / target).exists():
             if target.startswith(".claude/skills/"):
                 files.add(Path(target).name)
@@ -182,12 +187,13 @@ class TestResetCoversEveryPersonalizedSkillFile(unittest.TestCase):
             f"{mislabeled}",
         )
 
-SKILL_DIR = REPO / ".claude" / "skills" / "job-application-assistant"
+# The clean copies of the files /setup personalizes; the user's own live in user/profile/, never committed.
+SKILL_DIR = REPO / "templates" / "user" / "profile"
 
 
 def skeleton_step(reset_text, filename):
     """(instruction sentence, fenced markdown) /reset uses to rewrite `filename` in Step 3."""
-    marker = f"**For `{filename}`**"
+    marker = f"**For `user/profile/{filename}`**"
     start = reset_text.index(marker)
     fence_open = reset_text.index("```markdown", start)
     fence_close = reset_text.index("```", fence_open + len("```markdown"))

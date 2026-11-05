@@ -6,11 +6,53 @@ import { linkedinPlace, pickRoles, saveSettings, syncWorkspace, validateSettings
 
 function tempRepo() {
   const repo = mkdtempSync(path.join(os.tmpdir(), "job-settings-"));
-  mkdirSync(path.join(repo, ".claude/skills/job-scraper"), { recursive: true });
-  writeFileSync(path.join(repo, "CLAUDE.md"), "# Profile\n");
-  writeFileSync(path.join(repo, ".claude/skills/job-scraper/search-queries.md"), "# Queries\n");
+  mkdirSync(path.join(repo, "user"), { recursive: true });
+  writeFileSync(path.join(repo, "user/CLAUDE.md"), "# Profile\n");
+  writeFileSync(path.join(repo, "user/search-queries.md"), "# Queries\n");
   return repo;
 }
+
+describe("the portals' settings", () => {
+  test("keeps known industries, the low-tech switch, and the user's own portals with a real web address", () => {
+    const s = validateSettings({
+      industries: ["health", "bogus", "health"],
+      lowTech: false,
+      portals: {
+        off: ["clalit", "own-abcd1234", "nothing"],
+        mine: [
+          { id: "own-abcd1234", name: "Acme", url: "https://careers.acme.co.il/jobs", kind: "page" },
+          { id: "own-local1", name: "Here", url: "http://127.0.0.1:4174/api/state", kind: "page" },
+          { id: "own-file1", name: "File", url: "file:///c:/x", kind: "link" },
+          { id: "bad id", name: "X", url: "https://x.com", kind: "group" },
+          { id: "own-nameless", url: "https://www.facebook.com/groups/123", kind: "weird" },
+        ],
+      },
+    });
+    expect(s.industries).toEqual(["health"]);
+    expect(s.lowTech).toBe(false);
+    expect(s.portals.mine).toEqual([
+      { id: "own-abcd1234", name: "Acme", url: "https://careers.acme.co.il/jobs", kind: "page" },
+      { id: "own-nameless", name: "facebook.com", url: "https://www.facebook.com/groups/123", kind: "link" },
+    ]);
+    expect(s.portals.off).toEqual(["clalit", "own-abcd1234"]);
+  });
+
+  test("settings saved before these existed get employers outside high-tech on", () => {
+    expect(validateSettings({}).lowTech).toBe(true);
+    expect(validateSettings({}).portals).toEqual({ off: [], mine: [] });
+  });
+
+  test("the agent is told the industries, the low-tech choice and the sites to search on the web", () => {
+    const repo = tempRepo();
+    syncWorkspace(validateSettings({ industries: ["insurance"], lowTech: true, portals: { off: ["indeed"] } }), repo);
+    const text = readFileSync(path.join(repo, "user/CLAUDE.md"), "utf8");
+    expect(text).toContain("**Industries wanted:** Insurance");
+    expect(text).toContain("Employers outside high-tech:** wanted");
+    expect(text).toContain("site:hiremetech.com");
+    expect(text).not.toContain("site:il.indeed.com");
+    expect(text).toContain("don't search those here");
+  });
+});
 
 describe("validateSettings", () => {
   test("keeps valid values", () => {
@@ -65,10 +107,19 @@ describe("validateSettings", () => {
     expect([s.salaryMin, s.salaryMax]).toEqual([12000, 18000]);
     expect(s.studentJobs).toBe("low");
     expect(s.fields).not.toContain("\n");
-    expect(s.automation).toEqual({ enabled: false, email: "a@b.co", maxPerDay: 10, runAt: "07:30", minScore: 60 });
+    // A settings file from before, with its one runAt, keeps it as the one run time.
+    expect(s.automation).toEqual({ enabled: false, email: "a@b.co", maxPerDay: 10, runTimes: ["07:30"], minScore: 60 });
     const bad = validateSettings({ salaryMin: -5, salaryMax: "lots", studentJobs: "maybe", automation: { email: "nope", maxPerDay: "x", runAt: "25:00" } });
     expect([bad.salaryMin, bad.salaryMax, bad.studentJobs]).toEqual([0, 0, "normal"]);
-    expect(bad.automation).toEqual({ enabled: false, email: "", maxPerDay: 3, runAt: "09:00", minScore: 60 });
+    expect(bad.automation).toEqual({ enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60 });
+  });
+
+  test("the daily run takes up to three run times, in order, each once", () => {
+    const times = (runTimes: unknown) => validateSettings({ automation: { runTimes } }).automation.runTimes;
+    expect(times(["18:00", "09:00", "13:00"])).toEqual(["09:00", "13:00", "18:00"]);
+    expect(times(["09:00", "09:00", "25:00", "x", "13:30"])).toEqual(["09:00", "13:30"]);
+    expect(times(["06:00", "09:00", "13:00", "18:00"])).toHaveLength(3);
+    expect(times([])).toEqual(["09:00"]);
   });
 });
 
@@ -85,7 +136,7 @@ describe("quick search choices", () => {
   test("they are the page's own, so the agent is not told them", () => {
     const repo = tempRepo();
     syncWorkspace(validateSettings({ quickSearch: { days: "1", mode: "onsite" } }), repo);
-    const text = readFileSync(path.join(repo, "CLAUDE.md"), "utf8");
+    const text = readFileSync(path.join(repo, "user/CLAUDE.md"), "utf8");
     expect(text).not.toContain("onsite");
     expect(text).not.toContain("quickSearch");
   });
@@ -129,7 +180,7 @@ describe("roles", () => {
   test("the agent is told the searches with their level", () => {
     const repo = tempRepo();
     syncWorkspace(validateSettings({ seniority: "junior", roles: [{ id: "dataeng" }, { query: "Data Platform Engineer" }] }), repo);
-    expect(readFileSync(path.join(repo, "CLAUDE.md"), "utf8")).toContain("**Role focus:** Junior Data Engineer; Data Platform Engineer");
+    expect(readFileSync(path.join(repo, "user/CLAUDE.md"), "utf8")).toContain("**Role focus:** Junior Data Engineer; Data Platform Engineer");
   });
 });
 
@@ -144,7 +195,7 @@ describe("linkedinPlace", () => {
 describe("syncWorkspace", () => {
   test("writes one block and replaces it on later saves", () => {
     const repo = tempRepo();
-    const file = path.join(repo, "CLAUDE.md");
+    const file = path.join(repo, "user/CLAUDE.md");
     syncWorkspace(validateSettings({ home: "Haifa", markets: [{ code: "IL", country: "Israel" }] }), repo);
     syncWorkspace(validateSettings({ home: "Berlin", markets: [{ code: "DE", country: "Germany" }] }), repo);
     const text = readFileSync(file, "utf8");
@@ -154,28 +205,28 @@ describe("syncWorkspace", () => {
     expect(text).toContain("--country DE");
     expect(text).not.toContain("Haifa");
     expect(text.startsWith("# Profile")).toBe(true);
-    expect(readFileSync(path.join(repo, ".claude/skills/job-scraper/search-queries.md"), "utf8")).toContain("--country DE");
+    expect(readFileSync(path.join(repo, "user/search-queries.md"), "utf8")).toContain("--country DE");
   });
 
   test("tells the agent the application preferences, but not the automation's address", () => {
     const repo = tempRepo();
     syncWorkspace(validateSettings({ salaryMin: 12000, salaryMax: 18000, salaryCurrency: "ILS", studentJobs: "low", fields: "All fields", automation: { email: "a@b.co" } }), repo);
-    const text = readFileSync(path.join(repo, "CLAUDE.md"), "utf8");
+    const text = readFileSync(path.join(repo, "user/CLAUDE.md"), "utf8");
     expect(text).toContain("Between 12,000 ILS and 18,000 ILS gross a month");
     expect(text).toContain("rank them low and flag them");
     expect(text).toContain("**Fields of interest:** All fields");
     expect(text).not.toContain("a@b.co");
     expect(text).toContain("**Conversation language:** Hebrew");
     syncWorkspace(validateSettings({ language: "en" }), repo);
-    expect(readFileSync(path.join(repo, "CLAUDE.md"), "utf8")).toContain("**Conversation language:** English");
+    expect(readFileSync(path.join(repo, "user/CLAUDE.md"), "utf8")).toContain("**Conversation language:** English");
     expect(validateSettings({ language: "fr" }).language).toBe("he");
     syncWorkspace(validateSettings({}), repo);
-    expect(readFileSync(path.join(repo, "CLAUDE.md"), "utf8")).toContain("ask the candidate before stating a number");
+    expect(readFileSync(path.join(repo, "user/CLAUDE.md"), "utf8")).toContain("ask the candidate before stating a number");
   });
 
   test("keeps text after the block", () => {
     const repo = tempRepo();
-    const file = path.join(repo, "CLAUDE.md");
+    const file = path.join(repo, "user/CLAUDE.md");
     syncWorkspace(validateSettings({}), repo);
     writeFileSync(file, readFileSync(file, "utf8") + "\n## Later section\n");
     syncWorkspace(validateSettings({ home: "Rome" }), repo);
@@ -188,6 +239,6 @@ describe("syncWorkspace", () => {
     const saved = saveSettings({ displayName: "Dana", home: "Rome" }, repo, file);
     expect(JSON.parse(readFileSync(file, "utf8")).displayName).toBe("Dana");
     expect(saved.home).toBe("Rome");
-    expect(readFileSync(path.join(repo, "CLAUDE.md"), "utf8")).toContain("Rome");
+    expect(readFileSync(path.join(repo, "user/CLAUDE.md"), "utf8")).toContain("Rome");
   });
 });

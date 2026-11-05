@@ -1,5 +1,5 @@
 ---
-framework_version: 1.0.0
+framework_version: 1.0.1
 ---
 
 # Application Form Fields
@@ -20,9 +20,9 @@ Trigger it whenever a posting or portal asks for any of:
 
 ## The rule that governs everything here
 
-**Every claim in a form field must already be defensible from the same sources the CV and cover letter are grounded against** — the union of `01-candidate-profile.md`, the master CV (`cv/main_example.tex`), and `CLAUDE.md`'s Candidate Profile section, with a claim grounded if ANY of the three supports it. The interviewer reads the form alongside the CV. A form field is not a place to introduce new claims, inflate scope, or fill space — it is a place to *select* from what is already true and arrange it for the question asked.
+**Every claim in a form field must already be defensible from the same sources the CV and cover letter are grounded against** — the union of `user/profile/01-candidate-profile.md`, the master CV (`user/cv/main_example.tex`), and `user/CLAUDE.md`'s Candidate Profile section, with a claim grounded if ANY of the three supports it. The interviewer reads the form alongside the CV. A form field is not a place to introduce new claims, inflate scope, or fill space — it is a place to *select* from what is already true and arrange it for the question asked.
 
-All accuracy rules from `05-cv-templates.md` and `03-writing-style.md` apply unchanged.
+All accuracy rules from `user/profile/05-cv-templates.md` and `03-writing-style.md` apply unchanged.
 
 ## Field type: self-introduction paragraph
 
@@ -48,7 +48,7 @@ Typically **project name, role, start date, end date, description.**
 
 **Role.** The candidate's role *on that project*, which may be narrower than their job title. Do not upgrade it.
 
-**Dates.** The dates they worked on **that project**, which are not automatically the employment dates. If a role spanned two years but the named project occupied the later part, saying so is both more accurate and avoids the low-output reading described in `05-cv-templates.md` ("Check tenure against visible output"). Only narrow the dates when the candidate can say when the project actually started — never invent a boundary to improve the ratio.
+**Dates.** The dates they worked on **that project**, which are not automatically the employment dates. If a role spanned two years but the named project occupied the later part, saying so is both more accurate and avoids the low-output reading described in `user/profile/05-cv-templates.md` ("Check tenure against visible output"). Only narrow the dates when the candidate can say when the project actually started — never invent a boundary to improve the ratio.
 
 **Description.** 100–150 words: what the system did and who used it, then the hardest technical problem and how it was solved, then the outcome with its number. Supply a **~60-word short version** as well; portals vary and the candidate should not have to improvise a cut.
 
@@ -79,7 +79,7 @@ Include:
 
 ## Verification before handing it over
 
-- [ ] Every factual claim traces to the union of `01-candidate-profile.md`, the master CV (`cv/main_example.tex`), and `CLAUDE.md`'s Candidate Profile section
+- [ ] Every factual claim traces to the union of `user/profile/01-candidate-profile.md`, the master CV (`user/cv/main_example.tex`), and `user/CLAUDE.md`'s Candidate Profile section
 - [ ] No claim contradicts the CV or cover letter submitted for the same role
 - [ ] Ownership scoped correctly on contributory work
 - [ ] Word and character counts measured, not estimated

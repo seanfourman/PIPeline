@@ -12,13 +12,14 @@ import { documentPaths } from "./data";
 import { ACCESS, createPolicy, REPO, type Access } from "./policy";
 import { loadSettings } from "./settings";
 import { attachmentContent, getUpload, type Upload } from "./uploads";
+import { APP_DIR } from "./user";
 
 export type TaskSteps = {
   start: (id: string, target: string, name?: string) => void; done: (id: string, ok: boolean, preview: string) => void;
   switched: (from: string, to: string, code: string) => void;
 };
 
-const DATA = path.join(import.meta.dir, "data", "sessions");
+const DATA = path.join(APP_DIR, "sessions");
 const IDLE_CLOSE_MS = 15 * 60 * 1000;
 mkdirSync(DATA, { recursive: true });
 
@@ -446,9 +447,8 @@ export function createTaskSession(asked: string, work: Parameters<Session["task"
   return session;
 }
 
-// Runs a session with nobody watching, until it finishes or runs out of time.
-export async function runUnattended(prompt: string, title: string, timeoutMs: number) {
-  const session = createSession(prompt, undefined, { title, unattended: true });
+// Waits for a session to finish, or interrupts it once it runs out of time.
+async function finished(session: Session, timeoutMs: number) {
   await new Promise<void>((resolve) => {
     const timer = setTimeout(() => { session.interrupt(); finish(); }, timeoutMs);
     const unsubscribe = session.subscribe((e) => { if (e.t === "status" && (e.status === "idle" || e.status === "error")) finish(); });
@@ -457,6 +457,14 @@ export async function runUnattended(prompt: string, title: string, timeoutMs: nu
   const lastText = [...session.events].reverse().find((e) => e.t === "text")?.text;
   return { id: session.id, ok: session.status === "idle", text: String(lastText ?? "") };
 }
+
+// Runs a session with nobody watching, until it finishes or runs out of time.
+export const runUnattended = (prompt: string, title: string, timeoutMs: number) =>
+  finished(createSession(prompt, undefined, { title, unattended: true }), timeoutMs);
+
+// The same for a task the server does itself (createTaskSession), like the daily run's portals check.
+export const runTask = (title: string, work: Parameters<Session["task"]>[1], timeoutMs: number) =>
+  finished(createTaskSession(title, work), timeoutMs);
 
 export const getSession = (id: string) => sessions.get(id);
 export const listSessions = () => [...sessions.values()].map((s) => s.summary()).sort((a, b) => b.createdAt - a.createdAt);

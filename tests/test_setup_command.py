@@ -20,7 +20,8 @@ except ImportError:  # `python -m unittest discover -s tests` imports test modul
 
 REPO = Path(__file__).resolve().parent.parent
 COMMAND = REPO / ".claude" / "commands" / "setup.md"
-SKILL_DIR = REPO / ".claude" / "skills" / "job-application-assistant"
+# The clean copies of the files /setup fills; each user's own are in user/profile/, never committed.
+SKILL_DIR = REPO / "templates" / "user" / "profile"
 CV_TEMPLATES = SKILL_DIR / "05-cv-templates.md"
 COVER_TEMPLATES = SKILL_DIR / "06-cover-letter-templates.md"
 
@@ -108,7 +109,7 @@ class SetupPathAWritesIntoSectionsTheShippedFilesHave(unittest.TestCase):
         text = COMMAND.read_text(encoding="utf-8")
         bullet = next(
             line for line in text.splitlines()
-            if line.startswith("- **`02-behavioral-profile.md`:**")
+            if line.startswith("- **`user/profile/02-behavioral-profile.md`:**")
         )
         quoted = re.findall(r'"([^"]+)"', bullet)
         self.assertTrue(quoted, "the 02-behavioral-profile bullet must name its target sections")

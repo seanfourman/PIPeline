@@ -7,7 +7,7 @@ and the state file accumulated two distinct failures:
 
   * Keys carrying characters that break things downstream. `/apply` and
     `/outcome` derive an archive folder name from the same company+role pair,
-    and documents/README.md's subfolder rule exists because a "/" splits that
+    and user/documents/README.md's subfolder rule exists because a "/" splits that
     path across directories. Real examples found in a live workspace:
     "deloitte_junior-cybersecurity-analyst-(ot/iot)",
     "neverhack-estonia_penetration-tester-/-red-teamer",
@@ -35,7 +35,7 @@ readable prefix and the identity comes from the same fallback.
 
 Usage:
   python3 tools/job_key.py --company "Acme Corp" --title "SOC Analyst (L2)"
-  python3 tools/job_key.py --audit job_scraper/seen_jobs.json
+  python3 tools/job_key.py --audit user/job_scraper/seen_jobs.json
 
 Exit 0 when a key is produced, or when an audit finds nothing. Exit 1 when an
 audit finds violations.
@@ -50,7 +50,7 @@ import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-STATE = ROOT / "job_scraper" / "seen_jobs.json"
+STATE = ROOT / "user" / "job_scraper" / "seen_jobs.json"
 
 COMPANY_MAX = 40
 TITLE_MAX = 60

@@ -2,20 +2,23 @@
 // Code: Codex on the ChatGPT plan, so no API key and no pay per use. It is installed in the project at a fixed
 // version (package.json) and keeps its login in its own folder in the user's home (~/.codex). A plain answer is one
 // run with no project at all: an empty folder of its own, read-only, nothing kept; what was attached is copied in.
-// A conversation's agent runs through codex.ts instead. The key stays an alternative (chatbots.ts).
+// A conversation's agent runs through codex.ts instead. The key stays an alternative (chatbots.ts). Claude's own
+// login is asked here too: the Claude Code the Agent SDK brings along says whether this computer is signed in.
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ChatbotError, type Turn } from "./chatbots";
 
 export type Cli = "openai";
+export type Login = "claude" | Cli;
 const EXE = path.join(import.meta.dir, "node_modules", ".bin", process.platform === "win32" ? "codex.exe" : "codex");
+const CLAUDE = path.join(import.meta.dir, "node_modules", "@anthropic-ai", `claude-agent-sdk-${process.platform}-${process.arch}`, process.platform === "win32" ? "claude.exe" : "claude");
 const ANSWER_MS = 4 * 60 * 1000;
 // Whether it is signed in, asked again at most this often: the state is read every few seconds.
 const STATUS_MS = 15_000;
 
 let checked = 0;
-let signedIn: Record<Cli, boolean> = { openai: false };
+let signedIn: Record<Login, boolean> = { claude: false, openai: false };
 
 async function run(argv: string[], options: { cwd?: string; stdin?: string; signal?: AbortSignal; ms?: number } = {}) {
   const proc = Bun.spawn(argv, { cwd: options.cwd, stdin: options.stdin === undefined ? "ignore" : "pipe", stdout: "pipe", stderr: "pipe", env: { ...process.env, NO_COLOR: "1" } });
@@ -33,22 +36,27 @@ async function run(argv: string[], options: { cwd?: string; stdin?: string; sign
 // The last that was found, for what can't wait for a check (ai.ts).
 export const cliSignedIn = () => signedIn;
 
-// Codex says so itself.
-export async function cliStatus(): Promise<Record<Cli, boolean>> {
+// Each says so itself: Claude Code as JSON, of which only whether it is signed in is read, and Codex in words.
+export async function cliStatus(): Promise<Record<Login, boolean>> {
   if (Date.now() - checked < STATUS_MS) return signedIn;
   checked = Date.now();
-  const codex = existsSync(EXE) ? await run([EXE, "login", "status"], { ms: 20_000 }).catch(() => null) : null;
-  signedIn = { openai: Boolean(codex && codex.code === 0 && /logged in/i.test(codex.out + codex.err)) };
+  const [claude, codex] = await Promise.all([
+    existsSync(CLAUDE) ? run([CLAUDE, "auth", "status"], { ms: 20_000 }).catch(() => null) : null,
+    existsSync(EXE) ? run([EXE, "login", "status"], { ms: 20_000 }).catch(() => null) : null,
+  ]);
+  const claudeIn = (() => { try { return JSON.parse(claude?.out ?? "").loggedIn === true; } catch { return false; } })();
+  signedIn = { claude: claudeIn, openai: Boolean(codex && codex.code === 0 && /logged in/i.test(codex.out + codex.err)) };
   return signedIn;
 }
 
-// Signing in opens Codex in a window of its own on this computer, where the user finishes it in the browser; the
-// settings see it within a few seconds after.
-export function openLogin(_cli: Cli) {
-  if (!existsSync(EXE)) throw new ChatbotError("ai_cli_missing");
+// Signing in opens Claude Code or Codex in a window of its own on this computer, where the user finishes it in the
+// browser; the settings see it within a few seconds after.
+export function openLogin(which: Login) {
+  const [exe, title, argv] = which === "claude" ? [CLAUDE, "Claude", ["auth", "login"]] : [EXE, "Codex", ["login"]];
+  if (!existsSync(exe)) throw new ChatbotError("ai_cli_missing");
   checked = 0;
-  if (process.platform === "win32") Bun.spawn(["cmd", "/c", "start", "Codex", EXE, "login"], { stdout: "ignore", stderr: "ignore" });
-  else Bun.spawn([EXE, "login"], { stdout: "ignore", stderr: "ignore" });
+  if (process.platform === "win32") Bun.spawn(["cmd", "/c", "start", title, exe, ...argv], { stdout: "ignore", stderr: "ignore" });
+  else Bun.spawn([exe, ...argv], { stdout: "ignore", stderr: "ignore" });
 }
 
 // The whole of what is asked, as one text: the instructions, the conversation so far, and the new message. The

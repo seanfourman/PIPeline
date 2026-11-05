@@ -4,6 +4,7 @@
 // The forest is a morning one in the light theme and a night one in the dark.
 // Everything is drawn in blocks of a few screen pixels, in flat colours.
 
+import { jump, type Jump, type Point, type Pose } from "./jump";
 import { foxPixels, type Mood, type Pixel } from "./pip";
 
 type Ctx = CanvasRenderingContext2D;
@@ -18,9 +19,6 @@ export type IntroOptions = {
   onCardShow: () => void; onSwap: (night: boolean) => void;
 };
 
-// Pip's jump off the board when the language changes, in seconds from the click: down on the ground by
-// leave, the jump back up starting at back, on the board again by done. The board flips while Pip is off it.
-export const LANG_HOP = { leave: 0.3, back: 0.75, done: 1.1 };
 // Changing between day and night, in seconds: the new time's leaves close over the whole screen, the scene
 // changes under them while they hold, and they part again like at the start.
 const SWAP = { close: 0.4, hold: 0.12, open: 0.6 };
@@ -32,6 +30,9 @@ const FOX_NEAR = 2.8;
 // Seconds for each of the three steps of Pip's paws going up over its eyes, or down again.
 const PAW_STEP = 0.07;
 const T ={ part: 0.55, parted: 1.65, foxIn: 1.45, foxStop: 3.05, gather: 3.3, card: 3.95, jump: 4.45, land: 5.05, end: 6.2 };
+// How long Pip waits on the ground, after jumping off the board for a change of language, once he has landed and
+// the board is open again.
+const BEAT = 0.05;
 
 let seed = 7;
 const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
@@ -300,20 +301,28 @@ function paintForest(f: number, p: Palette, minWidth = 0): Layer[] {
       for (let i = 0; i < many(22, k); i++) plant(g, W * rnd(), line + 1, (1.2 + rnd() * 2) * u, 2.4, pick(p.backPlants), p.backVein);
       const canopyTop = H * 0.3;
       const canopyBottom = H * 0.56;
+      // How far down the canopy's leaves reach at x: over the middle of the clearing only its top part.
+      const leavesTo = (x: number) => canopyTop + (canopyBottom - canopyTop) * (Math.abs(x / W - 0.5) < 0.12 / k ? 0.35 : 1);
+      // The leaves are drawn after the vines, over their tops, so each is kept to draw then.
+      const leaves: (() => void)[] = [];
       for (let i = 0; i < many(420, k); i++) {
         const x = rnd() * W;
-        const middle = Math.abs(x / W - 0.5) < 0.12 / k;
-        const y = canopyTop + rnd() * (canopyBottom - canopyTop) * (middle ? 0.35 : 1);
-        leaf(g, x, y, (1.4 + rnd() * 2.4) * u, (0.6 + rnd() * 0.6) * u, rnd() * Math.PI * 2, rnd() > 0.82 ? p.canopy[0] : p.canopy[1]);
+        const y = canopyTop + rnd() * (leavesTo(x) - canopyTop);
+        const [len, wid, angle, color] = [(1.4 + rnd() * 2.4) * u, (0.6 + rnd() * 0.6) * u, rnd() * Math.PI * 2, rnd() > 0.82 ? p.canopy[0] : p.canopy[1]];
+        leaves.push(() => leaf(g, x, y, len, wid, angle, color));
       }
+      // Vines hang from half way into the leaves above them, so none starts in the open sky, down to below the
+      // canopy.
       for (let i = 0; i < many(20, k); i++) {
         const x = Math.round(rnd() * W);
-        const len = (2 + rnd() * 6) * u;
-        rect(g, x, canopyBottom - u, 1, len, p.vine[0]);
+        const top = Math.round((canopyTop + leavesTo(x)) / 2);
+        const end = Math.round(canopyBottom - u + (2 + rnd() * 6) * u);
+        rect(g, x, top, 1, end - top, p.vine[0]);
         // Small leaves along it, on alternate sides.
-        for (let y = 3; y < len - 2; y += 4) rect(g, x + ((y >> 2) % 2 ? 1 : -1), canopyBottom - u + y, 1, 2, p.vine[1]);
-        rect(g, x - 1, canopyBottom - u + len, 3, 2, p.vine[2]);
+        for (let d = 3; d < end - top - 2; d += 4) rect(g, x + ((d >> 2) % 2 ? 1 : -1), top + d, 1, 2, p.vine[1]);
+        rect(g, x - 1, end, 3, 2, p.vine[2]);
       }
+      for (const draw of leaves) draw();
       for (let i = 0; i < many(160, k); i++) grass(g, rnd() * W, line + rnd() * 3, u * 0.5, p.backGrass[0], p.backGrass[1]);
     }, GROUND + 1.2));
   }
@@ -545,7 +554,7 @@ function drawBoard(g: Ctx, box: DOMRect, b: number, p: Palette, t: number) {
 // ---------- the fox, from the app's own sprite ----------
 
 const spriteCache = new Map<string, HTMLCanvasElement>();
-function sprite(view: "front" | "back" | "leap", mood: Mood, frame: "a" | "b", blink: boolean, paws = 0) {
+function sprite(view: "front" | "frontLeap" | "back" | "leap", mood: Mood, frame: "a" | "b", blink: boolean, paws = 0) {
   const key = `${view}/${mood}/${frame}/${blink}/${paws}`;
   let c = spriteCache.get(key);
   if (!c) {
@@ -560,10 +569,11 @@ function sprite(view: "front" | "back" | "leap", mood: Mood, frame: "a" | "b", b
   return c;
 }
 
-// Draws Pip with its feet at (x, y), each of its pixels `size` wide, its corner on a grid of 1/`grid`.
-function drawFox(g: Ctx, x: number, y: number, size: number, img: HTMLCanvasElement, grid = 1) {
+// Draws Pip with its feet at (x, y), each of its pixels `size` wide, its corner on a grid of 1/`grid`; sx and sy
+// squash or stretch it from its feet.
+function drawFox(g: Ctx, x: number, y: number, size: number, img: HTMLCanvasElement, grid = 1, sx = 1, sy = 1) {
   const snap = (v: number) => Math.round(v * grid) / grid;
-  g.drawImage(img, snap(x - 11 * size), snap(y - 20 * size), 22 * size, 21 * size);
+  g.drawImage(img, snap(x - 11 * size * sx), snap(y - 20 * size * sy), 22 * size * sx, 21 * size * sy);
 }
 
 // ---------- the forest at rest, for the home page ----------
@@ -726,7 +736,12 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
   let offset = clock;
   let cardShown = false;
   let landed = false;
-  let reaction: { kind: Reaction; at: number; wait?: { x: number; y: number } } | null = null;
+  // off is the change of language's: when the board is open again, what to do once Pip is back on it, and, from
+  // the first frame, where he waits and his jumps down and back up.
+  type Off = { opened: number; done: () => void; wait?: Point; down?: Jump; backAt?: number; up?: Jump; over?: boolean };
+  let reaction: { kind: Reaction; at: number; off?: Off } | null = null;
+  // The jump onto the board at the start, planned when it begins.
+  let hopOn: Jump | null = null;
   // The paws over the eyes go up, or down, a step every PAW_STEP seconds from the step they were at when the
   // password field took or lost the focus.
   let covering = false;
@@ -752,12 +767,6 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
     const s = (H * 0.82) / (FOX_Z - CAM_END.z);
     return { x: W / 2 + ((stopX ?? -4.6) - CAM_END.x) * s, y: H * 0.46 + (GROUND - CAM_END.y) * s };
   };
-  // A jump from a to b, peaking `lift` above the higher of the two, k from 0 to 1.
-  const arc = (a: { x: number; y: number }, b: { x: number; y: number }, k: number, lift: number) => {
-    const peak = Math.min(a.y, b.y) - lift;
-    return { x: lerp(a.x, b.x, k), y: (1 - k) * (1 - k) * a.y + 2 * (1 - k) * k * peak + k * k * b.y };
-  };
-
   function tick(now: number) {
     clock = (now - start) / 1000 + offset;
     const t = clock;
@@ -885,16 +894,12 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
 
     if (t >= T.jump && card) {
       // Near the board's left end, or over its middle while it is narrow in a flip.
-      const perch = { x: card.left + Math.min(16, card.width / 2), y: card.top + 1 };
-      const k = clamp((t - T.jump) / (T.land - T.jump));
-      const from = jumpFrom ?? { x: perch.x - 40, y: H * 0.8 };
-      let x = perch.x;
-      let y = perch.y;
-      let mood: Mood = "idle";
-      if (k < 1) {
-        ({ x, y } = arc(from, perch, k, 30));
-        mood = "happy";
-      } else if (!landed) {
+      const perch: Point = [card.left + Math.min(16, card.width / 2), card.top + 1];
+      hopOn ??= jump(jumpFrom ? [jumpFrom.x, jumpFrom.y] : [perch[0] - 40, H * 0.8], perch);
+      const on = t - T.jump >= hopOn.length;
+      let pose: Pose = on ? { x: perch[0], y: perch[1], sx: 1, sy: 1, air: false } : hopOn.at(t - T.jump);
+      let mood: Mood = on ? "idle" : "happy";
+      if (on && !landed) {
         landed = true;
         // Paint the other time of day and its leaves while nothing is happening, one at a time, so the first
         // switch starts at once.
@@ -906,42 +911,50 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
         };
         idle(() => { worldOf(other); idle(() => leavesOf(worldOf(other))); });
       }
-      if (k >= 1) {
-        const since = t - T.land;
+      if (on) {
+        const since = t - T.jump - hopOn.length;
         mood = since < 0.8 ? "happy" : Math.sin(t * 0.45) > 0.85 ? "wave" : "idle";
-        if (since < 0.25) y += 1;
       }
       // Paws over the eyes while the password is typed, with no wave or sparkles under them; they drop at once
       // when the password is right.
-      const paws = k >= 1 && reaction?.kind !== "right" ? pawStep(t) : 0;
+      const paws = on && reaction?.kind !== "right" ? pawStep(t) : 0;
       if (paws) mood = "idle";
       if (reaction) {
         const since = t - reaction.at;
         if (reaction.kind === "right") {
           mood = "happy";
-          y -= Math.round(Math.abs(Math.sin(since * 9)) * 6 * Math.max(0, 1 - since / 1.2));
-        } else if (reaction.kind === "off") {
-          // Off the board while it flips: down beside it in the clearing, or below it when the board fills
-          // the screen's width, then back up. The spot is fixed at the start, while the board is still whole.
-          const spot = clearingSpot();
-          const wait = (reaction.wait ??= spot.x + 12 < card.left ? spot : { x: card.left + 18, y: Math.min(H - 2, card.top + card.height + 24) });
-          if (since < LANG_HOP.leave) {
-            ({ x, y } = arc(perch, wait, since / LANG_HOP.leave, 14));
-            mood = "happy";
-          } else if (since < LANG_HOP.back) {
-            ({ x, y } = wait);
-          } else if (since < LANG_HOP.done) {
-            ({ x, y } = arc(wait, perch, (since - LANG_HOP.back) / (LANG_HOP.done - LANG_HOP.back), 14));
-            mood = "happy";
+          pose.y -= Math.round(Math.abs(Math.sin(since * 9)) * 6 * Math.max(0, 1 - since / 1.2));
+        } else if (reaction.off && !reaction.off.over) {
+          // Off the board while it flips: down beside it in the clearing, or below it when the board fills the
+          // screen's width; then, once he has landed and the board is open again, back up onto it. The spot and
+          // the jump down are fixed on the first frame, while the board is still whole, the jump back up once it
+          // is whole again.
+          const off = reaction.off;
+          if (!off.down) {
+            const spot = clearingSpot();
+            off.wait = spot.x + 12 < card.left ? [spot.x, spot.y] : [card.left + 18, Math.min(H - 2, card.top + card.height + 24)];
+            off.down = jump(perch, off.wait);
+            off.backAt = Math.max(off.down.length, off.opened) + BEAT;
           }
-        } else if (since < 2.2) {
+          if (since < off.backAt!) pose = off.down.at(since);
+          else {
+            off.up ??= jump(off.wait!, perch);
+            pose = off.up.at(since - off.backAt!);
+            if (since - off.backAt! >= off.up.length) {
+              off.over = true;
+              off.done();
+            }
+          }
+          if (pose.air) mood = "happy";
+        } else if (reaction.kind === "wrong" && since < 2.2) {
           mood = "worried";
-          if (since < 0.5) x += Math.round(Math.sin(since * 40));
+          if (since < 0.5) pose.x += Math.round(Math.sin(since * 40));
         }
       }
       const frameName = Math.floor(t * 4) % 2 ? "b" : "a";
-      // On the form's grid of screen pixels, so it stands squarely on the board.
-      drawFox(fxx, x, y, 1, sprite("front", mood, frameName, mood !== "happy" && (t % 3.7) < 0.13, paws), scale);
+      // On the form's grid of screen pixels, so it stands squarely on the board; in the air in its leaping pose.
+      const look = sprite(pose.air ? "frontLeap" : "front", mood, frameName, mood !== "happy" && (t % 3.7) < 0.13, paws);
+      drawFox(fxx, pose.x, pose.y, 1, look, scale, pose.sx, pose.sy);
     }
 
     // The leaves of a change between day and night, over everything, the form too.
@@ -956,7 +969,18 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
       if (clock >= T.land) return;
       offset += T.end - clock;
     },
-    react(kind: Reaction) { reaction = { kind, at: clock }; },
+    // A right or wrong answer ends a jump off the board at once, with Pip back on it.
+    react(kind: "wrong" | "right") {
+      if (reaction?.off && !reaction.off.over) reaction.off.done();
+      reaction = { kind, at: clock };
+    },
+    // A change of language: Pip jumps off the board, and back on once it is open again, opened seconds from now;
+    // done is called when he is on it. Before he has first landed on it, he just lands, and done waits for the board.
+    hopOff(opened: number, done: () => void) {
+      if (reaction?.off && !reaction.off.over) reaction.off.done();
+      if (!landed) { setTimeout(done, opened * 1000); return; }
+      reaction = { kind: "off", at: clock, off: { opened, done } };
+    },
     // Whether Pip covers its eyes, for while the password field has the focus.
     cover(on: boolean) {
       if (on === covering) return;

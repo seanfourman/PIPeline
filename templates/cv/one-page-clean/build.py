@@ -3,8 +3,8 @@
 
 Run from the repository root: python templates/cv/one-page-clean/build.py <company>_<role>
 
-It builds cv/main_<company>_<role>.tex and, when every check passes, writes
-documents/applications/<company>_<role>/Sean Fourman - Resume.pdf.
+It builds user/cv/main_<company>_<role>.tex and, when every check passes, writes
+user/documents/applications/<company>_<role>/<the user's name> - Resume.pdf (the name from user/profile.json).
 A broken CV rule prints what to rewrite and exits 1.
 """
 
@@ -18,8 +18,10 @@ import sys
 import ats
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-FINAL_NAME = "Sean Fourman - Resume.pdf"
-CHECKS = pathlib.Path(__file__).with_name("cv_checks.json")
+FINAL_NAME = ats.CV_NAME
+# The user's limits and banned wording (user/cv_checks.json, never committed), or the template's neutral ones.
+USER_CHECKS = REPO / "user" / "cv_checks.json"
+CHECKS = USER_CHECKS if USER_CHECKS.exists() else pathlib.Path(__file__).with_name("cv_checks.json")
 
 
 def phrase_pattern(phrase: str) -> str:
@@ -58,14 +60,14 @@ def main() -> int:
         print("usage: build.py <company>_<role>, in lowercase letters, digits and underscores")
         return 2
     name = sys.argv[1]
-    cv = REPO / "cv"
+    cv = REPO / "user" / "cv"
     source = cv / f"main_{name}.tex"
     if not source.exists():
         print(f"not found: {source.relative_to(REPO).as_posix()}")
         return 2
     banned = banned_wording(source)
     if banned:
-        print("BUILD STOPPED. Rewrite these, following CV_RULES.md:")
+        print("BUILD STOPPED. Rewrite these, following user/CV_RULES.md:")
         print("\n".join(banned))
         return 1
     engine = shutil.which("lualatex")
@@ -76,7 +78,7 @@ def main() -> int:
     build = cv / "build"
     build.mkdir(exist_ok=True)
     pdf = cv / f"main_{name}.pdf"
-    # A failed compile also removes the PDF in cv/, and the last good one should stay openable.
+    # A failed compile also removes the PDF in user/cv/, and the last good one should stay openable.
     last_good = pdf.read_bytes() if pdf.exists() else None
     try:
         run = subprocess.run(
@@ -99,14 +101,14 @@ def main() -> int:
             pdf.write_bytes(last_good)
 
     check = subprocess.run(
-        [sys.executable, "tools/verify_pdf.py", f"cv/{pdf.name}", "--pages", "1", "--ascii-dates"],
+        [sys.executable, "tools/verify_pdf.py", f"user/cv/{pdf.name}", "--pages", "1", "--ascii-dates"],
         cwd=REPO, capture_output=True, text=True, encoding="utf-8",
     )
     print((check.stdout + check.stderr).strip())
     if check.returncode != 0:
         return 1
 
-    folder = REPO / "documents" / "applications" / name
+    folder = REPO / "user" / "documents" / "applications" / name
     folder.mkdir(parents=True, exist_ok=True)
     final = folder / FINAL_NAME
     shutil.copyfile(pdf, final)

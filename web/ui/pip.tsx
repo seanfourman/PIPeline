@@ -33,6 +33,19 @@ const FRONT = [...blocks([
   "..OWWWWWOOO",
   "..DD...DD..",
 ]), ...nose];
+// The same from the front in the air: the tail swung up beside the face, the feet tucked in under the body.
+const FRONT_LEAP = [...blocks([
+  ".D.......D.",
+  ".OD.....DO.",
+  ".OOOOOOOOO.",
+  ".OOOOOOOOO.",
+  ".OOOOOOOOO.",
+  ".OOOOOOOOOW",
+  ".OOOWWWOOOO",
+  "..OWWWWWOO.",
+  "..OWWWWWO..",
+  "...D...D...",
+]), ...nose];
 const eyesOpen = at([[3, 4, "K"], [3, 5, "K"], [7, 4, "K"], [7, 5, "K"]]);
 const eyesShut = at([[3, 5, "K"], [7, 5, "K"]]);
 const eyesHappy = at([[2, 5, "K"], [3, 4, "K"], [4, 5, "K"], [6, 5, "K"], [7, 4, "K"], [8, 5, "K"]]);
@@ -245,14 +258,15 @@ export function PipLying({ className = "", scared = false }: { className?: strin
 
 export type Pixel = Px;
 
-// The fox as a list of pixels, for drawing on a canvas: the same sprite the app shows. paws is how far the front
-// paws are lifted to cover the eyes, 0 to 3 (see frontPaws).
-export function foxPixels(view: "front" | "back" | "leap", mood: Mood = "idle", frame: "a" | "b" = "a", blink = false, paws = 0): Px[] {
+// The fox as a list of pixels, for drawing on a canvas: the same sprite the app shows. frontLeap is the front in the
+// air, with the mood's face; leap is the back in the air. paws is how far the front paws are lifted to cover the
+// eyes, 0 to 3 (see frontPaws).
+export function foxPixels(view: "front" | "frontLeap" | "back" | "leap", mood: Mood = "idle", frame: "a" | "b" = "a", blink = false, paws = 0): Px[] {
   if (view === "back") return BACK;
   if (view === "leap") return BACK_LEAP;
   const m = MOODS[mood];
   const eyes = paws === 3 ? [] : m.eyes !== "blink" ? steadyEyes[m.eyes] : blink ? eyesShut : eyesOpen;
-  return [...FRONT, ...m.still, ...(m.mark ?? []), ...eyes, ...((frame === "a" ? m.a : m.b) ?? []), ...(paws ? frontPaws(paws) : [])];
+  return [...(view === "frontLeap" ? FRONT_LEAP : FRONT), ...m.still, ...(m.mark ?? []), ...eyes, ...((frame === "a" ? m.a : m.b) ?? []), ...(paws ? frontPaws(paws) : [])];
 }
 
 // The logo: Pip's head in one colour, the text colour around it. Big pointed ears, happy ^ ^ eyes cut out,
@@ -285,13 +299,16 @@ export function PipMark({ className = "" }: { className?: string }) {
   );
 }
 
-export function Pip({ mood = "idle", className = "", label }: { mood?: Mood; className?: string; label?: string }) {
+// leaps adds the pose in the air (pip-leap) over the standing one (pip-stand), for a page whose CSS shows one of
+// the two at a time while Pip jumps.
+export function Pip({ mood = "idle", className = "", label, leaps = false }: { mood?: Mood; className?: string; label?: string; leaps?: boolean }) {
   const m = MOODS[mood];
   return (
     <svg className={`pip pip-${mood} ${className}`} viewBox="0 -2 22 21" shapeRendering="crispEdges" role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
       <rect className="pip-shadow" x={4} y={18.5} width={14} height={0.5} fill="#000" opacity={0.2} />
       <g className="pip-bob">
-        <Pixels px={FRONT} />
+        <Pixels px={FRONT} className={leaps ? "pip-stand" : undefined} />
+        {leaps && <Pixels px={FRONT_LEAP} className="pip-leap" />}
         <Pixels px={m.still} />
         {m.mark && <Pixels px={m.mark} className="pip-alert" />}
         {m.eyes !== "blink" ? <Pixels px={steadyEyes[m.eyes]} /> : <>

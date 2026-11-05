@@ -29,6 +29,13 @@ FRAMEWORK_FILES = [
 
 FRONTMATTER = "---\nframework_version: 1.0.0\n---\n"
 
+# The files a user personalizes: upstream keeps them at the skill's path, the workspace in the user's own folder,
+# and this repo ships its clean copies under templates/user/.
+PERSONAL = ("01-candidate-profile.md", "02-behavioral-profile.md", "04-job-evaluation.md",
+            "05-cv-templates.md", "06-cover-letter-templates.md", "07-interview-prep.md")
+LOCAL_COPY = {f".claude/skills/job-application-assistant/{name}": f"user/profile/{name}" for name in PERSONAL}
+SHIPPED = {f".claude/skills/job-application-assistant/{name}": f"templates/user/profile/{name}" for name in PERSONAL}
+
 
 class UpstreamCheckerRepoFixture(unittest.TestCase):
     def setUp(self):
@@ -40,9 +47,9 @@ class UpstreamCheckerRepoFixture(unittest.TestCase):
         shutil.copy(SCRIPT, tools / "check_upstream_updates.py")
 
         for rel in FRAMEWORK_FILES:
-            path = self.root / rel
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(FRONTMATTER, encoding="utf-8")
+            for path in {self.root / rel, self.root / LOCAL_COPY.get(rel, rel)}:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(FRONTMATTER, encoding="utf-8")
 
         subprocess.run(["git", "init", "-b", "master"], cwd=self.root, check=True, capture_output=True)
         subprocess.run(["git", "config", "user.name", "Test"], cwd=self.root, check=True, capture_output=True)
@@ -192,7 +199,9 @@ class LegacyEncodingTests(UpstreamCheckerRepoFixture):
         # Use the actual shipped framework files, whose UTF-8 prose git show
         # returns, rather than a constructed string passed to run_git().
         for rel in FRAMEWORK_FILES:
-            shutil.copy(REPO_ROOT / rel, self.root / rel)
+            shipped = REPO_ROOT / SHIPPED.get(rel, rel)
+            shutil.copy(shipped, self.root / rel)
+            shutil.copy(shipped, self.root / LOCAL_COPY.get(rel, rel))
         subprocess.run(["git", "add", "-A"], cwd=self.root, check=True, capture_output=True)
         subprocess.run(["git", "commit", "-qm", "copy actual framework files"], cwd=self.root, check=True, capture_output=True)
         self.add_remote("upstream", TEMPLATE_URL)

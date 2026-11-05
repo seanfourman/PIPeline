@@ -134,7 +134,7 @@ claude
 /setup
 ```
 
-`/setup` offers three paths: read your `documents/` folder if you have one populated (CV PDF, LinkedIn export, diplomas, reference letters, past applications), import a single CV pasted in chat, or walk through an interview. It auto-detects what you have and asks. Documents-folder mode is idempotent and safe to re-run as you add more material; see `documents/README.md` for the layout.
+`/setup` offers three paths: read your `user/documents/` folder if you have one populated (CV PDF, LinkedIn export, diplomas, reference letters, past applications), import a single CV pasted in chat, or walk through an interview. It auto-detects what you have and asks. Documents-folder mode is idempotent and safe to re-run as you add more material; see `user/documents/README.md` for the layout.
 
 ### 4. Search for jobs
 
@@ -185,14 +185,14 @@ This runs the full workflow: evaluate fit, draft CV + cover letter, review with 
 <details>
 <summary><b>Full command reference</b></summary>
 
-- **`/interview`** preps you for a scheduled interview on a tracked application. It builds a stage-specific prep pack from the application's archive (the exact posting, the CV and cover letter the interviewer actually read, feedback recorded from earlier rounds), researches the company and interviewers with a verify-before-use rule, maps likely questions to your STAR examples, and offers a mock interview following the roleplay protocol in `07-interview-prep.md`. Gaps get honest bridge answers, never invented experience.
-- **`/outcome`** records what happened to an application - interview stages, offers, rejections, silence. It archives the submitted CV, cover letter, and posting text into `documents/applications/<company>_<role>/`, keeps `outcome.md` in the format `/setup` Path A parses, and updates the tracker. It also owns the stretch before there is an outcome to record: `/outcome followup` surfaces open applications that have gone quiet (default 10 days), drafts a short channel-appropriate follow-up in your writing style using only claims from the materials you already submitted (drafts only, never sends; at most twice per application), and offers a thank-you note in the same turn an interview stage is recorded. Once a few applications resolve, it points you back to `/setup` to calibrate the fit framework from what actually got interviews.
+- **`/interview`** preps you for a scheduled interview on a tracked application. It builds a stage-specific prep pack from the application's archive (the exact posting, the CV and cover letter the interviewer actually read, feedback recorded from earlier rounds), researches the company and interviewers with a verify-before-use rule, maps likely questions to your STAR examples, and offers a mock interview following the roleplay protocol in `user/profile/07-interview-prep.md`. Gaps get honest bridge answers, never invented experience.
+- **`/outcome`** records what happened to an application - interview stages, offers, rejections, silence. It archives the submitted CV, cover letter, and posting text into `user/documents/applications/<company>_<role>/`, keeps `outcome.md` in the format `/setup` Path A parses, and updates the tracker. It also owns the stretch before there is an outcome to record: `/outcome followup` surfaces open applications that have gone quiet (default 10 days), drafts a short channel-appropriate follow-up in your writing style using only claims from the materials you already submitted (drafts only, never sends; at most twice per application), and offers a thank-you note in the same turn an interview stage is recorded. Once a few applications resolve, it points you back to `/setup` to calibrate the fit framework from what actually got interviews.
 - **`/notion-sync`** publishes a one-way, read-only view of the pipeline into a Notion database via the official Notion MCP server (OAuth, no API keys) - one row per ranked job plus every tracked application, with a write-once briefing page per row. The repo files stay the system of record: nothing syncs back, and documents sync as filenames only. Complements `/html-report`: that is the deep offline dashboard you regenerate at your desk; this is the glanceable live view from anywhere Notion runs (desktop, web, phone).
 - **`/gmail-sync`** reads your Gmail (via the Gmail connector) for status signals on your open applications - interview invites, assessment links, offers, rejections - and proposes them as a batch for you to approve before anything is written to the tracker or `outcome.md`, citing the source email on every proposed change. Offers stop short of proposing `hired`/`offer_declined` since that's your call; conflicting or unmatched signals get flagged for a manual `/outcome` pass instead of guessed.
 - **`/rank`** bridges `/scrape` and `/apply`: it batch-scores all newly scraped postings against the fit framework (parallel agents fetch each posting and score the five evaluation dimensions) and returns a ranked shortlist with honest per-job strengths and gaps. Deal-breakers veto, deadlines get urgency flags, dead postings get marked expired. Pick a number and it hands off to the full `/apply` workflow.
 - **`/expand`** enriches your profile by scanning public sources you've already linked in it (GitHub repos, portfolio site, Kaggle, Google Scholar) and looking up syllabi for named courses and certifications. Discovered competencies are added to your profile with a source tag. Useful right after `/setup` to surface skills that documents alone don't make explicit.
-- **`/upskill`** analyzes the gap between your profile, your tracked job postings, and your ranked-but-untracked postings (`/rank`'s recorded gaps in `job_scraper/seen_jobs.json`) — or a single posting via `/upskill <URL>`. Produces a prioritized heatmap of skill gaps and a learning plan with web-searched study resources and time estimates. Useful for career planning between applications.
-- **`/html-report`** generates a self-contained HTML dashboard from `job_search_tracker.csv` and the application archives — stat cards, status/sector/channel/funnel charts (inline SVG, no external dependencies), and a filterable applications table. Opens directly in a browser, fully offline. Re-run it any time after `/apply` or `/outcome` adds new entries.
+- **`/upskill`** analyzes the gap between your profile, your tracked job postings, and your ranked-but-untracked postings (`/rank`'s recorded gaps in `user/job_scraper/seen_jobs.json`) — or a single posting via `/upskill <URL>`. Produces a prioritized heatmap of skill gaps and a learning plan with web-searched study resources and time estimates. Useful for career planning between applications.
+- **`/html-report`** generates a self-contained HTML dashboard from `user/job_search_tracker.csv` and the application archives — stat cards, status/sector/channel/funnel charts (inline SVG, no external dependencies), and a filterable applications table. Opens directly in a browser, fully offline. Re-run it any time after `/apply` or `/outcome` adds new entries.
 - **`/add-template`** registers your own CV or cover letter template (LaTeX, Typst, or another toolchain) in place of the stock ones. It captures the template's instructions (source extension, compile command, fonts, style rules, page limit), runs a mandatory test compile, and wires the template into `/apply`. See [Custom templates](#custom-templates) below.
 - **`/add-portal`** generates a job-portal search skill for a job board in your market. It investigates the portal (search URL pattern, result structure, access rules), scaffolds the CLI skill from the same structure as the shipped ones, and test-runs a live query before registering. See [Job search tools](#job-search-tools) below.
 
@@ -236,13 +236,13 @@ If you prefer editing files directly instead of using `/setup`:
 
 | File | What to change |
 |------|---------------|
-| `CLAUDE.md` | Your full profile (name, education, experience, skills, goals) |
-| `01-candidate-profile.md` | Structured version of your CV data |
-| `02-behavioral-profile.md` | Your behavioral assessment or self-assessment |
-| `04-job-evaluation.md` | Skill match areas, career goals, motivation filters |
-| `05-cv-templates.md` | Profile statement templates for different role types |
-| `07-interview-prep.md` | Your STAR examples from actual experience |
-| `search-queries.md` | Job search queries for your skills and location |
+| `user/CLAUDE.md` | Your full profile (name, education, experience, skills, goals) |
+| `user/profile/01-candidate-profile.md` | Structured version of your CV data |
+| `user/profile/02-behavioral-profile.md` | Your behavioral assessment or self-assessment |
+| `user/profile/04-job-evaluation.md` | Skill match areas, career goals, motivation filters |
+| `user/profile/05-cv-templates.md` | Profile statement templates for different role types |
+| `user/profile/07-interview-prep.md` | Your STAR examples from actual experience |
+| `user/search-queries.md` | Job search queries for your skills and location |
 
 ### Updating your search queries
 
@@ -270,7 +270,7 @@ Point it at your source file (a `.tex` file plus any `.cls`/`.sty` files or bund
 - `/add-template --use <name>` switches between them
 - `/add-template --use default` reverts to the stock moderncv / cover.cls templates
 
-If you prefer doing it by hand, the manual route still works: update the guidance in `05-cv-templates.md` and `06-cover-letter-templates.md`.
+If you prefer doing it by hand, the manual route still works: update the guidance in `user/profile/05-cv-templates.md` and `user/profile/06-cover-letter-templates.md`.
 
 ### Job search tools
 
@@ -300,7 +300,7 @@ Everything above adds up to an extension model, so here it is stated plainly. Th
 <details>
 <summary>How the Language Gate handles language deal-breakers</summary>
 
-Language is the one deal-breaker type with dedicated, structured handling: `/setup` captures every language you work in and your level (asked directly, or inferred from your CV/LinkedIn export) into a `Languages` table, and the Language Gate (`04-job-evaluation.md`) hard-rejects a posting that requires a language you haven't declared at all, while flagging - not auto-rejecting - one that asks for a higher level than you declared in a language you do work in, so a borderline case (a strict "fluent" bar against your own B1/B2, say) gets your judgment instead of a silent drop.
+Language is the one deal-breaker type with dedicated, structured handling: `/setup` captures every language you work in and your level (asked directly, or inferred from your CV/LinkedIn export) into a `Languages` table, and the Language Gate (`user/profile/04-job-evaluation.md`) hard-rejects a posting that requires a language you haven't declared at all, while flagging - not auto-rejecting - one that asks for a higher level than you declared in a language you do work in, so a borderline case (a strict "fluent" bar against your own B1/B2, say) gets your judgment instead of a silent drop.
 
 </details>
 
@@ -324,7 +324,7 @@ To wipe your profile data and start fresh:
 
 ```
 /reset profile    # clears skill files, preserves framework rules
-/reset documents  # deletes files from documents/ folder
+/reset documents  # deletes files from user/documents/ folder
 /reset all        # both
 ```
 
@@ -342,7 +342,7 @@ The single biggest factor in output quality is how much detail you put into your
 
 - **Role descriptions:** Don't just list job titles. Describe what you actually did in each position: specific projects, tools used, responsibilities, and measurable achievements. The more material you provide, the more precisely the system can reframe your experience for different roles.
 - **Skills in context:** Instead of listing "Python" or "project management," describe how and where you applied them. "Built ML pipelines for customer churn prediction in Python using scikit-learn" gives the system far more to work with than "Python, machine learning."
-- **All onboarding paths work:** Whether you point `/setup` at your `documents/` folder, paste a single CV, or walk through the interview, the principle is the same: richer input produces sharper output.
+- **All onboarding paths work:** Whether you point `/setup` at your `user/documents/` folder, paste a single CV, or walk through the interview, the principle is the same: richer input produces sharper output.
 
 ### Career path discovery
 
@@ -360,7 +360,36 @@ To get the most from this, invest time during `/setup` in describing not just yo
 
 ```
 ai-job-search/
-├── CLAUDE.md                          # Main candidate profile + workflow rules
+├── CLAUDE.md                          # Workflow rules; imports user/CLAUDE.md
+├── user/                              # Everything about you; never committed (made by tools/init_user.py)
+│   ├── CLAUDE.md                      # Main candidate profile + search settings
+│   ├── profile.json                   # Your name, for the CV file name
+│   ├── CV_RULES.md                    # Your CV rules
+│   ├── cv_checks.json                 # Your CV limits and banned wording
+│   ├── search-queries.md              # Your job search queries
+│   ├── profile/
+│   │   ├── 01-candidate-profile.md    # Your education, experience, skills
+│   │   ├── 02-behavioral-profile.md   # PI/DISC/personality assessment
+│   │   ├── 04-job-evaluation.md       # Scoring framework for job fit
+│   │   ├── 05-cv-templates.md         # LaTeX CV structure + tailoring rules
+│   │   ├── 06-cover-letter-templates.md # LaTeX cover letter templates
+│   │   └── 07-interview-prep.md       # STAR examples + interview framework
+│   ├── cv/                            # Your master CV (main_example.tex) and each tailored CV
+│   ├── cover_letters/                 # Your cover letters
+│   ├── documents/                     # Career source materials for /setup Path A and /expand
+│   │   ├── README.md                  # Folder layout instructions
+│   │   ├── cv/                        # Master CV (PDF or .tex)
+│   │   ├── linkedin/                  # LinkedIn profile export (PDF)
+│   │   ├── diplomas/                  # Degree certificates and transcripts
+│   │   ├── references/                # Reference letters
+│   │   └── applications/              # Past application records (<company>_<role>/)
+│   ├── job_search_tracker.csv         # Application tracking spreadsheet
+│   ├── job_scraper/                   # Scraper state (seen jobs, results)
+│   ├── company_research/              # Company research cache
+│   ├── gmail_sync/                    # /gmail-sync state (processed message IDs, last sync date)
+│   ├── upskill/                       # /upskill report output (markdown reports per run)
+│   ├── reports/                       # /html-report dashboards
+│   └── app/                           # The web interface's conversations, settings and access token
 ├── .claude/
 │   ├── commands/
 │   │   ├── apply.md                   # /apply workflow (drafter-reviewer)
@@ -378,13 +407,11 @@ ai-job-search/
 │   ├── skills/
 │   │   ├── job-application-assistant/  # Core application skill
 │   │   │   ├── SKILL.md               # Skill definition
-│   │   │   ├── 01-candidate-profile.md # Your education, experience, skills
-│   │   │   ├── 02-behavioral-profile.md# PI/DISC/personality assessment
 │   │   │   ├── 03-writing-style.md    # Tone, structure, do's and don'ts
-│   │   │   ├── 04-job-evaluation.md   # Scoring framework for job fit
-│   │   │   ├── 05-cv-templates.md     # LaTeX CV structure + tailoring rules
-│   │   │   ├── 06-cover-letter-templates.md # LaTeX cover letter templates
-│   │   │   └── 07-interview-prep.md   # STAR examples + interview framework
+│   │   │   ├── 08-application-forms.md # Answering application forms
+│   │   │   ├── 09-web-research.md     # Company and posting research
+│   │   │   ├── 10-cv-best-practices.md # What makes a CV work, section by section
+│   │   │   └── cv-research/           # The evidence behind each CV rule, with sources
 │   │   ├── job-scraper/               # Job search orchestration
 │   │   └── upskill/                   # /upskill skill gap analysis and learning plan
 │   └── settings.json                  # Claude Code permissions (shared, scoped)
@@ -396,21 +423,13 @@ ai-job-search/
 │   ├── linkedin-search/               # LinkedIn public job listings (country-agnostic)
 │   └── freehire-search/               # freehire.me tech job aggregator (multi-market, REST API)
 ├── assets/                            # README artwork (Pip the mascot, animated SVG diagrams)
-├── cv/
-│   └── main_example.tex               # moderncv LaTeX template
 ├── cover_letters/
 │   ├── cover.cls                      # Custom cover letter LaTeX class
 │   ├── cover_example.tex              # Example cover letter (structural reference + CI smoke test)
 │   └── OpenFonts/                     # Lato + Raleway fonts
 ├── templates/                         # Custom templates registered via /add-template
-│   └── README.md                      # Folder layout instructions
-├── documents/                         # Career source materials for /setup Path A and /expand
 │   ├── README.md                      # Folder layout instructions
-│   ├── cv/                            # Master CV (PDF or .tex)
-│   ├── linkedin/                      # LinkedIn profile export (PDF)
-│   ├── diplomas/                      # Degree certificates and transcripts
-│   ├── references/                    # Reference letters
-│   └── applications/                  # Past application records (<company>_<role>/)
+│   └── user/                          # The clean starting files a new user/ folder is made from (cv/main_example.tex is the moderncv example)
 ├── .github/workflows/ci.yml           # CI: LaTeX smoke compiles, skill lint, CLI typechecks
 ├── salary_lookup.py                   # Salary benchmarking tool (BYO data)
 ├── tools/
@@ -427,10 +446,6 @@ ai-job-search/
 │   ├── verify_layout.py               # Measure a compiled PDF's page layout (holes, orphans, footer collisions)
 │   ├── verify_pdf.py                  # Verify a compiled PDF's page count and extractable text
 │   └── README_SALARY_TOOL.md          # Salary tool setup instructions
-├── job_scraper/                       # Scraper state (seen jobs, results)
-├── gmail_sync/                        # /gmail-sync state (processed message IDs, last sync date)
-├── upskill/                           # /upskill report output (markdown reports per run)
-├── job_search_tracker.csv             # Application tracking spreadsheet
 └── SETUP.md                           # Detailed setup guide
 ```
 

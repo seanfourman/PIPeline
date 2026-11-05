@@ -9,7 +9,9 @@ import { Editor, Files, Profile, Rules, Tools } from "./views/docs";
 import { Home } from "./views/home";
 import { Login } from "./login";
 import { Jobs, SavedJobs } from "./views/jobs";
+import { Portals } from "./views/portals";
 import { Settings } from "./views/settings";
+import { Welcome } from "./views/welcome";
 
 export type AppState = {
   applications: Record<string, any>[]; jobs: Record<string, any>[]; files: { path: string; modified: number }[];
@@ -21,6 +23,12 @@ export type AppState = {
   // signed in with the account, through Codex (clis.ts).
   aiKeys: Record<string, boolean>;
   aiLogins?: Record<string, boolean>;
+  // The account's name on this computer (auth.ts), and the introduction's state: whether it is done, the name
+  // employers see (user/profile.json), and the documents it put in user/documents/ (server.ts).
+  account?: string;
+  intro?: { done: boolean; name: string; documents: { cv: string[]; linkedin: string[] } };
+  // Phone access through the site (remote.ts): whether this computer is linked, where, as whom, and connected now.
+  remote?: { linked: boolean; site: string; name: string; state: "off" | "connecting" | "on"; error: string };
 };
 
 type News = { text: string; mood: Mood } | null;
@@ -43,7 +51,7 @@ type Ctx = {
 const AppContext = createContext<Ctx>(null as unknown as Ctx);
 export const useApp = () => useContext(AppContext);
 
-const EMPTY: AppState = { applications: [], jobs: [], files: [], sessions: [], settings: { markets: [], areas: [], roles: [], automation: {} }, presets: {}, profileReady: true, aiKeys: {} };
+const EMPTY: AppState = { applications: [], jobs: [], files: [], sessions: [], settings: { markets: [], areas: [], roles: [], automation: {} }, presets: {}, profileReady: true, aiKeys: {}, intro: { done: true, name: "", documents: { cv: [], linkedin: [] } } };
 
 // Browser storage only remembers small conveniences, and the page works without it.
 export const stored = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -82,7 +90,7 @@ export function friendlyTitle(title: string, t: Ctx["t"]) {
 
 // One flat list, like a social site's sidebar; the order still runs from daily use to the advanced pages.
 const NAV: [string, string][] = [
-  ["dash", "home"], ["jobs", "jobs"], ["saved", "saved"], ["apps", "apps"], ["chat", "chat"],
+  ["dash", "home"], ["jobs", "jobs"], ["saved", "saved"], ["portals", "portals"], ["apps", "apps"], ["chat", "chat"],
   ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"],
 ];
 
@@ -91,7 +99,7 @@ function Sidebar() {
   const { s, t, view, logout } = useApp();
   const current = view === "cv" || view === "letter" ? "files" : view;
   const waiting = s.sessions.filter((x) => x.status === "waiting").length;
-  const name = String(s.settings.displayName ?? "").trim() || "admin";
+  const name = String(s.settings.displayName ?? "").trim() || s.account || "";
   return (
     <nav className="side" aria-label={t("nav.main")}>
       <a className="brand" href="#/dash" aria-label={t("brand.name")}><PipMark /></a>
@@ -195,6 +203,7 @@ function Screen() {
   switch (view) {
     case "jobs": return <Jobs />;
     case "saved": return <SavedJobs />;
+    case "portals": return <Portals />;
     case "apps": return <Apps />;
     case "chat": return <Chat id={arg ?? (lastChat || "new")} />;
     case "tools": return <Tools />;
@@ -222,6 +231,8 @@ export function App() {
   // Whether the loading screen has gone. It shows only when the page opens, not after logging in or out.
   const [booted, setBooted] = useState(false);
   const [auth, setAuth] = useState<"unknown" | "in" | "out">("unknown");
+  // No account on this computer yet: the login makes one (auth.ts).
+  const [needsAccount, setNeedsAccount] = useState(false);
   // The forest run plays when the page opens, not after a logout.
   const [intro, setIntro] = useState(true);
   const [[view, arg], setRoute] = useState(readHash);
@@ -259,7 +270,7 @@ export function App() {
   }, [ready, booted]);
 
   useEffect(() => {
-    api<{ loggedIn: boolean }>("me").then((me) => setAuth(me.loggedIn ? "in" : "out")).catch(() => setAuth("out"));
+    api<{ loggedIn: boolean; needsAccount: boolean }>("me").then((me) => { setNeedsAccount(me.needsAccount); setAuth(me.loggedIn ? "in" : "out"); }).catch(() => setAuth("out"));
     const onExpired = () => { setIntro(false); setAuth("out"); };
     addEventListener("pip-login-required", onExpired);
     const onScheme = (e: MediaQueryListEvent) => setSystemDark(e.matches);
@@ -295,7 +306,9 @@ export function App() {
 
   const t = useCallback((key: string, params?: Record<string, string | number>) => translate(lang, key, params), [lang]);
   const waiting = s.sessions.filter((x) => x.status === "waiting").length;
-  useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ""}${t("brand.name")} / ${t(`nav.${view === "dash" ? "home" : view}`)}`; }, [waiting, view, t]);
+  // A new user's introduction, until it is finished or put aside, and whenever the home page sends them back to it.
+  const welcome = auth === "in" && loaded && (view === "welcome" || !s.intro?.done);
+  useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ""}${t("brand.name")} / ${t(`nav.${welcome ? "welcome" : view === "dash" ? "home" : view}`)}`; }, [waiting, view, welcome, t]);
 
   const dark = theme === "dark" || (!theme && systemDark);
   const ctx: Ctx = {
@@ -337,9 +350,10 @@ export function App() {
 
   return (
     <AppContext.Provider value={ctx}>
-      {auth === "out" && booted && <Login intro={intro} onDone={() => { setRoute(readHash()); setAuth("in"); }} />}
+      {auth === "out" && booted && <Login intro={intro} create={needsAccount} onDone={() => { setNeedsAccount(false); setRoute(readHash()); setAuth("in"); }} />}
+      {welcome && <div className={`welcome-wrap ${booted ? "entering" : "waiting"}`}><Welcome /></div>}
       {/* Laid out but hidden until the state is in too, so the first thing shown is the real page; then it fades in. */}
-      {auth === "in" && (
+      {auth === "in" && !welcome && (
         <div className={`shell ${booted && loaded ? "entering" : "waiting"}`} aria-busy={!(booted && loaded)}>
           <Sidebar />
           <main id="main" tabIndex={-1}><Screen /></main>

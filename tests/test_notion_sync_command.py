@@ -37,11 +37,10 @@ class NotionSyncCommandSpec(unittest.TestCase):
             self.assertIn(section, text, f"spec lost its {section!r} section")
 
     def test_personal_sync_state_is_gitignored(self):
-        self.assertIn(
-            "job_scraper/notion_sync.json",
-            GITIGNORE.read_text(encoding="utf-8"),
-            "notion_sync.json is personal state and must never be committable",
-        )
+        # It lives in user/, which is ignored whole; the old rule still covers a stray copy elsewhere.
+        ignored = GITIGNORE.read_text(encoding="utf-8").splitlines()
+        self.assertIn("/user/", ignored, "notion_sync.json is personal state and must never be committable")
+        self.assertIn("**/job_scraper/notion_sync.json", ignored, "notion_sync.json is personal state and must never be committable")
 
     def test_step2_join_names_the_field_ranked_entries_actually_carry(self):
         # seen_jobs.json entries carry `title` (job-scraper SKILL.md schema), the
@@ -49,7 +48,7 @@ class NotionSyncCommandSpec(unittest.TestCase):
         # lookup of `role` on the entry, which never matches, so one job became
         # two Notion rows with different Keys. The join is role-vs-title.
         text = COMMAND.read_text(encoding="utf-8")
-        line = next(l for l in text.splitlines() if "matched to `job_scraper/seen_jobs.json` entries" in l)
+        line = next(l for l in text.splitlines() if "matched to `user/job_scraper/seen_jobs.json` entries" in l)
         self.assertIn("company + title", line)
         self.assertIn("`title`", line)
         self.assertIn("`role`", line)
@@ -75,7 +74,7 @@ class NotionSyncCommandSpec(unittest.TestCase):
         self.assertIn("If a matching tracker row exists, it remains an ordinary sync item and tracker status precedence applies.", step2)
         self.assertIn("sync set contains only expired-only entries", step3)
         self.assertIn("stop without asking where to create a database", step3)
-        self.assertIn("without creating the database or writing `job_scraper/notion_sync.json`", step3)
+        self.assertIn("without creating the database or writing `user/job_scraper/notion_sync.json`", step3)
         self.assertIn("if the job is an expired-only entry, skip it - do not create a page or write a body", step4)
         self.assertIn("Match, expired-only entry** → update **Status only** to `expired`", step4)
         self.assertIn("Never write or rebuild a body for an expired-only entry, including when `--rebuild` is set.", step5)

@@ -163,6 +163,10 @@ REQUIRED_DENY_RULES = [
 
 # Personal-data ignore rules that must never disappear from .gitignore.
 REQUIRED_IGNORE_RULES = [
+    # The user's own folder: profile, rules, CVs, letters, applications, job list, tracker, research, reports and
+    # the web interface's data. Rooted, so templates/user/ (the clean starting files) stays tracked. The rules
+    # below cover the places these lived before, so a stray old file is still never committed.
+    "/user/",
     "salary_data.json",
     # Depth-independent: the job-scraper skill resolves `job_scraper/` relative
     # to its own directory, so the state file lands under .claude/skills/... and
@@ -173,7 +177,6 @@ REQUIRED_IGNORE_RULES = [
     "*_BehavioralReport.pdf",
     "linkedin_Profile.pdf",
     "cv/main_*.*",
-    "!cv/main_example.tex",
     # ATS text extractions (/apply step 5d) carry the CV's full text.
     "cv/*.txt",
     "cover_letters/cover_*.*",
@@ -222,7 +225,6 @@ REQUIRED_IGNORE_RULES = [
 # ALLOWED_PERMISSIONS, so the widening is explicit and reviewable.
 ALLOWED_IGNORE_NEGATIONS = {
     "!cover_letters/OpenFonts/fonts/**",
-    "!cv/main_example.tex",
     "!cover_letters/cover_example.tex",
     "!documents/**/.gitkeep",
 }

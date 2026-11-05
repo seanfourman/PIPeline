@@ -7,7 +7,7 @@ This folder holds your actual career documents. The `/setup` command reads every
 ## Folder Structure
 
 ```
-documents/
+user/documents/
 ├── cv/                          # Your CV files (PDF or LaTeX)
 ├── linkedin/                    # LinkedIn profile export (PDF)
 ├── diplomas/                    # Degree certificates and transcripts
@@ -91,8 +91,8 @@ Reference letters from former managers, supervisors, or collaborators.
 
 **What `/setup` extracts:**
 - Referee name, title, and organization
-- Specific quotes and assessments (added to the references section of `01-candidate-profile.md`)
-- Competency language used by referees (adds behavioral signal to `02-behavioral-profile.md`)
+- Specific quotes and assessments (added to the references section of `user/profile/01-candidate-profile.md`)
+- Competency language used by referees (adds behavioral signal to `user/profile/02-behavioral-profile.md`)
 
 **Naming:** Use the referee's name, e.g. `reference_ole_frandsen.pdf`.
 
@@ -109,11 +109,11 @@ Summaries, case studies, READMEs, writeups, or documentation for independent, op
 - Problem domain and target audience
 - Tech stack, tools, and libraries used
 - Key technical challenges and architectural decisions
-- Measurable outcomes, metrics, or performance improvements (added to `01-candidate-profile.md` under `## Independent Projects`)
+- Measurable outcomes, metrics, or performance improvements (added to `user/profile/01-candidate-profile.md` under `## Independent Projects`)
 
 **Naming:** Use descriptive project names, e.g. `project_realtime_chat.md`, `portfolio_compiler.txt`, `open_source_etl.pdf`.
 
-**Tip:** These feed into the `## Independent Projects` section of `01-candidate-profile.md` and provide concrete technical evidence that `/apply` can weave into tailored CVs and cover letters.
+**Tip:** These feed into the `## Independent Projects` section of `user/profile/01-candidate-profile.md` and provide concrete technical evidence that `/apply` can weave into tailored CVs and cover letters.
 
 ---
 
@@ -133,7 +133,7 @@ A drop folder for raw job posting text when Claude can't fetch a page directly (
 
 A record of past job applications. Each subfolder is one application.
 
-You can maintain these folders by hand, or let the **`/outcome`** command do it: it records progress updates and final results conversationally, archives the submitted drafts and, if `/apply` has not already written it, the posting text, keeps `outcome.md` in the format below, and updates `job_search_tracker.csv` in the same step.
+You can maintain these folders by hand, or let the **`/outcome`** command do it: it records progress updates and final results conversationally, archives the submitted drafts and, if `/apply` has not already written it, the posting text, keeps `outcome.md` in the format below, and updates `user/job_search_tracker.csv` in the same step.
 
 **Subfolder naming:** `<company>_<role>` — lowercase, underscores for spaces.
 Every character that is not a letter, digit or underscore is dropped (so `Novo Nordisk A/S`
@@ -152,11 +152,11 @@ applications/
 
 ### Files within each application folder
 
-**`job_posting.md`** — The full job posting text, written by `/apply`, or paste it here. Used by `/setup` to infer which skills and role types you have targeted, and to calibrate `04-job-evaluation.md`.
+**`job_posting.md`** — The full job posting text, written by `/apply`, or paste it here. Used by `/setup` to infer which skills and role types you have targeted, and to calibrate `user/profile/04-job-evaluation.md`.
 
-**`cover_letter.tex`** — The cover letter you actually submitted. Used to extract writing style patterns and structure for `06-cover-letter-templates.md`.
+**`cover_letter.tex`** — The cover letter you actually submitted. Used to extract writing style patterns and structure for `user/profile/06-cover-letter-templates.md`.
 
-**`cv_draft.tex`** — The CV variant you submitted. Used to extract profile statement styles for `05-cv-templates.md`.
+**`cv_draft.tex`** — The CV variant you submitted. Used to extract profile statement styles for `user/profile/05-cv-templates.md`.
 
 **`outcome.md`** — Fill this in after the application resolves. Format:
 
@@ -186,7 +186,7 @@ Application folders may also contain **`interview_prep_<stage>.md`** files writt
 
 **What `/setup` learns from outcome.md:**
 - Which role types and companies have led to interviews (signals strong fit areas)
-- Which applications did not progress (informs the experience match calibration in `04-job-evaluation.md`)
+- Which applications did not progress (informs the experience match calibration in `user/profile/04-job-evaluation.md`)
 - Interview feedback, if you recorded it, can surface new STAR candidates
 
 ---

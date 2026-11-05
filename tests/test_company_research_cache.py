@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-EVALUATION = REPO / ".claude" / "skills" / "job-application-assistant" / "04-job-evaluation.md"
+EVALUATION = REPO / "templates" / "user" / "profile" / "04-job-evaluation.md"
 APPLY = REPO / ".claude" / "commands" / "apply.md"
 INTERVIEW = REPO / ".claude" / "commands" / "interview.md"
 

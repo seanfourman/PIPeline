@@ -39,7 +39,7 @@ type Attached = { key: string; name: string; kind: string; size: number; id?: st
 type Sent = { id: string; name: string; kind: string; size: number };
 
 const sizeText = (n: number) => (n < MB ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / MB).toFixed(1)} MB`);
-const readBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+export const readBase64 = (file: File) => new Promise<string>((resolve, reject) => {
   const reader = new FileReader();
   reader.onload = () => resolve(String(reader.result).replace(/^data:[^,]*,/, ""));
   reader.onerror = () => reject(reader.error);
@@ -394,7 +394,8 @@ function Files({ files }: { files: Doc[] }) {
 
 type Item = { kind: "tools"; key: string; tools: Ev[] } | { kind: "event"; key: string; ev: Ev };
 
-function Conversation({ id, onList }: { id: string; onList: () => void }) {
+// bare: inside another page (the introduction's), which has its own heading, so no header of its own.
+export function Conversation({ id, onList, bare = false }: { id: string; onList?: () => void; bare?: boolean }) {
   const { s, t, refresh } = useApp();
   const session = s.sessions.find((c) => c.id === id);
   const [events, setEvents] = useState<Ev[]>([]);
@@ -494,12 +495,14 @@ function Conversation({ id, onList }: { id: string; onList: () => void }) {
 
   return (
     <div className="convo">
-      <header className="chat-top">
-        <ListButton onList={onList} />
-        <h1 className="chat-title" dir="auto">{session ? friendlyTitle(session.title, t) : ""}</h1>
-        {(plain || (session?.agent && session.agent !== "claude")) && session?.engine && <span className="chat-model"><bdi>{session.engine}</bdi></span>}
-        {status !== "idle" && <span className={`chat-state ${status}`}>{t(`session.${status}`)}</span>}
-      </header>
+      {!bare && (
+        <header className="chat-top">
+          {onList && <ListButton onList={onList} />}
+          <h1 className="chat-title" dir="auto">{session ? friendlyTitle(session.title, t) : ""}</h1>
+          {(plain || (session?.agent && session.agent !== "claude")) && session?.engine && <span className="chat-model"><bdi>{session.engine}</bdi></span>}
+          {status !== "idle" && <span className={`chat-state ${status}`}>{t(`session.${status}`)}</span>}
+        </header>
+      )}
       <div className="log-frame">
         <div className="log" ref={log} role="log" aria-live="polite" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
           <div className="log-column">

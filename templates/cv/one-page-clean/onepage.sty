@@ -1,8 +1,17 @@
 % Layout measured from the candidate's Canva resumes. Sizes and distances are in bp, as in the PDFs.
 % Those PDFs were placed by hand, so their left edges drift by up to 2bp. Here every rule, text
 % edge and date uses the same two margins, which are equal, so the page is symmetric.
-% Load from cv/: the font path below is relative to that folder.
+% The fonts and the limits are found from this file's own folder, as a full path, so a CV compiles from
+% wherever it is (user/cv/ for the user's CVs). LuaTeX's font cache keeps the path a font was first loaded
+% from, and a relative one breaks every compile from another folder.
 \ProvidesPackage{onepage}
+\directlua{
+  local dir = token.get_macro("CurrentFilePath") or ""
+  if not (string.sub(dir, 1, 1) == "/" or string.sub(dir, 2, 2) == ":") then dir = lfs.currentdir() .. "/" .. dir end
+  dir = string.gsub(dir, string.char(92), "/")
+  if not (string.sub(dir, -1) == "/") then dir = dir .. "/" end
+  token.set_macro("cvtemplatedir", dir)
+}
 \RequirePackage[paperwidth=595.5bp,paperheight=842.25bp,left=35.8bp,textwidth=523.9bp,top=0bp,bottom=0bp,headheight=0bp,headsep=0bp,footskip=0bp,nomarginpar]{geometry}
 \RequirePackage{fontspec}
 \RequirePackage{xcolor}
@@ -18,7 +27,7 @@
   \setmainfont{Proxima Nova}[Kerning=Off, Ligatures=NoCommon]
 }{
   \setmainfont{Figtree}[
-    Path = ../templates/cv/one-page-clean/fonts/,
+    Path = \cvtemplatedir fonts/,
     Extension = .ttf,
     UprightFont = *-Regular,
     BoldFont = *-Bold,
@@ -28,7 +37,7 @@
     Ligatures = NoCommon,
   ]
   \newfontface{\cvdisplayface}{Figtree-Display}[
-    Path = ../templates/cv/one-page-clean/fonts/,
+    Path = \cvtemplatedir fonts/,
     Extension = .ttf,
     FakeStretch = 0.9812,
     Kerning = Off,
@@ -117,10 +126,12 @@
 \newcommand{\cvcsep}{\kern-0.25bp|\kern-0.25bp}
 % The contact line sits midway between the two rules around it.
 \newcommand{\cvcontact}[1]{\cvgap{26.8}{\cvrule{11.05}\cvcentered[true]{#1}}\par\cvgap{34}}
-% The numeric limits live in cv_checks.json, which the interface's rules screen edits.
+% The numeric limits live in the user's cv_checks.json (user/, which the interface's rules screen edits), or
+% the template's neutral one beside this file. The user's folder is three levels above it.
 \directlua{
-  local file = io.open("../templates/cv/one-page-clean/cv_checks.json")
-  if not file then tex.error("cv_checks.json was not found. Compile from the cv folder.") end
+  local dir = token.get_macro("cvtemplatedir")
+  local file = io.open(dir .. "../../../user/cv_checks.json") or io.open(dir .. "cv_checks.json")
+  if not file then tex.error("cv_checks.json was not found beside onepage.sty or in user/.") end
   local checks = file:read("*a")
   file:close()
   function cvlimit(name) tex.sprint(string.match(checks, '"' .. name .. '"[^0-9]*([0-9]+)')) end
@@ -146,13 +157,13 @@
   \fi
   #1\par}
 
-% Sean's rules for every generated CV. Each one stops the compile when broken, so the text gets
+% The user's rules for every generated CV. Each one stops the compile when broken, so the text gets
 % rewritten instead of shipped:
 %   - Nothing wraps. Only the summary has more than one line.
 %   - Skills stay believable for a recent graduate, within the limits in cv_checks.json. Those limits
-%     are a judgment of what a graduate with a year of work really knows, and Sean's own CVs, which
-%     Sean considers overstated, must not be used to raise them.
-%   - Jobs show months: "Aug 2025 - Present" or "Oct 2025 - Jul 2026".
+%     are a judgment of what a graduate with a year of work really knows, and the user's own older CVs, which
+%     they consider overstated, must not be used to raise them.
+%   - Jobs show months: "Aug 2025 - Present" or "Oct 2025 - Jul 2026". Degrees show them too, unchecked here.
 \newbox\cvfitbox
 \newcount\cvitems
 \newcount\cvskilllines

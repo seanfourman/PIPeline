@@ -1,11 +1,12 @@
-// Files attached in the chat: images, PDFs and text, each saved in a folder of its own under web/data/uploads,
+// Files attached in the chat: images, PDFs and text, each saved in a folder of its own under user/app/uploads,
 // which git ignores, for the chat to show and the agent to read. A file is taken only when its first bytes are
 // what its name says, so a page or a script cannot come in dressed as an image.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { REPO } from "./policy";
+import { APP_DIR } from "./user";
 
-export const UPLOADS = path.join(import.meta.dir, "data", "uploads");
+export const UPLOADS = path.join(APP_DIR, "uploads");
 // Images go to Claude as they are, within the API's size for one; the rest it reads from the folder.
 export const MAX_IMAGE = 5 * 1024 * 1024;
 export const MAX_FILE = 20 * 1024 * 1024;

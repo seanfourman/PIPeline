@@ -34,7 +34,8 @@ INTERVIEW = COMMANDS / "interview.md"
 NOTION_SYNC = COMMANDS / "notion-sync.md"
 SKILL = REPO / ".claude" / "skills" / "job-application-assistant" / "SKILL.md"
 SCRAPER = REPO / ".claude" / "skills" / "job-scraper" / "SKILL.md"
-DOCS_README = REPO / "documents" / "README.md"
+# The clean copy; each user's own is user/documents/README.md, made from it.
+DOCS_README = REPO / "templates" / "user" / "documents" / "README.md"
 
 TRACKER_HEADER = (
     "date,company,sector,role,role_type,channel,status,contact_person,"
@@ -171,7 +172,7 @@ class ApplyRecordsApplication(unittest.TestCase):
 
     def test_seen_jobs_is_left_alone(self):
         self.assertIn(
-            "Do not modify `job_scraper/seen_jobs.json`",
+            "Do not modify `user/job_scraper/seen_jobs.json`",
             self.step_6b,
             "drafting is not applying, and that file has no honest value for either",
         )
@@ -260,7 +261,7 @@ class ApplyArchivesThePosting(unittest.TestCase):
          "by Step 6b the model may hold only a summary, so the archive gets a "
          "paraphrase - what /outcome Step 3.2 forbids"),
         (APPLY, "### Step 6b: Record the Application",
-         "`documents/applications/<company>_<role>/job_posting.md`",
+         "`user/documents/applications/<company>_<role>/job_posting.md`",
          "the one moment /apply provably holds the posting is spent again, and "
          "a pasted posting has no recovery path at all"),
         (APPLY, "### Step 6b: Record the Application",
@@ -389,7 +390,7 @@ class DeadlineSurvivesEveryWrite(unittest.TestCase):
 class FallbackGlobFindsOneRolesDocuments(unittest.TestCase):
     """The `cv_file` fallback must select one role's documents, not one company's.
 
-    `/apply` names drafts `cv/main_<company>_<role><CV_EXT>`, so two roles
+    `/apply` names drafts `user/cv/main_<company>_<role><CV_EXT>`, so two roles
     at one company differ only in the role half. When the tracker row's
     `cv_file`/`cover_letter_file` columns are empty - a row written before
     #291, added by hand, or by /outcome's own outside-the-workflow path -
@@ -407,7 +408,7 @@ class FallbackGlobFindsOneRolesDocuments(unittest.TestCase):
 
     CASES = [
         (OUTCOME, "## Step 3: Archive the Application Materials",
-         "by the **Subfolder naming** rule in `documents/README.md`",
+         "by the **Subfolder naming** rule in `user/documents/README.md`",
          "the archive locator must derive the stem by the one documented rule, "
          "not invent a second derivation that drifts from it"),
         (OUTCOME, "## Step 3: Archive the Application Materials",
@@ -415,7 +416,7 @@ class FallbackGlobFindsOneRolesDocuments(unittest.TestCase):
          "without the prohibition the next edit relaxes the glob when it finds "
          "no match, which is exactly the wrong-file-recorded-as-submitted case"),
         (INTERVIEW, "## Step 1: Load the Application Context",
-         "by the **Subfolder naming** rule in `documents/README.md`",
+         "by the **Subfolder naming** rule in `user/documents/README.md`",
          "interview's fallback must resolve the same stem /apply wrote"),
         (INTERVIEW, "## Step 1: Load the Application Context",
          "Never widen those globs to the company alone",
@@ -431,7 +432,7 @@ class FallbackGlobFindsOneRolesDocuments(unittest.TestCase):
     def globs(path, heading):
         """The two fallback globs exactly as the spec writes them."""
         body = section(path, heading)
-        found = re.findall(r"`(cv/main_[^`]+|cover_letters/cover_[^`]+)`", body)
+        found = re.findall(r"`(user/cv/main_[^`]+|user/cover_letters/cover_[^`]+)`", body)
         return [g for g in found if "*" in g]
 
     def resolve(self, glob, role):
@@ -441,9 +442,9 @@ class FallbackGlobFindsOneRolesDocuments(unittest.TestCase):
         return glob.replace("<company>_<role>", stem).replace("<company>", company)
 
     def drafted_files(self, ext=".tex"):
-        """Exactly what /apply Step 5 leaves in cv/ for two roles at one company."""
+        """Exactly what /apply Step 5 leaves in user/cv/ for two roles at one company."""
         return [
-            "cv/main_%s%s" % (ArchiveNameIsOnePathComponent.derive(self.COMPANY, r), ext)
+            "user/cv/main_%s%s" % (ArchiveNameIsOnePathComponent.derive(self.COMPANY, r), ext)
             for r in self.ROLES
         ]
 
@@ -451,7 +452,7 @@ class FallbackGlobFindsOneRolesDocuments(unittest.TestCase):
         on_disk = self.drafted_files()
         for path, heading in ((OUTCOME, "## Step 3: Archive the Application Materials"),
                               (INTERVIEW, "## Step 1: Load the Application Context")):
-            cv_glob = next(g for g in self.globs(path, heading) if g.startswith("cv/"))
+            cv_glob = next(g for g in self.globs(path, heading) if g.startswith("user/cv/"))
             for role, expected in zip(self.ROLES, on_disk):
                 with self.subTest(file=path.name, role=role):
                     hits = fnmatch.filter(on_disk, self.resolve(cv_glob, role))
@@ -468,7 +469,7 @@ class FallbackGlobFindsOneRolesDocuments(unittest.TestCase):
         on_disk = self.drafted_files(ext=".typ")
         cv_glob = next(
             g for g in self.globs(OUTCOME, "## Step 3: Archive the Application Materials")
-            if g.startswith("cv/")
+            if g.startswith("user/cv/")
         )
         hits = fnmatch.filter(on_disk, self.resolve(cv_glob, self.ROLES[0]))
         self.assertEqual(
@@ -483,9 +484,9 @@ class ArchiveNameIsOnePathComponent(unittest.TestCase):
 
     `Novo Nordisk A/S` used to derive `novo_nordisk_a/s_<role>/`: every
     command that *derives* the path agrees and keeps working, while the
-    two that *enumerate* `documents/applications/*/` (/setup Path A,
+    two that *enumerate* `user/documents/applications/*/` (/setup Path A,
     /html-report's glob) silently skip the nested archive. The character
-    rule lives in one place - documents/README.md's Subfolder naming
+    rule lives in one place - user/documents/README.md's Subfolder naming
     block - and the derivation sites cite it rather than restating it
     (jakob1379/ai-job-search#22).
     """
@@ -500,7 +501,7 @@ class ArchiveNameIsOnePathComponent(unittest.TestCase):
          "the sentence that says why the rule exists; without it the next "
          "edit simplifies the rule back to spaces-only"),
         (OUTCOME, "## Step 1: Load State and Identify the Application",
-         "by the **Subfolder naming** rule in `documents/README.md`",
+         "by the **Subfolder naming** rule in `user/documents/README.md`",
          "Step 1.4 is the derivation every other writer cites; paraphrasing "
          "the rule here is how the two copies drifted apart originally"),
         (APPLY, "### Requirement coverage (both documents)",
@@ -509,26 +510,26 @@ class ArchiveNameIsOnePathComponent(unittest.TestCase):
          "`/` there sends the draft to a path lualatex never writes a PDF "
          "back to, and the Step 4 compile check fails on a phantom path"),
         (SKILL, "### Step 2: Tailor CV",
-         "by the **Subfolder naming** rule in `documents/README.md`",
+         "by the **Subfolder naming** rule in `user/documents/README.md`",
          "the /scrape path writes its documents before Step 3b consults /apply, "
          "so /apply's filename rule cannot protect it"),
         (GMAIL_SYNC, "## Step 2: Load State",
-         "by the **Subfolder naming** rule in `documents/README.md`",
+         "by the **Subfolder naming** rule in `user/documents/README.md`",
          "gmail-sync both locates and creates archives; its old spaces-only "
          "paraphrase would split state across two folders"),
         (INTERVIEW, "## Step 1: Load the Application Context",
-         "by the **Subfolder naming** rule in `documents/README.md`",
+         "by the **Subfolder naming** rule in `user/documents/README.md`",
          "interview must read the same archive /apply and /outcome wrote"),
         (INTERVIEW, "### 6. Logistics",
          "archive folder derived in Step 1",
          "interview must reuse its canonical read path when writing the prep pack"),
         (NOTION_SYNC, "## Step 5: Write the Detail Page",
-         "by the **Subfolder naming** rule in `documents/README.md`",
+         "by the **Subfolder naming** rule in `user/documents/README.md`",
          "notion-sync otherwise reports that the sanitized local archive is absent"),
         (DOCS_README, "## applications/",
          "If the derived name is empty",
          "dropping untrusted punctuation can produce no component at all, which "
-         "would write files directly under documents/applications"),
+         "would write files directly under user/documents/applications"),
     ]
 
     def test_the_rule_has_one_home_and_every_deriver_cites_it(self):

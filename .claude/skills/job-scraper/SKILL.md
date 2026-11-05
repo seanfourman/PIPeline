@@ -40,13 +40,13 @@ Optional arguments:
 
 ### Step 0: Load Search Strategy
 
-Read `search-queries.md` (this directory) for the search strategy. `tools/scrape_state.py` reads `job_scraper/seen_jobs.json` and `job_search_tracker.csv` for deduplication; do not load either growing file into the conversation.
+Read `user/search-queries.md` (this directory) for the search strategy. `tools/scrape_state.py` reads `user/job_scraper/seen_jobs.json` and `user/job_search_tracker.csv` for deduplication; do not load either growing file into the conversation.
 
 > **Windows:** run these tools as `python`, not `python3`. A python.org install ships no `python3`, so that name reaches the Microsoft Store alias, which either exits 49 with no output (#669) or starts a separate Store Python without the packages `pip` installed (such as pypdf). `.claude/settings.json` allows both spellings.
 
 ### Step 1: Search
 
-Read `search-queries.md` (this directory) for the search strategy. By default, run the top 3 priority query categories. If the user said "broad", run all categories. If the user specified a focus area (e.g. "data science"), prioritize queries from that category.
+Read `user/search-queries.md` (this directory) for the search strategy. By default, run the top 3 priority query categories. If the user said "broad", run all categories. If the user specified a focus area (e.g. "data science"), prioritize queries from that category.
 
 **Use the installed CLI tools as the primary search mechanism.** Fall back to `WebSearch` only for portals that do not have a CLI skill, or if `bun` is unavailable on the system.
 
@@ -67,7 +67,7 @@ Discover all installed portal CLI skills by reading every `SKILL.md` found under
 For each **enabled** portal skill:
 
 1. Read its `SKILL.md` to find the correct `bun run …` invocation and supported flags.
-2. Translate the query terms from `search-queries.md` into that portal's flag format (e.g. `--key`, `--search-string`, `--query`, filter codes — whatever the portal's SKILL.md specifies).
+2. Translate the query terms from `user/search-queries.md` into that portal's flag format (e.g. `--key`, `--search-string`, `--query`, filter codes — whatever the portal's SKILL.md specifies).
 3. Scope to the last 14 days using the portal's supported recency **filter** flag (`--jobage`, `--since <YYYY-MM-DD>`, etc. — as documented per portal). A portal with **no recency flag** (jobdanmark offers none) still gets scoped: every portal's search output carries a `date` field, so filter client-side — drop results whose `date` is older than 14 days after the call returns, and never invent a flag the portal's SKILL.md does not document (the CLIs reject unknown flags). `--order PublicationDate` is a sort, and a sort is not a filter — pairing it with a `--limit` is a defensible approximation on a portal that offers nothing better (jobnet), but apply the client-side date filter on top all the same.
 4. Cap results to ~20 per call using the portal's limit flag.
 5. Use `--format json` for machine-readable output.
@@ -79,11 +79,14 @@ If a CLI tool exits with a non-zero code, log the error message and continue —
 #### 1c. WebSearch fallback
 
 Use `WebSearch` for:
-- Portals listed in `search-queries.md` that do **not** have a corresponding directory under `.agents/skills/`
+- Portals listed in `user/search-queries.md` that do **not** have a corresponding directory under `.agents/skills/`
+- The sites in the **Also search with WebSearch** line of the Search settings (the web interface's portals page): each role, in English and in Hebrew, with that site's `site:` operator. For the post sites (`linkedin.com/posts`, `facebook.com`), keep only a post that names an employer and a way to apply, and store the post's own URL
 - Any portal whose CLI fails at runtime
 - When bun is unavailable (Step 1a failed)
 
-Use the site-specific query strings from `search-queries.md` directly as WebSearch queries for these portals.
+The Search settings' **Read by the web interface itself** line names what the server's own portals check covers in the same daily run (the Israeli boards and the employers on the portals page); don't search those again here.
+
+Use the site-specific query strings from `user/search-queries.md` directly as WebSearch queries for these portals.
 
 Tag each fallback result as WebSearch-sourced, keeping the portal tag when the fallback stands in for an installed portal whose CLI failed. Step 4 persists this as the entry's `source`, and Step 5 reports which portals ran on the fallback this run.
 
@@ -108,7 +111,7 @@ command (see its SKILL.md — do not guess flags) to extract **key requirements*
 `false` means the posting page itself renders LinkedIn's "No longer accepting
 applications" banner — the job died between being indexed and being fetched (expired
 LinkedIn URLs redirect to *similar live jobs*, so a search hit can be a ghost). Mark
-such a job, never silently drop it: write its entry to `job_scraper/seen_jobs.json` in Step 4 with
+such a job, never silently drop it: write its entry to `user/job_scraper/seen_jobs.json` in Step 4 with
 `"status": "expired"` and leave it out of the Step 5 presentation — an absent entry
 looks identical to a job never seen, and the recorded status is what makes a later
 ghost report self-triaging. `isActive: true` is only the absence of that banner, not
@@ -127,11 +130,11 @@ site for the role and store that URL instead, or drop the candidate rather than 
 fragment link.
 
 The `candidates` command applies these rules before a detail request:
-- Skip if the URL matches any existing `job_scraper/seen_jobs.json` entry, regardless of
+- Skip if the URL matches any existing `user/job_scraper/seen_jobs.json` entry, regardless of
   that entry's key. This preserves dedup continuity for postings stored under
   the pre-helper key rule while new entries use the canonical key from Step 4.
-- Otherwise, skip if the company+title combo already exists in `job_scraper/seen_jobs.json`
-- Skip if the company+role already appears in `job_search_tracker.csv`
+- Otherwise, skip if the company+title combo already exists in `user/job_scraper/seen_jobs.json`
+- Skip if the company+role already appears in `user/job_search_tracker.csv`
 
 ### Step 2.5: Mass-Posting Detection (within this run)
 
@@ -141,13 +144,13 @@ If two or more results in this run's pool (from the same company, or sharing the
 
 ### Step 3: Quick Fit Assessment
 
-For each new job, do a rapid fit check (NOT the full evaluation from `04-job-evaluation.md` - just a quick signal):
+For each new job, do a rapid fit check (NOT the full evaluation from `user/profile/04-job-evaluation.md` - just a quick signal):
 
 - **High match**: Role directly involves your core skills
 - **Medium match**: Role is adjacent to your experience
 - **Low match**: Role requires significant skills you lack
 
-**Language override:** before assigning a match level, check the posting against `04-job-evaluation.md`'s Language Gate (a required language you haven't declared at all in your CLAUDE.md Languages table). A required language that's entirely undeclared overrides skill fit: mark it **Low** regardless of how well the skills align, and name it in the highlight bullets so it isn't buried under an otherwise-good-looking match. A **declared** language at a requirement that reads higher than your declared level is *not* an override — score fit normally, but add a red-flag bullet under that job's highlights (Step 5) quoting the posting's requirement next to your declared level, so the gap is visible without being auto-downgraded.
+**Language override:** before assigning a match level, check the posting against `user/profile/04-job-evaluation.md`'s Language Gate (a required language you haven't declared at all in your user/CLAUDE.md Languages table). A required language that's entirely undeclared overrides skill fit: mark it **Low** regardless of how well the skills align, and name it in the highlight bullets so it isn't buried under an otherwise-good-looking match. A **declared** language at a requirement that reads higher than your declared level is *not* an override — score fit normally, but add a red-flag bullet under that job's highlights (Step 5) quoting the posting's requirement next to your declared level, so the gap is visible without being auto-downgraded.
 
 ### Step 4: Deduplicate & Store
 
@@ -159,7 +162,7 @@ python3 tools/job_key.py --company "<company>" --title "<title>" --url "<url>"
 
 It prints one line: the canonical key for that posting. The key must be a pure function of the posting, because two runs that slugify differently store the same job twice and defeat the dedup this step exists to provide. The helper also length-caps long titles and disambiguates the cap with a hash of the full slug, so a truncated title is stable across runs and two different long titles never collide. `python3 tools/job_key.py --audit` reports entries in an existing state file that predate this rule; it only reports, and never rewrites keys, since a rewritten key breaks the tracker's own company+role matching.
 
-2. Add ALL fetched jobs (new and skipped) to `job_scraper/seen_jobs.json` through the tool below. Each stored entry has this structure:
+2. Add ALL fetched jobs (new and skipped) to `user/job_scraper/seen_jobs.json` through the tool below. Each stored entry has this structure:
 ```json
 {
   "seen": {
@@ -185,7 +188,7 @@ Pass each entry object (without the outer `seen` map or key) to the tool; includ
 python3 tools/scrape_state.py store --results "<temporary fetched jobs.json>"
 ```
 
-The tool rechecks deduplication against the current state and tracker, computes keys, and atomically adds only new entries to `job_scraper/seen_jobs.json`. Use its `added` keys to present only newly stored jobs. It leaves every older entry and its `/rank` fields untouched. Do not read or rewrite the full state file in the conversation.
+The tool rechecks deduplication against the current state and tracker, computes keys, and atomically adds only new entries to `user/job_scraper/seen_jobs.json`. Use its `added` keys to present only newly stored jobs. It leaves every older entry and its `/rank` fields untouched. Do not read or rewrite the full state file in the conversation.
 
 The `portal` field records which CLI skill produced the job (results are already tagged per portal in Step 1b - persist that tag here). Entries written before this field existed lack it; the health check (Step 4.75) attributes those by matching the URL's domain against each portal's base URL, so do not backfill.
 
@@ -231,7 +234,7 @@ Scraper-based portal CLIs rot silently: when a portal changes its markup, the pa
 **Free pass (no extra requests).** For each enabled portal that ran in Step 1b:
 
 - **Degraded scan:** inspect the results it returned this run. Flags: `company` null or empty on every result, empty titles, undecoded entities (`&amp;`) or HTML fragments in titles, URLs that do not point at the portal. Any of these means the parser is half-working and `/scrape` is silently collecting junk.
-- **Yield history:** if the portal returned zero results across all of this run's queries, run `python3 tools/scrape_state.py history --portal <skill-name> --domain <portal-host>` (the host from that portal's documented base URL). It counts prior `job_scraper/seen_jobs.json` entries by `portal`, or by URL host for entries predating that field, without loading the history into context. A portal that produced jobs on earlier runs and produces nothing now is suspect - the same queries worked before.
+- **Yield history:** if the portal returned zero results across all of this run's queries, run `python3 tools/scrape_state.py history --portal <skill-name> --domain <portal-host>` (the host from that portal's documented base URL). It counts prior `user/job_scraper/seen_jobs.json` entries by `portal`, or by URL host for entries predating that field, without loading the history into context. A portal that produced jobs on earlier runs and produces nothing now is suspect - the same queries worked before.
 
 **Escalation (bounded, on suspicion only).** A suspect portal gets **one** sentinel probe: run its documented `search` with the example query from its own SKILL.md (that query provably worked when the skill was registered), the portal's limit flag capped at 3, `--format json`. If that returns nothing, retry **once** with a single common word. Only then is the verdict **broken**. A 429 or block page is **never** evidence of breakage - record the portal as **inconclusive (rate-limited)**, back off, and do not retry.
 
@@ -291,7 +294,7 @@ After presenting, ask:
 
 If the user picks a number, invoke the **job-application-assistant** skill workflow (fit evaluation first, then CV + cover letter if approved).
 
-If the run found many new jobs (roughly 8+), also suggest `/rank` - it batch-scores all new postings against the full fit framework and returns a ranked shortlist, which beats eyeballing a long table. (`/rank` sets the `ranked`, `expired` and `unreachable` status values in `job_scraper/seen_jobs.json`; treat all three as already-seen for dedup purposes.)
+If the run found many new jobs (roughly 8+), also suggest `/rank` - it batch-scores all new postings against the full fit framework and returns a ranked shortlist, which beats eyeballing a long table. (`/rank` sets the `ranked`, `expired` and `unreachable` status values in `user/job_scraper/seen_jobs.json`; treat all three as already-seen for dedup purposes.)
 
 ### Step 6: Update Tracker (Optional)
 
@@ -302,7 +305,7 @@ If the user decides to apply to any job, the tracker row is written by **job-app
 ## Important Rules
 
 1. **Never fabricate job postings.** Only present jobs from actual CLI search/detail output or WebSearch/WebFetch results.
-2. **Respect deduplication.** Always check job_scraper/seen_jobs.json AND job_search_tracker.csv before presenting.
+2. **Respect deduplication.** Always check user/job_scraper/seen_jobs.json AND user/job_search_tracker.csv before presenting.
 3. **Focus on configured geographic area.** Skip jobs that require relocation or are clearly outside commute range.
 4. **Only open positions.** Skip postings with expired deadlines or those marked as closed.
 5. **Be efficient with detail fetches.** Don't run `detail` or WebFetch on every search hit — pre-filter by title/snippet, then fetch only promising matches.

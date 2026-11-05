@@ -101,7 +101,7 @@ legend { padding: 0; }
    glass's handle, the way out. */
 [dir="rtl"] :is(.icon-chat, .icon-jobs, .icon-logout, .icon-open) { transform: scaleX(-1); }
 /* The onward chevron points left, onward in Hebrew; in English it turns to the right. */
-[dir="ltr"] .icon-onward { transform: scaleX(-1); }
+[dir="ltr"] .icon-onward, [dir="ltr"] .icon-back { transform: scaleX(-1); }
 
 /* Scrollbars: the browser's own, given only the colours (--scroll-thumb, with each theme), so Chromium browsers
    on Windows draw their own smooth arrows and round bar, in a strip of the page's own colour, white or black.
@@ -123,7 +123,7 @@ legend { padding: 0; }
 /* The page you are on has its icon filled, as social sites do: the shape in the text colour, inner lines cut
    out in the background colour. Search and the checklist have nothing to fill, so their line gets heavier. */
 .icon.filled { fill: currentColor; }
-.icon-apps.filled path:not(:first-child), .icon-settings.filled circle { fill: var(--bg); stroke: var(--bg); }
+.icon-apps.filled path:not(:first-child), .icon-settings.filled circle, .icon-portals.filled path { fill: var(--bg); stroke: var(--bg); }
 .icon-jobs.filled, .icon-rules.filled { fill: none; stroke-width: 2.8; }
 .nav-icon { position: relative; display: grid; place-items: center; }
 .nav .icon { width: 26px; height: 26px; }
@@ -197,7 +197,7 @@ main:focus, main:focus-visible { outline: none; }
 .btn.danger { color: var(--bad); }
 .btn:disabled { opacity: 0.55; cursor: default; transform: none; }
 
-input[type="text"], input[type="search"], input[type="number"], input[type="email"], input[type="time"], input[type="password"], select, textarea {
+input[type="text"], input[type="search"], input[type="number"], input[type="email"], input[type="url"], input[type="time"], input[type="password"], select, textarea {
   font: inherit; color: var(--ink); background: var(--surface); min-height: 42px; border: 1.5px solid var(--line); border-radius: 11px; padding: 8px 12px;
 }
 input:hover, select:hover, textarea:hover { border-color: var(--ink-3); }
@@ -318,6 +318,11 @@ textarea { resize: vertical; width: 100%; }
 .key-link { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; color: var(--primary); font-size: 13.5px; font-weight: 600; text-decoration: none; }
 .key-link:hover { text-decoration: underline; }
 .key-link .icon { width: 14px; height: 14px; }
+/* A saved key: marked on the fold, and inside it a line of its own beside the button that removes it. */
+.key-saved { display: inline-flex; align-items: center; gap: 5px; margin-inline-start: 8px; color: var(--primary); font-weight: 600; }
+.key-saved .icon { width: 14px; height: 14px; }
+.key-saved-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.key-saved-row .key-saved { margin-inline-start: 0; }
 .check { display: flex; align-items: center; gap: 9px; font-weight: 500; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--primary); }
 .row input[type="text"], .row input[type="email"], .row input[type="password"] { flex: 1 1 200px; min-width: 0; }
@@ -329,6 +334,9 @@ textarea { resize: vertical; width: 100%; }
 [dir="rtl"] .tag { padding: 4px 12px 4px 8px; }
 .tag.plain { padding-inline: 12px; }
 .tag-x { display: grid; place-items: center; background: none; border: 0; padding: 0 3px; color: var(--ink-2); font: inherit; font-size: 17px; line-height: 1; cursor: pointer; }
+/* The daily run's times: a field each, with its remove button, and the button for another. */
+.run-times { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.run-time { display: inline-flex; align-items: center; gap: 2px; }
 .tag-x:hover { color: var(--bad); }
 .tag-x .icon { width: 13px; height: 13px; }
 .place-tag > .icon { width: 14px; height: 14px; color: var(--ink-3); }
@@ -599,7 +607,7 @@ textarea { resize: vertical; width: 100%; }
 .seek.asked { justify-content: flex-start; min-height: 0; padding-top: 24px; }
 /* The sky: everything in it is placed from its middle, which sits a little above the search box. */
 .seek-sky { position: absolute; z-index: -1; top: calc(50% - 30px); left: 50%; width: 0; height: 0; pointer-events: none; transition: top 0.4s ease; }
-.seek.asked .seek-sky { top: 130px; }
+.seek.asked .seek-sky { top: 46px; }
 .seek-sky > span { position: absolute; left: 0; top: 0; border-radius: 50%; }
 /* The glow in the middle, big, breathing, between moss and stream. */
 .sky-core {
@@ -628,6 +636,9 @@ textarea { resize: vertical; width: 100%; }
 }
 @keyframes shimmer { 0%, 100% { filter: hue-rotate(0deg); } 50% { filter: hue-rotate(-28deg); } }
 .seek-title { margin-bottom: 30px; font-size: 30px; font-weight: 500; text-align: center; }
+/* Once a search is asked the question has gone down into the box (jobs.tsx): out of the page's flow, unseen, where
+   the box is, so the box is at the top. Screen readers still have it as the page's heading. */
+.seek.asked .seek-title { position: absolute; top: 24px; inset-inline: 0; margin: 0; opacity: 0; pointer-events: none; }
 .seek-box {
   position: relative; display: flex; align-items: center; gap: 6px; width: min(760px, 100%); min-height: 60px; padding: 7px 8px; padding-inline-start: 24px;
   border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); box-shadow: 0 6px 24px rgb(0 0 0 / 6%); transition: border-color 0.2s ease;
@@ -975,7 +986,7 @@ textarea { resize: vertical; width: 100%; }
    clicks. */
 .result-act {
   position: relative; display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 50%;
-  background: var(--surface); color: var(--ink-2); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+  background: var(--surface); color: var(--ink-2); font: inherit; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
 }
 .result-act:hover { background: color-mix(in srgb, var(--ink) 7%, var(--surface)); color: var(--ink); }
 .result-act.primary { border-color: transparent; background: var(--primary); color: var(--primary-ink); }
@@ -1010,6 +1021,16 @@ th, td { text-align: start; padding: 13px 16px; border-bottom: 1px solid var(--l
 th { color: var(--ink-3); font-weight: 600; font-size: 13px; white-space: nowrap; background: var(--surface-2); }
 tr:last-child td { border-bottom: 0; }
 .ats-score { font-family: var(--head); font-size: 20px; }
+/* The scorecard: the overall score, opening to each lens and what it found missing. */
+.scorecard summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
+.scorecard summary::-webkit-details-marker { display: none; }
+.scorecard summary::after { content: "▾"; color: var(--ink-3); font-size: 12px; }
+.scorecard[open] summary::after { content: "▴"; }
+.scorecard ul { display: grid; gap: 8px; min-width: 240px; margin: 8px 0 6px; padding: 0; list-style: none; }
+.scorecard li { display: grid; gap: 2px; }
+.scorecard-head { display: flex; justify-content: space-between; gap: 12px; }
+.scorecard-name { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px; }
+.scorecard .note { font-size: 13px; }
 select.status { font-weight: 600; }
 .status-applied { color: var(--live); } .status-interview, .status-offer, .status-hired { color: var(--good); }
 .status-rejected { color: var(--bad); } .status-no_response { color: var(--warn); }
@@ -1497,4 +1518,396 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
   .files { grid-template-columns: minmax(0, 1fr); }
   .login-top { padding: 12px 14px; }
   .login-card { padding: calc(var(--px) * 7); }
+}
+
+/* The portals page (ui/views/portals.tsx): rows between thin lines, like the jobs list, each with its name, how it
+   is covered, its last check, an open button and the switch that follows it. A row not followed is faded. */
+.portal-list { list-style: none; margin: 0; padding: 0; }
+.portal-row { display: flex; align-items: center; gap: 14px; padding: 11px 2px; border-top: 1px solid var(--line); }
+.portal-row:first-child { border-top: 0; }
+.portal-row.off .portal-main { opacity: 0.5; }
+.portal-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.portal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.portal-name { font-weight: 600; }
+.portal-how { padding: 1px 9px; border-radius: 999px; background: var(--soft); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
+.portal-how.search, .portal-how.read { background: color-mix(in srgb, var(--primary) 12%, var(--surface)); color: var(--primary-edge); }
+.portal-how.web { background: color-mix(in srgb, var(--live) 12%, var(--surface)); color: var(--live); }
+.portal-status { color: var(--ink-3); font-size: 13px; }
+.portal-actions { display: flex; align-items: center; gap: 10px; flex: none; }
+.portal-open { padding: 6px 12px; font-size: 14px; }
+.portal-open .icon { width: 15px; height: 15px; }
+.portal-group { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+/* The employers, many of them, as small tiles a few to a row: the name and how it is covered over its last check,
+   the open button and the switch at the foot. */
+.portal-list.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.portal-list.tiles .portal-row { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; }
+.portal-list.tiles .portal-row:first-child { border-top: 1px solid var(--line); }
+.portal-list.tiles .portal-actions { justify-content: space-between; }
+.portal-list.tiles .portal-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.portal-off { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.portal-add { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.portal-add input { flex: 1 1 180px; min-width: 0; }
+.portal-add .select { flex: 0 0 auto; min-width: 140px; }
+/* A switch: a round track with a knob that moves to the end when on, in the forest colour. */
+.switch { appearance: none; position: relative; width: 38px; height: 22px; margin: 0; border-radius: 999px; background: var(--line); cursor: pointer; transition: background 0.2s; flex: none; }
+.switch::after { content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 25%); transition: inset-inline-start 0.2s; }
+.switch:checked { background: var(--primary); }
+.switch:checked::after { inset-inline-start: 19px; }
+.switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.low-tech { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 6px; }
+.low-tech .stack { flex: 1 1 260px; }
+.stack.tight { gap: 3px; }
+.portal-link { align-self: flex-start; color: var(--primary); font-weight: 600; text-decoration: none; }
+.portal-link:hover { text-decoration: underline; }
+@media (max-width: 520px) {
+  .portal-row { flex-wrap: wrap; }
+  .portal-actions { width: 100%; justify-content: flex-end; }
+}
+
+/* The introduction (ui/views/welcome.tsx): the login's forest at rest over the whole window, a board of planks in
+   the middle with a notebook page pinned to it, Pip standing on its top edge, and the steps under it as the journey's
+   flags. Every rule here is under .welcome, so the rest of the site keeps its own look: inside the board everything
+   is drawn in the board's pixels, as the login's form is. Square fields with a stepped edge, buttons lit along the top with a
+   thick edge below, chips in the same blocks, green for what is on. */
+.welcome-wrap.waiting { visibility: hidden; }
+/* A fade only: the shell's enter scales, and a transform here would make this empty wrapper the box the forest's
+   fixed canvas sizes to, so the forest would be painted with no height and show stretched into stripes. */
+.welcome-wrap.entering { animation: welcome-in 0.45s ease-out; }
+@keyframes welcome-in { from { opacity: 0; } }
+.welcome, .welcome * { --ring: 0 calc(var(--px) * -1) 0 0 var(--ring-c), 0 var(--px) 0 0 var(--ring-c), calc(var(--px) * -1) 0 0 0 var(--ring-c), var(--px) 0 0 0 var(--ring-c); }
+.welcome {
+  --ring-c: var(--edge); position: fixed; inset: 0; overflow-y: auto; background: var(--hero-sky);
+  /* The board's own palette, as the login's morning board: white fields in a wooden edge, green for on. */
+  --w-field: #ffffff; --w-field-ring: #b48a5a; --w-field-shade: #ead8b2; --w-focus: #367a32; --w-faint: #a58a6a;
+  --w-chip: #f1dfb6; --w-chip-hi: #fff3d6; --w-chip-lo: #c9a46a;
+  --w-on: #367a32; --w-on-hi: #5fae44; --w-on-lo: #24541f; --w-on-ink: #ffffff; --w-bad: #b3261e;
+  /* Gold, dark enough to read as text on the white fields; and the glint that crosses the switch's block. */
+  --w-gold: #9a6a00; --w-glint: rgb(255 255 255 / 80%);
+  /* The notebook page pinned to the board: its paper, the blue rules a line of text apart (--rule), the red margin,
+     the highlighter, the pins, and how far the page sits in from the board's edge (--sheet). */
+  --w-paper: #fffaf0; --w-rule: #cddfe9; --w-margin: #ee9b90; --w-mark: rgb(255 201 74 / 85%); --w-pin: #d0302f; --w-pin-hi: #ff8a7a;
+  --rule: 28px; --sheet: 28px;
+  /* The more wood on the page's end side, for its scrollbar (welcome-rail). */
+  --rail: 16px;
+  /* Pip's paw, stamped at the page's end corner, faded like ink. A file of its own, as every image here: the page's
+     security policy (server.ts) takes images from the site only, never written into the CSS. */
+  --w-paw: url("/paw.svg");
+  /* The room above and below the board, for Pip and for the steps, and the tallest the board gets. */
+  --w-room: 120px;
+  --w-max: min(640px, calc(100dvh - 2 * var(--w-room) - 10px));
+}
+.welcome-forest { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* The board sits dead in the middle of the window, as tall as its step up to --w-max, with Pip on its top edge.
+   The steps stay in one place on the screen whatever the step (welcome-track): under where the tallest board's
+   foot would be. The page itself never scrolls: what does not fit on a step scrolls inside the board
+   (welcome-body), the title with it, above its foot (welcome-foot), where the step's buttons are. */
+.welcome-stage {
+  position: relative; z-index: 2; min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: var(--w-room) 16px;
+}
+.welcome-center { position: relative; width: min(560px, 100%); }
+.welcome-center.wide { width: min(880px, 100%); }
+/* The opening grows to its longest line, so each of Pip's points keeps to one line while the window has room. */
+.welcome-center.fit { width: max-content; min-width: min(560px, 100%); max-width: 100%; }
+/* A board of planks in the frame's wood, a dark seam between each, with the page pinned to it. */
+.welcome-board {
+  --ring-c: var(--edge); position: relative; display: flex; flex-direction: column;
+  max-height: var(--w-max);
+  background: var(--frame) repeating-linear-gradient(to bottom, transparent 0 44px, var(--frame-lo) 44px 48px);
+  color: var(--board-ink); box-shadow: var(--ring), var(--board); font-size: 16px;
+}
+/* The two red pins at the page's top corners. They stay put when the page scrolls. */
+.welcome-board::before, .welcome-board::after {
+  --ring-c: var(--edge); content: ""; position: absolute; z-index: 2; top: calc(var(--sheet) + 12px); width: 12px; height: 12px;
+  background: var(--w-pin); box-shadow: var(--ring), inset var(--px) var(--px) 0 0 var(--w-pin-hi); pointer-events: none;
+}
+.welcome-board::before { inset-inline-start: calc(var(--sheet) + 12px); }
+.welcome-board::after { inset-inline-end: calc(var(--sheet) + var(--rail) + 12px); }
+/* A step with /setup's conversation takes the whole height, for the conversation to fill it. */
+.welcome-board:has(.welcome-convo) { height: var(--w-max); }
+/* The page, which is what scrolls: --sheet in from the board's edge (and --rail more on the end side, for its
+   scrollbar), with a dark edge and a shadow under it. Its rules, the margin on the start side and the paw at the end
+   scroll with what is written on it (background-attachment: local); the text keeps to the rules. A little more room
+   at its foot than at its head, so the paw keeps clear of what is written. */
+.welcome-body {
+  --ring-c: var(--edge); --margin-at: 46px;
+  display: flex; flex-direction: column; gap: 14px; flex: 1 1 auto; min-height: 0; overflow-y: auto;
+  margin: var(--sheet) var(--sheet) 0; margin-inline-end: calc(var(--sheet) + var(--rail));
+  padding: calc(var(--rule) * 2) 30px calc(var(--rule) * 2 + 12px); padding-inline-start: calc(var(--margin-at) + 20px);
+  box-shadow: var(--ring), 0 calc(var(--px) * 3) 0 calc(var(--px) * -1) rgb(40 22 10 / 45%);
+  background-color: var(--w-paper);
+  background-image: var(--w-paw), linear-gradient(var(--w-margin), var(--w-margin)),
+    repeating-linear-gradient(to bottom, transparent 0 calc(var(--rule) - 2px), var(--w-rule) calc(var(--rule) - 2px) var(--rule));
+  background-size: 44px 36px, var(--px) 100%, auto;
+  background-repeat: no-repeat;
+  background-position: left 22px bottom 16px, right var(--margin-at) top 0, 0 0;
+  background-attachment: local;
+  /* Not the browser's own scrollbar: a red bar beside the page stands for it (welcome-rail). */
+  scrollbar-width: none;
+}
+.welcome-body:dir(ltr) { background-position: right 22px bottom 16px, left var(--margin-at) top 0, 0 0; }
+/* The page's scrollbar (PageBar in welcome.tsx): a red bar drawn like the pins at the page's corners, down the middle
+   of the strip of wood between the frame's bevel (three --px in) and the page's dark edge, on the end side, where
+   browsers put theirs. It sets out level with the corner pins. Its top and height, the page's, and the bar's length
+   and place come from the script. */
+.welcome-rail {
+  position: absolute; z-index: 2; inset-inline-end: calc(var(--px) * 3); width: calc(var(--sheet) + var(--rail) - var(--px) * 4);
+  touch-action: none;
+}
+.welcome-rail-bar {
+  --ring-c: var(--edge); position: absolute; top: 12px; left: calc(50% - 6px); width: 12px; height: 24px; touch-action: none;
+  background: var(--w-pin); box-shadow: var(--ring), inset var(--px) var(--px) 0 0 var(--w-pin-hi);
+}
+/* A little more to catch than the bar itself. */
+.welcome-rail-bar::after { content: ""; position: absolute; inset: -6px; }
+.welcome-rail-bar:hover, .welcome-rail-bar.held { background: #e8443a; }
+/* The step's buttons, on the wood under the page. */
+.welcome-foot { flex: none; padding: 22px var(--sheet) calc(var(--sheet) + 2px); padding-inline-end: calc(var(--sheet) + var(--rail)); }
+.welcome-foot:empty { display: none; }
+.welcome-board:has(.welcome-foot:empty) .welcome-body { margin-bottom: var(--sheet); }
+.welcome-foot .welcome-actions { margin-top: 0; }
+.welcome-foot :is(.welcome-back, .welcome-link, .welcome-wait) { color: var(--board-panel); }
+.welcome-foot :is(.welcome-back, .welcome-link):hover { color: #ffffff; }
+.welcome-foot .save-note { color: #ffd9d4; font-weight: 600; }
+/* It pops in when the page opens; a new step flips it like a sign, as the login's language does. */
+.welcome-board.pop { animation: pop 0.36s steps(3, end); }
+.welcome-board.flip-out { animation: flip-out 0.18s steps(3, end) forwards; }
+.welcome-board.flip-in { animation: flip-in 0.18s steps(3, end); }
+/* Pip stands on the board's top edge, at its start end; while he jumps a copy of him does, at a fixed place. */
+.welcome-pip { position: absolute; z-index: 1; bottom: calc(100% + var(--px)); inset-inline-start: 34px; width: 78px; pointer-events: none; }
+.welcome-pip.away { visibility: hidden; }
+.welcome-pip-fly { position: fixed; z-index: 6; pointer-events: none; transform-origin: 50% 100%; }
+.welcome-pip svg, .welcome-pip-fly svg { display: block; width: 100%; height: auto; }
+/* The jumping copy squashes and stretches from its feet, without the bob; in the air (air, from welcome.tsx) it takes
+   its leaping pose and leaves its shadow behind. */
+.welcome-pip-fly .pip-bob { animation: none; }
+/* With no ground beside the board it jumps down behind it: over the forest, under the stage. */
+.welcome-pip-fly.behind { z-index: 1; }
+.welcome-pip-fly .pip-leap, .welcome-pip-fly.air .pip-stand, .welcome-pip-fly.air .pip-shadow { visibility: hidden; }
+.welcome-pip-fly.air .pip-leap { visibility: visible; }
+
+/* The words, to the start side as on a page: the title in the pixel font, two rules tall, marked over in yellow as
+   with a highlighter; then each sentence of the text on a line of its own, a rule each. The title's negative margin
+   takes back the gap after it, so the text starts on a rule. */
+.welcome-board h1 { margin-bottom: calc(var(--rule) / -2); font-family: var(--pixel); font-size: 40px; font-weight: 800; line-height: calc(var(--rule) * 2); text-align: start; }
+.welcome-mark {
+  padding-inline: 6px; background: linear-gradient(to bottom, transparent 50%, var(--w-mark) 50% 86%, transparent 86%);
+  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+}
+.welcome-text { margin: 0; color: var(--board-ink); font-size: 16px; line-height: var(--rule); text-align: start; }
+/* The opening's points, a rule each, with their pictures in a column at the start, in three-pixel blocks; the last,
+   what to know rather than what Pip does, quieter. */
+.welcome-points { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.welcome-points li { display: flex; align-items: flex-start; gap: 10px; min-height: var(--rule); color: var(--board-ink); font-size: 16px; line-height: var(--rule); }
+.welcome-point { flex: none; width: 30px; height: 21px; margin-top: 3px; color: var(--c); }
+/* Each one's colour, by its key in data-point: not a class, which the site's own (.score, .page) would style. */
+.welcome-points [data-point="search"] { --c: var(--w-on); }
+.welcome-points [data-point="rank"] { --c: #d99a1a; }
+.welcome-points [data-point="cv"] { --c: #2f6fb0; }
+.welcome-points [data-point="mail"] { --c: #d0302f; }
+.welcome-points [data-point="send"] { --c: var(--board-ink-2); color: var(--board-ink-2); }
+/* The way in under the list, one rule left empty above it: the page's gap and this margin make a rule. */
+.welcome-start { margin-top: calc(var(--rule) - 14px); }
+.welcome-board .field { gap: 9px; }
+.welcome-board .field-label, .welcome-sub, .welcome-board .section-head h2 {
+  color: var(--board-ink); font-family: var(--pixel); font-size: 21px; font-weight: 700; line-height: 1.1;
+}
+.welcome-board .role-field-name { color: var(--board-ink-2); font-family: var(--pixel); font-size: 18px; font-weight: 700; }
+.welcome-board .note { color: var(--board-ink-2); font-size: 14px; }
+.welcome-board .error-line { color: var(--w-bad); font-weight: 600; }
+.welcome-board a { color: var(--w-on); font-weight: 600; }
+.welcome-form, .welcome-section { display: flex; flex-direction: column; gap: 14px; }
+/* Sections apart by a dashed line of the board's blocks. */
+.welcome-section { padding-top: 18px; border-top: var(--px) dashed color-mix(in srgb, var(--board-ink) 18%, transparent); }
+.welcome-board .fields { gap: 18px; }
+/* A form (the name, the email) keeps to the rules as the text does: one rule left empty above it, as the page's gap
+   and this margin make, each label on a rule, each field two rules tall, and every line under them a rule. */
+.welcome-board .welcome-form { gap: 0; margin-top: calc(var(--rule) - 14px); }
+.welcome-board .welcome-form .fields { gap: var(--rule) 18px; }
+.welcome-board .welcome-form .field { gap: 0; }
+.welcome-board .welcome-form .field-label { line-height: var(--rule); }
+.welcome-board .welcome-form :is(input[type="text"], input[type="email"], input[type="password"]):not(.select-find *) {
+  height: calc(var(--rule) * 2); min-height: 0; padding-block: 0;
+}
+.welcome-board .welcome-form > :is(.note, .error-line) { margin: 0; line-height: var(--rule); }
+/* The AI to work with (AiKeys, ai-setup) starts as a form does: one rule left empty above it, the label of which one
+   is primary on a rule of its own, and the switch right under it. */
+.welcome-board .ai-setup { margin-top: calc(var(--rule) - 14px); }
+.welcome-board .ai-setup > .field { gap: 0; }
+.welcome-board .ai-setup > .field > .field-label { line-height: var(--rule); }
+
+/* Fields, and the lists to pick from: square, on parchment, a stepped edge that turns green while in use. */
+.welcome-board :is(input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="time"]):not(.select-find *),
+.welcome-board .select {
+  --ring-c: var(--w-field-ring); min-height: 46px; padding: 10px 12px; border: 0; border-radius: 0;
+  background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade);
+}
+.welcome-board :is(input, .select):hover { border: 0; }
+.welcome-board :is(input:focus, .select:focus-visible, .select.open):not(.select-find *) { --ring-c: var(--w-focus); outline: none; box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade); }
+.welcome-board input::placeholder, .welcome-board .select-blank { color: var(--w-faint); }
+.welcome-board .select > .icon { color: var(--board-ink-2); }
+.welcome-board .select-panel { --ring-c: var(--edge); border: 0; border-radius: 0; background: var(--w-field); box-shadow: var(--ring), 0 10px 0 rgb(0 0 0 / 12%); }
+.welcome-board .select-find { border-radius: 0; background: var(--w-chip-hi); }
+.welcome-board .select-option { border-radius: 0; }
+.welcome-board .select-option.active { background: var(--w-chip); }
+
+/* Buttons other than the main one: parchment in a wooden edge, lit along the top, pressing in. */
+.welcome-board .btn:not(.cta) {
+  --ring-c: var(--edge); min-height: 42px; padding: 6px 16px 9px; border: 0; border-radius: 0; background: var(--w-chip); color: var(--board-ink);
+  box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-chip-hi), inset 0 calc(var(--px) * -2) 0 0 var(--w-chip-lo);
+  font-family: var(--pixel); font-size: 20px; font-weight: 700; line-height: 1.1; transition: none;
+}
+.welcome-board .btn:not(.cta):hover { filter: none; background: var(--w-chip-hi); }
+.welcome-board .btn:not(.cta):active { transform: translateY(var(--px)); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-chip-hi), inset 0 calc(var(--px) * -1) 0 0 var(--w-chip-lo); }
+/* The main one: the banner's yellow block. */
+.welcome .btn.cta {
+  --ring-c: var(--edge); min-height: 52px; padding: 6px 26px 10px; border: 0; border-radius: 0; background: var(--cta); color: var(--cta-ink);
+  box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--cta-hi), inset 0 calc(var(--px) * -2) 0 0 var(--cta-lo);
+  font-family: var(--pixel); font-size: 26px; font-weight: 800; line-height: 1.1; transition: none;
+}
+.welcome .btn.cta:active { transform: translateY(var(--px)); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--cta-hi), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo); }
+.welcome .btn.cta:disabled { opacity: 0.5; cursor: default; transform: none; }
+/* The foot: back on the start side, what moves on at the end; the quieter ways out in the pixel font. */
+.welcome-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 10px; }
+.welcome-go { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-inline-start: auto; }
+.welcome-back, .welcome-link {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 2px; border: 0; background: none; color: var(--board-ink-2);
+  font-family: var(--pixel); font-size: 20px; font-weight: 700; line-height: 1.1; cursor: pointer;
+}
+.welcome-link { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+.welcome-back:hover, .welcome-link:hover { color: var(--board-ink); }
+.welcome-arrow { width: 9px; height: auto; }
+
+/* The AI to work with: which one is first, as a row of blocks, and each one on a card of its own. */
+.welcome-board .segmented { --ring-c: var(--edge); gap: 0; padding: 0; border-radius: 0; background: var(--w-chip-lo); box-shadow: var(--ring); }
+.welcome-board .segmented button { padding: 8px 20px 10px; border-radius: 0; color: var(--board-ink); font-family: var(--pixel); font-size: 20px; font-weight: 700; line-height: 1.1; }
+.welcome-board .segmented button[aria-pressed="true"] {
+  background: var(--cta); color: var(--cta-ink); box-shadow: inset 0 var(--px) 0 0 var(--cta-hi), inset 0 calc(var(--px) * -2) 0 0 var(--cta-lo);
+}
+.welcome-board .segmented button:disabled { color: var(--w-faint); }
+/* A switch of two: the yellow block (::before) runs from one to the other rather than jumping, the two as wide as
+   the wider, and its edge, the board's brown, goes with it. Its front edge sets off first and its back one follows
+   and snaps in a little past, so the block stretches over both and pulls in after itself like a spring. */
+.welcome-board .segmented:has(> :nth-child(2):last-child) { position: relative; isolation: isolate; display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.welcome-board .segmented:has(> :nth-child(2):last-child)::before {
+  content: ""; position: absolute; z-index: -1; inset-block: 0; inset-inline: 0 50%; opacity: 0;
+  background: linear-gradient(105deg, transparent 44%, var(--w-glint) 44% 50%, transparent 50% 52%, var(--w-glint) 52% 54%, transparent 54%) 0 0 / 300% 100% no-repeat, var(--cta);
+  box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--cta-hi), inset 0 calc(var(--px) * -2) 0 0 var(--cta-lo);
+  transition: inset-inline-start 0.2s cubic-bezier(0.4, 0, 0.2, 1), inset-inline-end 0.34s 0.06s cubic-bezier(0.5, 0, 0.3, 1.6), opacity 0.15s;
+}
+.welcome-board .segmented:has(> :nth-child(2):last-child):has(> [aria-pressed="true"])::before { opacity: 1; }
+.welcome-board .segmented:has(> :nth-child(2):last-child[aria-pressed="true"])::before {
+  inset-inline: 50% 0;
+  transition: inset-inline-end 0.2s cubic-bezier(0.4, 0, 0.2, 1), inset-inline-start 0.34s 0.06s cubic-bezier(0.5, 0, 0.3, 1.6), opacity 0.15s;
+}
+.welcome-board .segmented:has(> :nth-child(2):last-child) button { transition: color 0.18s 0.12s; }
+.welcome-board .segmented:has(> :nth-child(2):last-child) button[aria-pressed="true"] { background: none; box-shadow: none; }
+/* Its landing, once a pick has moved it ("moved", from AiKeys, so never as the step comes in): the word it runs to
+   hops as it arrives, and a glint crosses the block. The glint has a name for each side, so that every pick starts
+   it again. */
+.welcome-board .segmented.moved:has(> :first-child[aria-pressed="true"])::before { animation: switch-glint-start 0.5s 0.3s ease-in-out; }
+.welcome-board .segmented.moved:has(> :nth-child(2)[aria-pressed="true"])::before { animation: switch-glint-end 0.5s 0.3s ease-in-out; }
+.welcome-board .segmented.moved button[aria-pressed="true"] { animation: switch-hop 0.32s 0.1s ease-out; }
+@keyframes switch-glint-start { from { background-position: 100% 0; } }
+@keyframes switch-glint-end { from { background-position: 100% 0; } }
+@keyframes switch-hop { 40% { transform: translateY(calc(var(--px) * -1)); } }
+@media (prefers-reduced-motion: reduce) {
+  .welcome-board .segmented::before, .welcome-board .segmented button { transition: none; animation: none; }
+}
+.welcome-board .ai-list { gap: 18px; padding-top: 6px; }
+.welcome-board .ai-row {
+  --ring-c: var(--w-field-ring); gap: 10px; padding: 14px 16px; border: 0;
+  background: var(--w-field); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade);
+}
+.welcome-board .ai-row-head strong { font-family: var(--pixel); font-size: 25px; font-weight: 800; line-height: 1; }
+.welcome-board .ai-state { gap: 7px; padding: 3px 9px 4px; border-radius: 0; background: var(--w-chip); color: var(--board-ink-2); font-family: var(--pixel); font-size: 17px; font-weight: 700; }
+.welcome-board .ai-state::before { width: 8px; height: 8px; border-radius: 0; background: currentColor; }
+.welcome-board .ai-state.on { background: var(--w-on); color: var(--w-on-ink); }
+.welcome-board .ai-key > summary { color: var(--board-ink-2); font-size: 14px; }
+/* Where to get a key: a quiet link all in one gold, its key and its arrow out to the other site in the board's pixels. */
+.welcome-board .key-link { gap: 7px; margin-top: 2px; color: var(--w-gold); font-size: 14px; font-weight: 700; }
+.welcome-board .key-link svg { flex: none; height: auto; }
+.welcome-board .key-link .key-icon { width: 24px; }
+.welcome-board .key-link .key-out { width: 12px; }
+/* A saved key, in the board's green and pixel letters, and the button that removes it, red. */
+.welcome-board .key-saved { gap: 6px; color: var(--w-on); font-family: var(--pixel); font-size: 17px; font-weight: 700; }
+.welcome-board .btn.danger:not(.cta) {
+  --ring-c: #b3261e; background: #fde3df; color: var(--w-bad);
+  box-shadow: var(--ring), inset 0 var(--px) 0 0 #fff4f1, inset 0 calc(var(--px) * -2) 0 0 #efb2a8;
+}
+.welcome-board .btn.danger:not(.cta):hover { background: #fbcfc7; }
+
+/* Chips: a block each, green once picked. The gaps leave room for their edges. */
+.welcome-board .chips { gap: 12px; }
+.welcome-board .tag { --ring-c: var(--w-field-ring); gap: 7px; border-radius: 0; padding: 5px 9px; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring); }
+.welcome-board .tag .tick, .welcome-ok .tick { width: calc(var(--px) * 4); margin: 0; color: var(--w-on); }
+.welcome-board .tag-x { color: var(--board-ink-2); }
+.welcome-board .role-pick { --ring-c: var(--w-field-ring); padding: 6px 12px; border: 0; border-radius: 0; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring); }
+.welcome-board .role-pick:hover { background: var(--w-chip-hi); }
+.welcome-board .role-pick[aria-pressed="true"] { --ring-c: var(--w-on-lo); background: var(--w-on); color: var(--w-on-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-on-lo); }
+/* Where to search: the add button a green block, the remote-work link in the pixel font. */
+.welcome-board .add-row { gap: 14px; }
+.welcome-board .add-go { --ring-c: var(--w-on-lo); width: 46px; height: 46px; border-radius: 0; background: var(--w-on); color: var(--w-on-ink); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-on-hi); }
+.welcome-board .add-go:hover { background: var(--w-on); filter: brightness(1.08); }
+.welcome-board .add-link { border-radius: 0; color: var(--w-on); font-family: var(--pixel); font-size: 19px; font-weight: 700; }
+.welcome-board .add-link:hover { background: none; text-decoration: underline; }
+
+/* A document drops on parchment inside a dashed edge of the board's blocks, or is picked by clicking it. */
+.welcome-drops { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
+.welcome-drop {
+  position: relative; display: flex; flex-direction: column; gap: 10px; min-height: 128px; padding: 18px; cursor: pointer;
+  background: var(--w-field); color: var(--board-ink); outline: var(--px) dashed var(--w-field-ring); outline-offset: calc(var(--px) * -1);
+}
+.welcome-drop:hover, .welcome-drop.over { background: var(--w-chip-hi); }
+.welcome-drop:focus-within { outline-color: var(--w-focus); outline-style: solid; }
+.welcome-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.welcome-drop-head { display: flex; align-items: center; gap: 10px; }
+.welcome-drop-head strong { font-family: var(--pixel); font-size: 21px; font-weight: 700; line-height: 1.1; }
+.welcome-page { flex: none; width: 18px; height: auto; color: var(--board-ink-2); }
+
+/* /setup's conversation, as on the conversations page, framed in parchment on the board. */
+.welcome-convo {
+  --ring-c: var(--w-field-ring); display: flex; flex-direction: column; flex: 1 1 0; min-height: 200px;
+  background: var(--w-field); color: var(--ink); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade);
+}
+.welcome-convo .log-column { width: calc(100% - 32px); }
+.welcome-convo .msg-bubble { border-radius: 0; background: var(--w-chip); color: var(--board-ink); }
+.welcome-convo .composer { width: calc(100% - 28px); padding-bottom: 14px; }
+.welcome-convo .composer-box { --ring-c: var(--w-field-ring); border: 0; border-radius: 0; background: #ffffff; box-shadow: var(--ring); }
+.welcome-convo .composer-box:focus-within { --ring-c: var(--w-focus); }
+.welcome-wait { display: inline-flex; align-items: center; gap: 8px; color: var(--board-ink-2); font-size: 14px; }
+.welcome-ok { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+
+/* The steps under the board, as the home journey's flags: a tick once done, the one open in white, each with its
+   short name under it. They are fixed on the screen, --track-gap under where the tallest board's foot is, so a
+   change of step never moves them. Every step has the same width, so the flags stand the same distance apart
+   whatever their names; a long name takes two lines (its \n). */
+.welcome-track {
+  --track-gap: 26px;
+  position: fixed; top: calc(50dvh + var(--w-max) / 2 + var(--track-gap)); left: 50%; translate: -50% 0;
+  display: grid; grid-template-columns: repeat(7, 64px); gap: 10px; margin: 0; padding: 0; list-style: none;
+}
+.welcome-track li { display: flex; justify-content: center; }
+.welcome-track button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: #fff; cursor: pointer; }
+.welcome-track-name { padding: 3px 6px 4px; background: var(--edge); color: #fff; font-family: var(--pixel); font-size: 17px; font-weight: 700; line-height: 1; white-space: pre-line; text-align: center; }
+.welcome-track li.here .welcome-track-name { background: #fff; color: var(--cta-ink); }
+.welcome-track .flag { background: var(--edge); color: #fff; --ring-c: var(--edge); }
+.welcome-track li.done .flag { background: var(--cta); color: var(--cta-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo); }
+.welcome-track li.here .flag { background: #fff; color: var(--cta-ink); --ring-c: var(--cta); }
+.welcome-track button:focus-visible { outline: var(--px) solid #fff; outline-offset: calc(var(--px) * 2); }
+@media (max-width: 520px) {
+  .welcome { --w-room: 96px; }
+  .welcome-stage { padding-inline: 10px; }
+  .welcome { --sheet: 14px; --rail: 0px; }
+  .welcome-body { --margin-at: 26px; padding: calc(var(--rule) * 2) 16px calc(var(--rule) * 2 + 12px); padding-inline-start: calc(var(--margin-at) + 14px); }
+  /* No strip of wood beside the page for the pin here: the phone's own bar, shown while scrolling, stands in. */
+  .welcome-body { scrollbar-width: auto; scrollbar-color: var(--w-chip-lo) var(--w-paper); }
+  .welcome-rail { display: none; }
+  .welcome-foot { padding: 16px var(--sheet) 20px; }
+  .welcome-board h1 { font-size: 32px; }
+  .welcome-pip { width: 62px; inset-inline-start: 20px; }
+  .welcome-track { --track-gap: 18px; grid-template-columns: repeat(7, 38px); gap: 8px; }
+  .welcome-track-name { display: none; }
+  .welcome-go { width: 100%; justify-content: flex-end; }
 }

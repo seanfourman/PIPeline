@@ -1,5 +1,5 @@
 // What the interface changes directly, without a Claude session.
-import { existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { readAts } from "./data";
 import { REPO } from "./policy";
@@ -28,7 +28,8 @@ function writeText(file: string, text: string, previous: string) {
   writeFileSync(file, previous.includes("\r\n") ? normal.replace(/\n/g, "\r\n") : normal);
 }
 
-const DOCUMENTS = { rules: "CV_RULES.md", profile: ".claude/skills/job-application-assistant/01-candidate-profile.md" };
+// The user's own rules and profile, in user/ (user.ts).
+const DOCUMENTS = { rules: "user/CV_RULES.md", profile: "user/profile/01-candidate-profile.md" };
 export type DocumentKind = keyof typeof DOCUMENTS;
 const FRONTMATTER = /^---[\s\S]*?---\s*/;
 
@@ -48,7 +49,10 @@ export function saveDocument(kind: DocumentKind, text: unknown, base: unknown, r
 
 const LIMITS: Record<string, [number, number]> = { summaryLines: [1, 8], summaryFill: [0, 100], skillLines: [1, 10], skillItems: [1, 40] };
 
-export const readChecks = (root = REPO) => JSON.parse(readFileSync(path.join(root, TEMPLATE, "cv_checks.json"), "utf8"));
+// The user's limits and banned wording (user/cv_checks.json), or the template's neutral ones until they have their own.
+const CHECKS = "user/cv_checks.json";
+export const readChecks = (root = REPO) =>
+  JSON.parse(readFileSync(path.join(root, existsSync(path.join(root, CHECKS)) ? CHECKS : `${TEMPLATE}/cv_checks.json`), "utf8"));
 
 export function saveChecks(input: any, root = REPO) {
   const limits = Object.fromEntries(Object.entries(LIMITS).map(([name, [min, max]]) => {
@@ -64,7 +68,8 @@ export function saveChecks(input: any, root = REPO) {
     return { reason: clean(group?.reason, 160), phrases: [...new Set(phrases)].slice(0, 80) };
   }).filter((group: { reason: string }) => group.reason);
   const checks = { limits, banned };
-  writeFileSync(path.join(root, TEMPLATE, "cv_checks.json"), `${JSON.stringify(checks, null, 2)}\n`);
+  mkdirSync(path.join(root, "user"), { recursive: true });
+  writeFileSync(path.join(root, CHECKS), `${JSON.stringify(checks, null, 2)}\n`);
   return checks;
 }
 
@@ -96,7 +101,7 @@ export const STATUSES = ["drafted", "applied", "interview", "offer", "hired", "r
 export function setApplicationStatus(input: any, root = REPO, today = new Date().toLocaleDateString("en-CA")) {
   const status = String(input?.status ?? "");
   if (!STATUSES.includes(status)) throw new EditError("unknown_status");
-  const file = path.join(root, "job_search_tracker.csv");
+  const file = path.join(root, "user", "job_search_tracker.csv");
   if (!existsSync(file)) throw new EditError("no_tracker", 404);
   const text = readFileSync(file, "utf8");
   const records = cellSpans(text);
@@ -139,7 +144,7 @@ export type Draft = {
 // while it is a draft; "redrafted" joins its notes). A header without the deadline column gets it, and nothing else
 // in the file changes.
 export function recordDraft(draft: Draft, root = REPO, today = new Date().toLocaleDateString("en-CA")): "added" | "updated" {
-  const file = path.join(root, "job_search_tracker.csv");
+  const file = path.join(root, "user", "job_search_tracker.csv");
   let text = existsSync(file) ? readFileSync(file, "utf8") : `${TRACKER_HEADER}\n`;
   const crlf = /\r\n/.test(text);
   const headerEnd = text.search(/\r?\n/);
@@ -178,7 +183,7 @@ export function recordDraft(draft: Draft, root = REPO, today = new Date().toLoca
 }
 
 // A CV or a cover letter, each with its own folder and file prefix.
-const SOURCES = { cv: { dir: "cv", prefix: "main_" }, letter: { dir: "cover_letters", prefix: "cover_" } };
+const SOURCES = { cv: { dir: "user/cv", prefix: "main_" }, letter: { dir: "user/cover_letters", prefix: "cover_" } };
 export type SourceKind = keyof typeof SOURCES;
 export const isSourceKind = (kind: string): kind is SourceKind => kind in SOURCES;
 
@@ -193,7 +198,7 @@ export function readSource(kind: SourceKind, name: string, root = REPO) {
   const { dir, prefix } = SOURCES[kind];
   const source = readFileSync(sourceFile(kind, name, root), "utf8");
   const pdf = `${dir}/${prefix}${name}.pdf`;
-  return { kind, name, source, version: versionOf(source), pdf: existsSync(path.join(root, pdf)) ? pdf : null, ats: kind === "cv" ? readAts(`cv/main_${name}.tex`, root) : null };
+  return { kind, name, source, version: versionOf(source), pdf: existsSync(path.join(root, pdf)) ? pdf : null, ats: kind === "cv" ? readAts(`user/cv/main_${name}.tex`, root) : null };
 }
 
 export function saveSource(kind: SourceKind, name: string, source: unknown, base: unknown, root = REPO) {
@@ -236,7 +241,7 @@ export async function buildSource(kind: SourceKind, name: string, root = REPO) {
   building = true;
   try {
     if (kind === "cv") return await run([PYTHON, `${TEMPLATE}/build.py`, name], root, 360_000);
-    const folder = path.join(root, "cover_letters");
+    const folder = path.join(root, "user", "cover_letters");
     const result = await run(["xelatex", "-interaction=nonstopmode", "-halt-on-error", `cover_${name}.tex`], folder, 180_000);
     for (const extension of ["aux", "log", "out"]) rmSync(path.join(folder, `cover_${name}.${extension}`), { force: true });
     const errors = result.output.split("\n").filter((line) => line.startsWith("!"));
@@ -248,24 +253,31 @@ export async function buildSource(kind: SourceKind, name: string, root = REPO) {
 
 // Files a person may edit here. Permissions, the safety tools and this interface's own code stay
 // readable only: changing those changes what a session may do, so they keep the approval in a conversation.
+// The user's own files (user/) come first, the profile's 01 aside: it has a screen of its own.
 const FILE_GROUPS: { title: string; dir?: string; match?: RegExp; files?: string[]; readOnly?: boolean }[] = [
-  { title: "general", files: ["CLAUDE.md"] },
+  { title: "general", files: ["user/CLAUDE.md"] },
   { title: "commands", dir: ".claude/commands", match: /\.md$/ },
   { title: "agents", dir: ".claude/agents", match: /\.md$/ },
-  { title: "knowledge", dir: ".claude/skills/job-application-assistant", match: /^(?!01-).*\.md$/ },
-  { title: "search", files: [".claude/skills/job-scraper/SKILL.md", ".claude/skills/job-scraper/search-queries.md"] },
+  { title: "knowledge", dir: "user/profile", match: /^(?!01-).*\.md$/ },
+  { title: "knowledge", dir: ".claude/skills/job-application-assistant", match: /\.md$/ },
+  { title: "search", files: [".claude/skills/job-scraper/SKILL.md", "user/search-queries.md"] },
   { title: "upskill", files: [".claude/skills/upskill/SKILL.md"] },
   { title: "template", files: [`${TEMPLATE}/TEMPLATE.md`, `${TEMPLATE}/template.tex`, `${TEMPLATE}/onepage.sty`, `${TEMPLATE}/build.py`, `${TEMPLATE}/ats.py`, "cover_letters/cover.cls"] },
   { title: "permissions", files: [".claude/settings.json", "web/policy.ts"], readOnly: true },
 ];
 
+// Groups with the same title, as the knowledge files in user/profile/ and in the skill's folder, show as one.
 export function listEditableFiles(root = REPO) {
-  return FILE_GROUPS.map(({ title, dir, match, files, readOnly }) => {
-    const paths = dir && existsSync(path.join(root, dir))
+  const groups: { title: string; readOnly: boolean; files: string[] }[] = [];
+  for (const { title, dir, match, files, readOnly } of FILE_GROUPS) {
+    const paths = (dir && existsSync(path.join(root, dir))
       ? readdirSync(path.join(root, dir)).filter((name) => match?.test(name)).map((name) => `${dir}/${name}`)
-      : files ?? [];
-    return { title, readOnly: Boolean(readOnly), files: paths.filter((p) => existsSync(path.join(root, p))) };
-  }).filter((group) => group.files.length);
+      : files ?? []).filter((p) => existsSync(path.join(root, p)));
+    const same = groups.find((g) => g.title === title);
+    if (same) same.files.push(...paths);
+    else groups.push({ title, readOnly: Boolean(readOnly), files: paths });
+  }
+  return groups.filter((group) => group.files.length);
 }
 
 // The path must come from the list, so nothing a request sends can reach another file.

@@ -87,7 +87,7 @@ For BasicTeX/MacTeX, make sure the TeX binary directory is on `PATH` first (for 
 Quick smoke tests after setup:
 
 ```bash
-cd cv && lualatex -interaction=nonstopmode -halt-on-error main_example.tex && cd ..
+cd user/cv && lualatex -interaction=nonstopmode -halt-on-error main_example.tex && cd ../..
 
 SMOKE_DIR="$(mktemp -d /tmp/ai-job-cover-smoke.XXXXXX)"
 cp -R cover_letters/cover.cls cover_letters/OpenFonts "$SMOKE_DIR/"
@@ -131,7 +131,7 @@ Drop `--admin` if MiKTeX is installed for the current user only. If a package na
 Quick smoke tests after setup (PowerShell):
 
 ```powershell
-Set-Location cv; lualatex -interaction=nonstopmode -halt-on-error main_example.tex; Set-Location ..
+Set-Location user\cv; lualatex -interaction=nonstopmode -halt-on-error main_example.tex; Set-Location ..\..
 
 $SmokeDir = New-Item -ItemType Directory -Path (Join-Path $env:TEMP "ai-job-cover-smoke-$(Get-Random)")
 Copy-Item cover_letters\cover.cls, cover_letters\OpenFonts -Destination $SmokeDir -Recurse
@@ -218,7 +218,7 @@ Then run the onboarding:
 
 Claude will offer three paths:
 
-- **Path A (documents folder):** Add your CV, LinkedIn export, diplomas, references, or past applications under `documents/`. Claude reads and cross-references them before proposing profile updates. This is best when you have several source files.
+- **Path A (documents folder):** Add your CV, LinkedIn export, diplomas, references, or past applications under `user/documents/`. Claude reads and cross-references them before proposing profile updates. This is best when you have several source files.
 - **Path B (single CV import):** Share one CV/resume by mentioning the file with `@` or pasting the text. Claude extracts it and asks follow-up questions for anything missing.
 - **Path C (interview mode):** Answer structured interview questions section by section.
 
@@ -228,14 +228,14 @@ All three paths produce the same result: fully populated profile files.
 
 | File | Content |
 |------|---------|
-| `CLAUDE.md` | Your full candidate profile |
-| `01-candidate-profile.md` | Structured education, experience, skills |
-| `02-behavioral-profile.md` | Behavioral assessment |
-| `04-job-evaluation.md` | Personalized skill match areas and career goals |
-| `05-cv-templates.md` | Profile statement templates for your background |
-| `07-interview-prep.md` | STAR examples from your experience |
-| `cv/main_example.tex` | Your LaTeX CV with actual details |
-| `search-queries.md` | Job search queries for `/scrape` |
+| `user/CLAUDE.md` | Your full candidate profile |
+| `user/profile/01-candidate-profile.md` | Structured education, experience, skills |
+| `user/profile/02-behavioral-profile.md` | Behavioral assessment |
+| `user/profile/04-job-evaluation.md` | Personalized skill match areas and career goals |
+| `user/profile/05-cv-templates.md` | Profile statement templates for your background |
+| `user/profile/07-interview-prep.md` | STAR examples from your experience |
+| `user/cv/main_example.tex` | Your LaTeX CV with actual details |
+| `user/search-queries.md` | Job search queries for `/scrape` |
 
 ### Re-running setup
 
@@ -289,8 +289,8 @@ After `/apply` creates the LaTeX files:
 
 ```bash
 # Bash / zsh / Git Bash
-cd cv && lualatex main_<company>_<role>.tex && cd ..
-cd cover_letters && xelatex cover_<company>_<role>.tex && cd ..
+cd user/cv && lualatex main_<company>_<role>.tex && cd ../..
+cd user/cover_letters && xelatex cover_<company>_<role>.tex && cd ../..
 ```
 
 ```powershell
@@ -307,7 +307,7 @@ Upstream keeps improving the methodology files your fork has personalized, so pl
 
 **Prefer releases over raw `master`.** Tagged [releases](../../releases) are weekly checkpoints of `master` that passed CI, each listing the PRs it contains on its release page ([CHANGELOG.md](CHANGELOG.md) covers releases up to 1.7.4). Updating to a tag pulls a stable, documented state instead of whatever `master` happens to be mid-review. Fetch tags with `git fetch upstream --tags` and merge a release (for example `git merge v1.0.0`) when you want stability; pull `master` directly only when you specifically want the latest unreleased changes. The steps below apply either way - substitute the release tag for `upstream/master` where you see it.
 
-1. **Commit your personalization - but know where those commits land.** `/setup` edits CLAUDE.md and the profile skill files in place; those edits are *yours*, and committing them is what lets updates merge cleanly. But a GitHub **fork of this repo is public** - forks of public repositories cannot be made private - so anything you commit *and push to a fork* is visible to anyone. If you want your profile in a remote at all, don't push it to a fork: create a **private** repository, push there, and add this repo as the `upstream` remote (`git remote add upstream https://github.com/ai-job-search-dev/ai-job-search.git`) to keep receiving updates. Committing locally without pushing is also fine. The genuinely sensitive files (tracker, salary data, `documents/`, application archives) are gitignored and never enter git either way. An uncommitted working tree is the most common reason `git pull` refuses to merge at all (`Your local changes ... would be overwritten`).
+1. **Commit your personalization - but know where those commits land.** `/setup` edits user/CLAUDE.md and the profile skill files in place; those edits are *yours*, and committing them is what lets updates merge cleanly. But a GitHub **fork of this repo is public** - forks of public repositories cannot be made private - so anything you commit *and push to a fork* is visible to anyone. If you want your profile in a remote at all, don't push it to a fork: create a **private** repository, push there, and add this repo as the `upstream` remote (`git remote add upstream https://github.com/ai-job-search-dev/ai-job-search.git`) to keep receiving updates. Committing locally without pushing is also fine. The genuinely sensitive files (tracker, salary data, `user/documents/`, application archives) are gitignored and never enter git either way. An uncommitted working tree is the most common reason `git pull` refuses to merge at all (`Your local changes ... would be overwritten`).
 2. **Preview what changed before pulling:**
    ```bash
    git remote add upstream https://github.com/ai-job-search-dev/ai-job-search.git   # first time only, if you cloned your own fork

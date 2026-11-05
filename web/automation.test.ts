@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { applyPrompt, createAutomation, isDue, pickJobs, readMailAccount, saveMailAccount, type Deps } from "./automation";
+import { applyPrompt, createAutomation, isDue, pickJobs, readMailAccount, saveMailAccount, slotOf, type Deps } from "./automation";
 import { validateSettings } from "./settings";
 
 const settings = (automation = {}) => validateSettings({ automation: { enabled: true, email: "me@x.co", maxPerDay: 2, ...automation } });
@@ -42,6 +42,18 @@ describe("isDue", () => {
     expect(isDue(settings({ enabled: false }), "", at("12:00"))).toBe(false);
     expect(validateSettings({}).automation.enabled).toBe(false);
   });
+  test("with several run times, each that comes runs once, and a late window runs once for all it missed", () => {
+    const twice = settings({ runTimes: ["09:00", "13:00"] });
+    expect(isDue(twice, "2026-11-02 09:00", at("12:00"))).toBe(false);
+    expect(isDue(twice, "2026-11-02 09:00", at("13:00"))).toBe(true);
+    expect(isDue(twice, "2026-11-02 13:00", at("20:00"))).toBe(false);
+    expect(isDue(twice, "2026-11-01 09:00", at("20:00"))).toBe(true);
+    // An older file's date stands for that day's first run time.
+    expect(isDue(twice, "2026-11-02", at("13:00"))).toBe(true);
+    // A run started by hand before the day's first time stands for it.
+    expect(slotOf(twice, at("07:00"))).toBe("2026-11-02 09:00");
+    expect(slotOf(twice, at("14:00"))).toBe("2026-11-02 13:00");
+  });
 });
 
 describe("the prompt", () => {
@@ -55,9 +67,12 @@ describe("the prompt", () => {
 describe("a run", () => {
   function setup(over: Partial<Deps> = {}) {
     const root = mkdtempSync(path.join(os.tmpdir(), "job-auto-"));
-    const folder = path.join(root, "documents/applications/acme_dev");
+    const folder = path.join(root, "user/documents/applications/acme_dev");
     mkdirSync(folder, { recursive: true });
-    writeFileSync(path.join(folder, "Sean Fourman - Resume.pdf"), "pdf");
+    // The CV is named after the user in user/profile.json, as build.py names it.
+    mkdirSync(path.join(root, "user"), { recursive: true });
+    writeFileSync(path.join(root, "user", "profile.json"), JSON.stringify({ name: "Dana Cohen" }));
+    writeFileSync(path.join(folder, "Dana Cohen - Resume.pdf"), "pdf");
     writeFileSync(path.join(folder, "ats.json"), JSON.stringify({ score: 77, missing: [], problems: [] }));
     const applications: Record<string, string>[] = [];
     const prompts: string[] = [];
@@ -70,7 +85,7 @@ describe("a run", () => {
       loadState: () => ({ applications: [...applications], jobs: [job()] }),
       runSession: async (prompt) => {
         prompts.push(prompt);
-        if (prompt.includes("apply.md")) applications.push({ source: "https://x.co/1", cv_file: "cv/main_acme_dev.tex" });
+        if (prompt.includes("apply.md")) applications.push({ source: "https://x.co/1", cv_file: "cv/main_acme_dev.tex" /* an older row's form, read as user/cv/ */ });
         return { id: `s${prompts.length}`, ok: true, text: "Added: Docker" };
       },
       sendMail: async (mail) => { mails.push(mail); return { status: "sent", detail: mail.to }; },
@@ -86,12 +101,24 @@ describe("a run", () => {
     expect(prompts.map((p) => p.match(/(job-scraper|rank\.md|apply\.md)/)?.[1])).toEqual(["job-scraper", "rank.md", "apply.md"]);
     expect(mails).toHaveLength(1);
     expect(mails[0].to).toBe("me@x.co");
-    expect(mails[0].attachments[0].name).toBe("Sean Fourman - Resume.pdf");
+    expect(mails[0].attachments[0].name).toBe("Dana Cohen - Resume.pdf");
     expect(mails[0].body).toContain("ציון ATS: 77");
     expect(mails[0].body).toContain("Added: Docker");
     expect(automation.runs()[0].drafted).toHaveLength(1);
     expect(automation.runs()[0].finished).toBeTruthy();
     expect(automation.runs()[0].mail).toEqual({ status: "sent", detail: "me@x.co" });
+  });
+
+  test("checks the portals between the search and the ranking, when the server can", async () => {
+    const order: string[] = [];
+    const { deps } = setup({
+      runSession: async (prompt) => { order.push(prompt.includes("job-scraper") ? "search" : prompt.includes("rank.md") ? "rank" : "apply"); return { id: "s", ok: true, text: "" }; },
+      scanPortals: async (title) => { order.push(`portals:${title}`); return { id: "p", ok: false, text: "AllJobs did not answer" }; },
+    });
+    const automation = createAutomation(deps);
+    await automation.run("manual");
+    expect(order.slice(0, 3)).toEqual(["search", "portals:הריצה היומית: פורטלים", "rank"]);
+    expect(automation.runs()[0].steps.find((s) => s.step === "portals")).toEqual({ step: "portals", session: "p", ok: false, note: "AllJobs did not answer" });
   });
 
   test("writes the email in the interface language", async () => {
@@ -135,6 +162,36 @@ describe("a run", () => {
     const off = setup({ loadSettings: () => settings({ enabled: false }) });
     await createAutomation(off.deps).tick();
     expect(off.prompts).toEqual([]);
+  });
+
+  test("the day's runs share its jobs: with none left, a later run time passes without a search", async () => {
+    let clock = new Date("2026-11-02T09:30:00");
+    const { deps, prompts, mails } = setup({ now: () => clock, loadSettings: () => settings({ runTimes: ["09:00", "13:00"], maxPerDay: 1 }) });
+    const automation = createAutomation(deps);
+    await automation.tick();
+    expect(automation.runs()[0].drafted).toHaveLength(1);
+    expect(mails).toHaveLength(1);
+    clock = new Date("2026-11-02T12:00:00");
+    await automation.tick();
+    expect(automation.runs()).toHaveLength(1);
+    clock = new Date("2026-11-02T13:05:00");
+    const count = prompts.length;
+    await automation.tick();
+    expect(prompts.length).toBe(count);
+    expect(automation.runs()).toHaveLength(1);
+  });
+
+  test("a later run of the day emails only when it drafted something", async () => {
+    let clock = new Date("2026-11-02T09:30:00");
+    const { deps, mails } = setup({ now: () => clock, loadState: () => ({ applications: [], jobs: [] }), loadSettings: () => settings({ runTimes: ["09:00", "13:00"] }) });
+    const automation = createAutomation(deps);
+    await automation.tick();
+    expect(mails).toHaveLength(1);
+    clock = new Date("2026-11-02T13:30:00");
+    await automation.tick();
+    expect(automation.runs()).toHaveLength(2);
+    expect(mails).toHaveLength(1);
+    expect(automation.runs()[0].mail).toBeNull();
   });
 });
 

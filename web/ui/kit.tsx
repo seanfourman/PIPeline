@@ -1,8 +1,8 @@
 // Shared building blocks. Text from postings and from the agent always goes in as text, never as HTML.
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  ArrowUp, Bookmark, Check, ChevronDown, ChevronLeft, ClipboardCheck, Cpu, createLucideIcon, Download, ExternalLink, Feather, FileText, Folder, Gem,
-  LayoutGrid, Leaf, ListChecks, LogOut, MapPin, MessageCircle, Moon, Plus, Search, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles,
+  ArrowUp, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Cpu, createLucideIcon, Download, ExternalLink, Feather, FileText, Folder, Gem,
+  LayoutGrid, Leaf, ListChecks, LogOut, MapPin, MessageCircle, Moon, Plus, RefreshCw, Search, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles,
   Square, Sun, TriangleAlert, User, X, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -160,12 +160,20 @@ const House = createLucideIcon("house-open", [
   ["path", { d: "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2h-4v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8H5a2 2 0 0 1-2-2z", key: "walls" }],
 ]);
 
+// Lucide's building with its walls drawn first, so when filled the windows and the door, drawn over them, stay open
+// in the background colour.
+const Office = createLucideIcon("building-front", [
+  ["rect", { x: "4", y: "2", width: "16", height: "20", rx: "2", key: "walls" }],
+  ["path", { d: "M9 22v-3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3", key: "door" }],
+  ...["M8 6h.01", "M12 6h.01", "M16 6h.01", "M8 10h.01", "M12 10h.01", "M16 10h.01", "M8 14h.01", "M12 14h.01", "M16 14h.01"].map((d, i) => ["path", { d, key: `window-${i}` }] as ["path", Record<string, string>]),
+]);
+
 // Icons from Lucide, an open icon set (ISC licence); only these are bundled.
 const ICONS: Record<string, LucideIcon> = {
   home: House, jobs: Search, saved: Bookmark, apps: FileText, chat: MessageCircle, profile: User, settings: Settings,
   rules: ListChecks, tools: LayoutGrid, files: Folder, plus: Plus, sun: Sun, moon: Moon, logout: LogOut, filters: SlidersHorizontal,
-  ai: Sparkles, open: ExternalLink, apply: ClipboardCheck, pin: MapPin, close: X, onward: ChevronLeft, down: ChevronDown, check: Check, find: Search,
-  warn: TriangleAlert, send: ArrowUp, stop: Square, download: Download, file: FileText,
+  ai: Sparkles, open: ExternalLink, apply: ClipboardCheck, pin: MapPin, close: X, onward: ChevronLeft, back: ChevronRight, down: ChevronDown, check: Check, find: Search,
+  warn: TriangleAlert, send: ArrowUp, stop: Square, download: Download, file: FileText, portals: Office, refresh: RefreshCw,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,
   "model-default": Cpu, "model-opus": Gem, "model-sonnet": Feather, "model-haiku": Leaf,
 };

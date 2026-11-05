@@ -35,6 +35,15 @@ FRAMEWORK_FILES = [
     "AGENTS.md",
 ]
 
+# Upstream path -> where this workspace keeps the user's own copy (see tools/init_user.py).
+LOCAL_COPIES = {
+    f".claude/skills/job-application-assistant/{name}": f"user/profile/{name}"
+    for name in (
+        "01-candidate-profile.md", "02-behavioral-profile.md", "04-job-evaluation.md",
+        "05-cv-templates.md", "06-cover-letter-templates.md", "07-interview-prep.md",
+    )
+}
+
 UPSTREAM_REPO_SLUG = "ai-job-search-dev/ai-job-search"
 
 def run_git(args: list[str]) -> tuple[int, str, str]:
@@ -132,7 +141,9 @@ def main() -> int:
     missing_upstream = []
 
     for rel_path in FRAMEWORK_FILES:
-        local_path = ROOT / rel_path
+        # The files a user personalizes live in their own user/ folder (never committed); upstream keeps them at
+        # the skill's path, so the comparison reads the user's copy against upstream's file there.
+        local_path = ROOT / LOCAL_COPIES.get(rel_path, rel_path)
         if not local_path.exists():
             errors.append(f"Local file missing: {rel_path}")
             continue

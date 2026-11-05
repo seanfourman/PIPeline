@@ -127,7 +127,7 @@ Do not proceed to Step 5 until search, detail, and tests all pass.
 1. Ask whether the user wants the new portal added to their `/scrape` search strategy. If yes:
    - The portal CLI itself is already picked up automatically by `/scrape` (it discovers `.agents/skills/*/SKILL.md`) — no further wiring is needed for CLI search/detail.
    - **Pre-approval is per portal and deliberate.** `/scrape` runs the CLI through Bash, and the only standing grants are the per-portal entries in `.claude/settings.json`. Add `Bash(bun run .agents/skills/<name>/cli/src/cli.ts:*)` to `permissions.allow` there **and** to `ALLOWED_PERMISSIONS` in `tools/security_guards.py` in the same commit - the guard fails the fork's CI on a settings entry it does not know, which is the review step working as intended. Until both are in place, `/scrape` prompts on each call of this portal's CLI; the generated `SKILL.md`'s own `allowed-tools` line covers only turns that invoke that skill directly.
-   - Optionally add WebSearch/`site:` placeholder queries for that board in `.claude/skills/job-scraper/search-queries.md` (use the `[YOUR_JOB_BOARD]` style placeholders already there) so the fallback path still covers the board if the CLI is unavailable.
+   - Optionally add WebSearch/`site:` placeholder queries for that board in `user/search-queries.md` (use the `[YOUR_JOB_BOARD]` style placeholders already there) so the fallback path still covers the board if the CLI is unavailable.
 2. Remind the user to add the install line for their own records if they maintain a fork README:
    ```bash
    cd .agents/skills/<name>/cli && bun install && cd ../../../..

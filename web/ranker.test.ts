@@ -55,8 +55,8 @@ describe("ranker", () => {
 
   test("tells the model the framework's gates and dimensions, the profile without contact lines, and the settings without the salary", () => {
     const files: Record<string, string> = {
-      ".claude/skills/job-application-assistant/04-job-evaluation.md": "## Language Gate\nrules\n### 6. Salary Benchmark\nsalary tool\n## Output Format",
-      ".claude/skills/job-application-assistant/01-candidate-profile.md": "- **Name:** Sean\n- **Phone:** 054\n- **Email:** a@b.c\n- **LinkedIn:** x\n### Languages\nHebrew",
+      "user/profile/04-job-evaluation.md": "## Language Gate\nrules\n### 6. Salary Benchmark\nsalary tool\n## Output Format",
+      "user/profile/01-candidate-profile.md": "- **Name:** Dana\n- **Phone:** 054\n- **Email:** a@b.c\n- **LinkedIn:** x\n### Languages\nHebrew",
     };
     const system = scoringSystem("he", (rel) => files[rel], () => "<!-- BEGIN -->\n- **Home base:** Netanya\n- **Salary expectations:** 20,000\n- **Conversation language:** Hebrew\n<!-- END -->");
     expect(system).toContain("## Language Gate");

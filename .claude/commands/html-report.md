@@ -1,14 +1,14 @@
 # /html-report - Generate Application Tracker Dashboard
 
-Generate a self-contained HTML dashboard from `job_search_tracker.csv` and the application archives under `documents/applications/`. The output is a single `.html` file — no server, no dependencies — that can be opened directly in a browser.
+Generate a self-contained HTML dashboard from `user/job_search_tracker.csv` and the application archives under `user/documents/applications/`. The output is a single `.html` file — no server, no dependencies — that can be opened directly in a browser.
 
 ## Step 0: Parse Arguments
 
-- No argument → output to `reports/application-dashboard.html`
+- No argument → output to `user/reports/application-dashboard.html`
 - A path argument (e.g. `/html-report ~/Desktop/report.html`) → use that path
 - `--open` flag → after writing, tell the user to open the file (cannot open a browser directly)
 
-Create `reports/` if it does not exist.
+Create `user/reports/` if it does not exist.
 
 ---
 
@@ -16,12 +16,12 @@ Create `reports/` if it does not exist.
 
 Read in parallel:
 
-1. **`job_search_tracker.csv`** — the primary source. Parse every row into a record with fields:
+1. **`user/job_search_tracker.csv`** — the primary source. Parse every row into a record with fields:
    `date`, `company`, `sector`, `role`, `role_type`, `channel`, `status`, `contact_person`, `fit_rating`, `notes`, `cv_file`, `cover_letter_file`, `source`, `deadline`
 
    Rows written before `deadline` existed have thirteen fields and no fourteenth value. Treat the missing field as empty - never drop the row, and never infer a deadline from its `date`.
 
-2. **`documents/applications/*/outcome.md`** — for each resolved application, read the outcome file to get the exact interview stages reached (the checkboxes) and any notes. Merge this into the matching tracker row by company+role fuzzy match (lowercase, ignore punctuation). If an archive exists for a row but there is no match, attach it as extra context anyway.
+2. **`user/documents/applications/*/outcome.md`** — for each resolved application, read the outcome file to get the exact interview stages reached (the checkboxes) and any notes. Merge this into the matching tracker row by company+role fuzzy match (lowercase, ignore punctuation). If an archive exists for a row but there is no match, attach it as extra context anyway.
 
 Status normalisation — map tracker values to six canonical buckets before computing stats:
 - `drafted` → **Drafted** (documents written by `/apply`, not yet submitted)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EXPAND_COMMAND_FILE = REPO_ROOT / ".claude" / "commands" / "expand.md"
-BEHAVIORAL_PROFILE = REPO_ROOT / ".claude" / "skills" / "job-application-assistant" / "02-behavioral-profile.md"
+BEHAVIORAL_PROFILE = REPO_ROOT / "templates" / "user" / "profile" / "02-behavioral-profile.md"
 
 
 class ExpandCommandTests(unittest.TestCase):
@@ -49,7 +49,7 @@ class ExpandCommandTests(unittest.TestCase):
         # in a duplicate near-identical section or was dropped. Derived from
         # the shipped file so a renamed heading fails here until /expand follows.
         text = EXPAND_COMMAND_FILE.read_text(encoding="utf-8")
-        start = text.index("### Additions to `02-behavioral-profile.md`")
+        start = text.index("### Additions to `user/profile/02-behavioral-profile.md`")
         section = text[start: text.index("---", start)]
         quoted = re.findall(r'"([^"]+)"', section)
         self.assertTrue(quoted, "the 02-behavioral-profile step must name its target sections")

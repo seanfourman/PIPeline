@@ -37,9 +37,9 @@ class BuildMessage(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             pdf = Path(folder) / "cv.pdf"
             pdf.write_bytes(b"%PDF-1.5 test")
-            message = send_mail.build_message(request(attachments=[{"path": str(pdf), "name": "Sean Fourman - Resume.pdf"}]))
+            message = send_mail.build_message(request(attachments=[{"path": str(pdf), "name": "Dana Cohen - Resume.pdf"}]))
             attachment = next(message.iter_attachments())
-            self.assertEqual(attachment.get_filename(), "Sean Fourman - Resume.pdf")
+            self.assertEqual(attachment.get_filename(), "Dana Cohen - Resume.pdf")
             self.assertEqual(attachment.get_content_type(), "application/pdf")
             self.assertEqual(attachment.get_content(), b"%PDF-1.5 test")
         self.assertEqual(message["Subject"], "חיפוש עבודה")

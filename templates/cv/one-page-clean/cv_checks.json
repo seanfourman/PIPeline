@@ -7,23 +7,15 @@
   },
   "banned": [
     {
-      "reason": "never state where Sean lives",
-      "phrases": ["netanya", "based in", "lives in", "live in"]
-    },
-    {
-      "reason": "BlueBird reads as real work: no final project, no project grade",
-      "phrases": ["final project", "degree project", "capstone project", "graduation project", "grade #"]
-    },
-    {
-      "reason": "never name AI coding tools: show the LLM features that shipped",
-      "phrases": ["claude", "cursor", "copilot", "chatgpt", "vibe", "ai assisted", "agentic coding", "ai developer tools"]
+      "reason": "never state where the candidate lives",
+      "phrases": ["based in", "lives in", "live in"]
     },
     {
       "reason": "results, not activity counts",
       "phrases": ["commit", "# * test file", "# slide"]
     },
     {
-      "reason": "on Sean's own list of wording to avoid",
+      "reason": "on the candidate's own list of wording to avoid",
       "phrases": []
     }
   ]

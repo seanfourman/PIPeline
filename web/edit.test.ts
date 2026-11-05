@@ -5,15 +5,15 @@ import path from "node:path";
 import { parseCsv } from "./data";
 import { listEditableFiles, listSources, readChecks, readDocument, readEditableFile, readSource, saveChecks, saveDocument, saveEditableFile, saveSource, setApplicationStatus } from "./edit";
 
-const PROFILE = ".claude/skills/job-application-assistant/01-candidate-profile.md";
+const PROFILE = "user/profile/01-candidate-profile.md";
 
 function tempRepo() {
   const root = mkdtempSync(path.join(os.tmpdir(), "job-edit-"));
-  for (const dir of [".claude/skills/job-application-assistant", "templates/cv/one-page-clean", "cv"]) mkdirSync(path.join(root, dir), { recursive: true });
-  writeFileSync(path.join(root, "CV_RULES.md"), "# Rules\n\nOld rule\n");
+  for (const dir of [".claude/skills/job-application-assistant", "user/profile", "templates/cv/one-page-clean", "user/cv"]) mkdirSync(path.join(root, dir), { recursive: true });
+  writeFileSync(path.join(root, "user/CV_RULES.md"), "# Rules\n\nOld rule\n");
   writeFileSync(path.join(root, PROFILE), "---\nframework_version: 1\n---\n\n# Profile\r\n<!-- note -->\r\nFact\r\n");
   writeFileSync(path.join(root, "templates/cv/one-page-clean/cv_checks.json"), "{}");
-  writeFileSync(path.join(root, "cv/main_acme_dev.tex"), "\\cvname{A}\n");
+  writeFileSync(path.join(root, "user/cv/main_acme_dev.tex"), "\\cvname{A}\n");
   return root;
 }
 
@@ -33,9 +33,9 @@ describe("documents", () => {
     const root = tempRepo();
     const doc = readDocument("rules", root);
     expect(() => saveDocument("rules", "  \n", doc.version, root)).toThrow();
-    writeFileSync(path.join(root, "CV_RULES.md"), "# A session changed this\n");
+    writeFileSync(path.join(root, "user/CV_RULES.md"), "# A session changed this\n");
     expect(() => saveDocument("rules", "# Mine\n", doc.version, root)).toThrow();
-    expect(readFileSync(path.join(root, "CV_RULES.md"), "utf8")).toContain("A session changed this");
+    expect(readFileSync(path.join(root, "user/CV_RULES.md"), "utf8")).toContain("A session changed this");
   });
 });
 
@@ -59,8 +59,8 @@ describe("saveChecks", () => {
 
 describe("setApplicationStatus", () => {
   const HEADER = "date,company,role,status,notes,cv_file,deadline";
-  const write = (root: string, ...rows: string[]) => writeFileSync(path.join(root, "job_search_tracker.csv"), [HEADER, ...rows].join("\r\n") + "\r\n");
-  const read = (root: string) => readFileSync(path.join(root, "job_search_tracker.csv"), "utf8");
+  const write = (root: string, ...rows: string[]) => writeFileSync(path.join(root, "user", "job_search_tracker.csv"), [HEADER, ...rows].join("\r\n") + "\r\n");
+  const read = (root: string) => readFileSync(path.join(root, "user", "job_search_tracker.csv"), "utf8");
   const today = "2026-11-02";
   const acme = { date: "2026-10-01", company: "Acme, Inc", role: "Dev" };
 
@@ -117,10 +117,10 @@ describe("the CV and letter editor", () => {
 
   test("lists every CV and letter, with or without a tracker row", () => {
     const root = tempRepo();
-    mkdirSync(path.join(root, "cover_letters"));
-    writeFileSync(path.join(root, "cover_letters/cover_acme_dev.tex"), "x");
-    writeFileSync(path.join(root, "cover_letters/cover.cls"), "x");
-    writeFileSync(path.join(root, "cv/notes.txt"), "x");
+    mkdirSync(path.join(root, "user", "cover_letters"));
+    writeFileSync(path.join(root, "user/cover_letters/cover_acme_dev.tex"), "x");
+    writeFileSync(path.join(root, "user/cover_letters/cover.cls"), "x");
+    writeFileSync(path.join(root, "user/cv/notes.txt"), "x");
     const found = listSources(root).map((s) => `${s.kind}:${s.name}`).sort();
     expect(found).toEqual(["cv:acme_dev", "letter:acme_dev"]);
     expect(readSource("letter", "acme_dev", root).ats).toBeNull();
@@ -133,7 +133,7 @@ describe("the files screen", () => {
     mkdirSync(path.join(root, ".claude/commands"), { recursive: true });
     mkdirSync(path.join(root, "web"));
     writeFileSync(path.join(root, ".claude/commands/apply.md"), "# Apply\n");
-    writeFileSync(path.join(root, ".claude/skills/job-application-assistant/07-interview-prep.md"), "# Prep\n");
+    writeFileSync(path.join(root, "user/profile/07-interview-prep.md"), "# Prep\n");
     writeFileSync(path.join(root, ".claude/settings.json"), "{}");
     writeFileSync(path.join(root, "web/policy.ts"), "// policy\n");
     writeFileSync(path.join(root, ".env"), "SECRET=1\n");
@@ -144,7 +144,7 @@ describe("the files screen", () => {
     const root = withFiles();
     const files = listEditableFiles(root).flatMap((g) => g.files);
     expect(files).toContain(".claude/commands/apply.md");
-    expect(files).toContain(".claude/skills/job-application-assistant/07-interview-prep.md");
+    expect(files).toContain("user/profile/07-interview-prep.md");
     expect(files).not.toContain(PROFILE);
     const doc = readEditableFile(".claude/commands/apply.md", root);
     saveEditableFile(doc.path, "# Changed\n", doc.version, root);
@@ -164,7 +164,7 @@ describe("the files screen", () => {
 
   test("nothing outside the list can be read or written", () => {
     const root = withFiles();
-    for (const bad of [".env", "../secret", ".claude/commands/../../.env", "web/data/token", "web/server.ts", "", undefined]) {
+    for (const bad of [".env", "../secret", ".claude/commands/../../.env", "user/app/token", "web/server.ts", "", undefined]) {
       expect(() => readEditableFile(bad, root)).toThrow();
       expect(() => saveEditableFile(bad, "x", "v", root)).toThrow();
     }

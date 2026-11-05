@@ -3,10 +3,12 @@
 
 Run from the repository root: python templates/cv/one-page-clean/ats.py <company>_<role>
 
-It reads documents/applications/<company>_<role>/ and writes ats.json there. Real ATS products
-do not share a scoring formula, so this is an estimate. Same files in, same score out.
+It reads user/documents/applications/<company>_<role>/ and writes ats.json there. Real ATS products
+do not share a scoring formula, so this is an estimate. Same files in, same score out. It also writes
+scorecard.json, the CV scored by what the largest employers publish (scorecard.py).
 """
 
+import csv
 import json
 import pathlib
 import re
@@ -14,9 +16,12 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "tools"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from verify_pdf import extract_text_layer, find_non_ascii_date_ranges  # noqa: E402
+from user_profile import cv_file_name  # noqa: E402
+import scorecard  # noqa: E402
 
-CV_NAME = "Sean Fourman - Resume.pdf"
+CV_NAME = cv_file_name(REPO)
 MIN_TERMS = 3
 RUN_TOGETHER = 40
 SECTIONS = ["TECHNICAL SKILLS", "PROFESSIONAL EXPERIENCE", "EDUCATION"]
@@ -25,7 +30,7 @@ PHONE = r"(?<!\d)(?:\+972[- ]?|0)\d{1,2}[- ]?\d{3}[- ]?\d{4}(?!\d)"
 JOB_DATES = r"[A-Z][a-z]{2} \d{4} - (?:Present|[A-Z][a-z]{2} \d{4})"
 
 # Upper-case or ambiguous names, where matching any case would count ordinary words.
-CASE_SENSITIVE = {"AI", "ML", "C", "Go", "QA", "RAG", "NLP", "ETL", "R"}
+CASE_SENSITIVE = {"AI", "ML", "C", "Go", "QA", "RAG", "NLP", "ETL", "R", "Excel", "DAX", "VBA", "SAS", "SAP"}
 TERMS = {
     "Python": r"\bpython\b", "TypeScript": r"\btypescript\b", "JavaScript": r"\bjavascript\b|(?<![.\w])js\b",
     "Java": r"\bjava\b", "C#": r"(?<!\w)c#", "C++": r"(?<!\w)c\+\+", "C": r"(?<=, )C\b(?![#+])|\bC(?=,| programming| language)",
@@ -52,6 +57,12 @@ TERMS = {
     "NLP": r"\bNLP\b", "LLM": r"\b(llms?|large language models?)\b", "RAG": r"\bRAG\b", "LangChain": r"\blangchain\b",
     "OpenAI": r"\bopenai\b", "Gemini": r"\bgemini\b", "PyTorch": r"\bpytorch\b", "TensorFlow": r"\b(tensorflow|keras)\b",
     "scikit-learn": r"\b(scikit-learn|sklearn)\b", "Pandas": r"\bpandas\b", "NumPy": r"\bnumpy\b", "ETL": r"\bETL\b", "Spark": r"\bspark\b", "Airflow": r"\bairflow\b",
+    # Data and BI work, often named in Hebrew postings too.
+    "Excel": r"\bExcel\b|אקסל", "Power BI": r"\bpower ?bi\b", "Tableau": r"\btableau\b", "Looker": r"\blooker\b", "Qlik": r"\bqlik\w*",
+    "Power Query": r"\bpower query\b", "DAX": r"\bDAX\b", "VBA": r"\bVBA\b", "SAS": r"\bSAS\b", "SPSS": r"\bspss\b", "SAP": r"\bSAP\b",
+    "BigQuery": r"\bbig ?query\b", "Snowflake": r"\bsnowflake\b", "Databricks": r"\bdatabricks\b", "dbt": r"\bdbt\b", "Oracle": r"\boracle\b",
+    "Statistics": r"\bstatistic(s|al)\b|סטטיסטי", "A/B Testing": r"\ba/b test(s|ing)?\b", "Data Visualization": r"\bdata visuali[sz]ation\b",
+    "Google Analytics": r"\bgoogle analytics\b", "Jupyter": r"\bjupyter\b",
     "TCP/IP": r"\btcp(/ip)?\b", "Ethernet": r"\bethernet\b", "Embedded": r"\bembedded\b", "RTOS": r"\brtos\b", "FPGA": r"\bfpga\b",
     "MATLAB": r"\bmatlab\b", "LabVIEW": r"\blabview\b", "PySide6": r"\b(pyside6?|pyqt\d?)\b",
 }
@@ -113,20 +124,38 @@ def score(cv_text: str, posting_text: str, layout: str = "") -> dict:
     return {"score": value, "matched": matched, "missing": [term for term in wanted if term not in found], "problems": problems}
 
 
+def role_of(name: str, root: pathlib.Path = REPO) -> str:
+    """The posting's title, as the tracker row for this CV records it."""
+    tracker = root / "user" / "job_search_tracker.csv"
+    if not tracker.exists():
+        return ""
+    with tracker.open(encoding="utf-8-sig", newline="") as f:
+        rows = [r for r in csv.DictReader(f) if (r.get("cv_file") or "").replace("\\", "/").endswith(f"cv/main_{name}.tex")]
+    return (rows[-1].get("role") or "") if rows else ""
+
+
 def report(name: str) -> int:
-    folder = REPO / "documents" / "applications" / name
+    folder = REPO / "user" / "documents" / "applications" / name
     pdf, posting = folder / CV_NAME, folder / "job_posting.md"
     for needed in (pdf, posting):
         if not needed.exists():
             print(f"ATS score skipped, not found: {needed.relative_to(REPO).as_posix()}")
             return 2
-    result = score(extract_text_layer(pdf)[0], posting.read_text(encoding="utf-8"), layout_text(pdf))
+    cv_text, posting_text = extract_text_layer(pdf)[0], posting.read_text(encoding="utf-8")
+    result = score(cv_text, posting_text, layout_text(pdf))
     (folder / "ats.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     total = len(result["matched"]) + len(result["missing"])
     print(f"ATS score: {result['score']} ({len(result['matched'])} of {total} posting terms)")
     print(f"Missing: {', '.join(result['missing']) or 'nothing'}")
     if result["problems"]:
         print(f"Parse problems: {'; '.join(result['problems'])}")
+    source = REPO / "user" / "cv" / f"main_{name}.tex"
+    if source.exists():
+        candidate = CV_NAME.rsplit(" - ", 1)[0] if " - " in CV_NAME else ""
+        card = scorecard.card(source.read_text(encoding="utf-8"), posting_body(posting_text), result, find_terms, role_of(name), cv_text,
+                              candidate=candidate, pdf_bytes=pdf.stat().st_size)
+        (folder / "scorecard.json").write_text(json.dumps(card, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(scorecard.line(card))
     return 0
 
 

@@ -14,31 +14,33 @@ const WRITE_TOOLS = new Set(["Write", "Edit"]);
 
 // Where the workflow's own output goes. Profile, command and permission files are not here.
 const WRITABLE = [
-  "cv", "cover_letters", "documents/applications", "documents/postings", "company_research",
-  "job_scraper", ".claude/skills/job-scraper/job_scraper", "upskill", "reports", "gmail_sync",
-  "job_search_tracker.csv",
+  "user/cv", "user/cover_letters", "user/documents/applications", "user/documents/postings", "user/company_research",
+  "user/job_scraper", "user/upskill", "user/reports", "user/gmail_sync", "user/job_search_tracker.csv",
 ];
 // Editing these changes what the agent may do, so each edit is confirmed separately.
 const NEVER_REMEMBER = [
   ".claude/settings", ".claude/commands", ".claude/agents", ".agents", ".github", "tools",
   "salary_lookup.py", "web", "CLAUDE.md", "CV_RULES.md", "templates/cv/one-page-clean/cv_checks.json",
+  // The user's own instructions, rules and checks (user/), which shape every CV as much as the files above.
+  "user/CLAUDE.md", "user/CV_RULES.md", "user/cv_checks.json", "templates/user",
 ];
 
 const NAME = "[A-Za-z0-9_.-]+";
 const SAFE_COMMANDS = [
   // The LaTeX compile, in the shapes /apply and the templates use. -shell-escape never matches.
   new RegExp(
-    `^(cd (\\.\\./)?(cv|cover_letters) && )?(rm -f ${NAME}\\.pdf && )?(mkdir -p build && )?` +
+    `^(cd (user/|\\.\\./)(cv|cover_letters) && )?(rm -f ${NAME}\\.pdf && )?(mkdir -p build && )?` +
       `(lualatex|xelatex) -interaction=nonstopmode( -halt-on-error)?( -output-directory=build)? ` +
       `${NAME}\\.tex( && mv build/${NAME}\\.pdf \\./)?$`,
   ),
-  new RegExp(`^rm -f( (cv|cover_letters)/${NAME}\\.\\{aux,log,out,fls,fdb_latexmk,synctex\\.gz\\})+$`),
-  /^rm -rf (cv|cover_letters)\/build( (cv|cover_letters)\/build)?$/,
-  new RegExp(`^cd cv && pdftotext -layout -enc UTF-8 ${NAME}\\.pdf ${NAME}\\.txt$`),
+  new RegExp(`^rm -f( user/(cv|cover_letters)/${NAME}\\.\\{aux,log,out,fls,fdb_latexmk,synctex\\.gz\\})+$`),
+  /^rm -rf user\/(cv|cover_letters)\/build( user\/(cv|cover_letters)\/build)?$/,
+  new RegExp(`^cd user/cv && pdftotext -layout -enc UTF-8 ${NAME}\\.pdf ${NAME}\\.txt$`),
   // Compiles, verifies and saves a CV. The name allows no path, flag or shell characters.
   /^python3? templates\/cv\/one-page-clean\/(build|ats)\.py [a-z0-9_]+$/,
-  // Saving the finished CV under the name employers see. The folder name cannot climb out with "..".
-  /^mkdir -p documents\/applications\/[A-Za-z0-9_-]+ && cp cv\/main_[A-Za-z0-9_-]+\.pdf "documents\/applications\/[A-Za-z0-9_-]+\/Sean Fourman - Resume\.pdf"$/,
+  // Saving the finished CV under the name employers see, "<the user's name> - Resume.pdf" (user/profile.json): a
+  // name of letters, spaces, dots, apostrophes and hyphens only. The folder name cannot climb out with "..".
+  /^mkdir -p user\/documents\/applications\/[A-Za-z0-9_-]+ && cp user\/cv\/main_[A-Za-z0-9_-]+\.pdf "user\/documents\/applications\/[A-Za-z0-9_-]+\/(?:[\p{L}][\p{L} .'-]{0,59} - )?Resume\.pdf"$/u,
 ];
 
 function allowedPrefixes(repo: string): string[] {
@@ -76,7 +78,7 @@ export function createPolicy(repo = REPO, tempRoot = path.join(os.tmpdir(), "cla
     if (!match) return command;
     const target = norm(match[1]);
     if (target === norm(repo)) return match[2];
-    if (target === norm(path.join(repo, "cv"))) return `cd cv && ${match[2]}`;
+    if (target === norm(path.join(repo, "user", "cv"))) return `cd user/cv && ${match[2]}`;
     return command;
   };
 

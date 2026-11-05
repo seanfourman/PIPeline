@@ -1,0 +1,22 @@
+{
+  "limits": {
+    "summaryLines": 4,
+    "summaryFill": 85,
+    "skillLines": 6,
+    "skillItems": 20
+  },
+  "banned": [
+    {
+      "reason": "never state where the candidate lives",
+      "phrases": ["based in", "lives in", "live in"]
+    },
+    {
+      "reason": "results, not activity counts",
+      "phrases": ["commit", "# * test file", "# slide"]
+    },
+    {
+      "reason": "on the candidate's own list of wording to avoid",
+      "phrases": []
+    }
+  ]
+}

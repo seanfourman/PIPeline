@@ -43,7 +43,7 @@ def select(jobs: list, seen: dict, tracker: set, *, strict: bool = False) -> tup
     urls, pairs = set(), set()
     for entry in seen.values():
         if not isinstance(entry, dict):
-            raise ValueError("job_scraper/seen_jobs.json contains a non-object entry")
+            raise ValueError("user/job_scraper/seen_jobs.json contains a non-object entry")
         if isinstance(entry.get("url"), str):
             urls.add(entry["url"].rstrip("/"))
         pairs.add((norm(entry.get("company")), norm(entry.get("title"))))

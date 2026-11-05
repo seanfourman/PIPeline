@@ -38,18 +38,18 @@ as a font-size proxy to spot section headings. An orphaned entry header is found
 each line's TEXT starts, after any list marker merged into it, not by its left edge (see
 `find_orphans`).
 
-The thresholds below are calibrated for the stock moderncv (`cv/`) and cover.cls
+The thresholds below are calibrated for the stock moderncv (`user/cv/`) and cover.cls
 (`cover_letters/`) geometry. A template registered via `/add-template` may need them
 retuned - an article-class page number sitting outside the 90pt footer band, for
 instance, is read as body text and turns the space above it into a phantom hole.
 
 Usage:
-    python tools/verify_layout.py cv/main_acme_ml_engineer.pdf
-    python tools/verify_layout.py cover_letters/cover_acme_ml_engineer.pdf
+    python tools/verify_layout.py user/cv/main_acme_ml_engineer.pdf
+    python tools/verify_layout.py user/cover_letters/cover_acme_ml_engineer.pdf
 
 Exit codes: 0 clean, 1 layout problem, 2 bad invocation or no usable extractor.
 
-The shipped `cv/main_example.pdf` exits 1 by design: its placeholder page 2 is mostly
+The shipped `templates/user/cv/main_example.pdf` exits 1 by design: its placeholder page 2 is mostly
 empty, which is the thin-final-page failure the checklist asks you to fix before sending.
 
 Tests live in tests/test_verify_layout.py and run against synthetic pages, so the

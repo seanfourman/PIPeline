@@ -49,8 +49,9 @@ from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-STATE = ROOT / "job_scraper" / "seen_jobs.json"
-TRACKER = ROOT / "job_search_tracker.csv"
+# The user's own job list and tracker, in user/ (never committed).
+STATE = ROOT / "user" / "job_scraper" / "seen_jobs.json"
+TRACKER = ROOT / "user" / "job_search_tracker.csv"
 
 # 04-job-evaluation.md
 WEIGHTS = {"technical": 0.30, "experience": 0.25, "behavioral": 0.15, "career": 0.30}

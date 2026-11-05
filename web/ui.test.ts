@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createElement } from "react";
@@ -51,6 +51,12 @@ describe("the interface", () => {
 
   test("has the logo's head as the tab icon", () => {
     expect(readFileSync(path.join(import.meta.dir, "public", "icon.svg"), "utf8")).toContain(`d="${MARK_PATH}"`);
+  });
+
+  test("takes the stylesheet's images from the site's own files, which the page's security policy allows", () => {
+    const css = readFileSync(path.join(import.meta.dir, "public", "styles.css"), "utf8");
+    expect(css).not.toMatch(/url\(\s*["']?data:/);
+    for (const [, file] of css.matchAll(/url\(\s*["']?\/([\w.-]+)["']?\s*\)/g)) expect(existsSync(path.join(import.meta.dir, "public", file))).toBe(true);
   });
 
   test("never puts text in as HTML, because postings and agent replies are untrusted", () => {

@@ -14,6 +14,10 @@ the raw text layer an ATS parser actually sees.
 layer for a year joined to a Unicode dash - the en-dash LaTeX makes from `--`, which
 a Workday import dropped along with the date (`05-cv-templates.md`, "Date fields
 must be ASCII ranges") - and fails naming each hit with its code point.
+
+`--render` also writes each page as a PNG image, for an agent that reads pictures but
+not PDFs: Codex in the web app (`web/codex.ts`) looks at them for `apply.md` Step 5b's
+visual read, where Claude reads the PDF itself.
 """
 
 import argparse
@@ -28,10 +32,14 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # `.claude/settings.json` pre-approves this tool with any arguments, so where
 # `--dump-text` may write is part of that permission. The workflow only dumps a
-# CV's text layer beside it (`apply.md` Step 5d writes `cv/main_<company>_<role>.txt`);
+# CV's text layer beside it (`apply.md` Step 5d writes `user/cv/main_<company>_<role>.txt`);
 # a path anywhere else - a shell rc file, a script the allowlist runs - would be
 # an overwrite nobody was asked about.
-DUMP_TEXT_DIRS = ("cv", "cover_letters")
+DUMP_TEXT_DIRS = ("user/cv", "user/cover_letters")
+
+# `--render` is under the same permission, so it renders only a PDF in those folders,
+# into a `pages/` folder beside it, one `<pdf name>-<page>.png` per page.
+RENDER_DPI = 110
 
 
 class VerificationError(Exception):
@@ -49,6 +57,60 @@ def check_dump_target(path, root=ROOT):
     if not any(parent.is_relative_to((root / d).resolve()) for d in DUMP_TEXT_DIRS):
         return "must be inside this repo's " + " or ".join(f"{d}/" for d in DUMP_TEXT_DIRS)
     return None
+
+
+def check_render_target(path, root=ROOT):
+    """Return why `--render` may not write the pages of the PDF at `path`, or None if it may."""
+    path = Path(path)
+    if path.suffix.lower() != ".pdf":
+        return "must name a .pdf file"
+    parent = path.resolve().parent
+    if not any(parent.is_relative_to((root / d).resolve()) for d in DUMP_TEXT_DIRS):
+        return "must be inside this repo's " + " or ".join(f"{d}/" for d in DUMP_TEXT_DIRS)
+    if (parent / "pages").is_symlink():
+        return "its pages/ folder must not be a symlink"
+    return None
+
+
+def render_pages(pdf_path):
+    """Render every page of the PDF to `pages/<name>-<n>.png` beside it; return them in page order.
+
+    Poppler's `pdftoppm` (MiKTeX ships it) first, PyMuPDF if it is missing. The page
+    images of an earlier, longer version of the same PDF are removed first, so the list
+    is this PDF's pages and no other's.
+    """
+    pdf_path = Path(pdf_path)
+    if not pdf_path.is_file():
+        raise VerificationError(f"PDF does not exist: {pdf_path}")
+    folder = pdf_path.resolve().parent / "pages"
+    folder.mkdir(exist_ok=True)
+    page = re.compile(re.escape(pdf_path.stem) + r"-(\d+)\.png")
+    for old in folder.iterdir():
+        if page.fullmatch(old.name):
+            old.unlink()
+    try:
+        subprocess.run(
+            ["pdftoppm", "-png", "-r", str(RENDER_DPI), str(pdf_path), str(folder / pdf_path.stem)],
+            check=True,
+            capture_output=True,
+        )
+    except FileNotFoundError:
+        try:
+            import fitz  # PyMuPDF
+        except ImportError as exc:
+            raise VerificationError(
+                "rendering pages needs Poppler's pdftoppm or PyMuPDF (`pip install pymupdf`)"
+            ) from exc
+        with fitz.open(pdf_path) as doc:
+            for number, each in enumerate(doc, 1):
+                each.get_pixmap(dpi=RENDER_DPI).save(str(folder / f"{pdf_path.stem}-{number}.png"))
+    except subprocess.CalledProcessError as exc:
+        detail = exc.stderr.decode("utf-8", "replace").strip() if exc.stderr else ""
+        raise VerificationError(f"pdftoppm could not render the PDF: {detail or 'command failed'}") from exc
+    images = [p for p in folder.iterdir() if page.fullmatch(p.name)]
+    if not images:
+        raise VerificationError("no page images were made")
+    return sorted(images, key=lambda p: int(page.fullmatch(p.name).group(1)))
 
 
 def run_tool(command):
@@ -325,7 +387,7 @@ def build_parser():
     parser.add_argument(
         "--dump-text",
         type=Path,
-        help="write the extracted text layer to this .txt path under cv/ or cover_letters/ (UTF-8)",
+        help="write the extracted text layer to this .txt path under user/cv/ or user/cover_letters/ (UTF-8)",
     )
     parser.add_argument(
         "--ascii-dates",
@@ -334,6 +396,15 @@ def build_parser():
             "fail if the raw text layer has a year joined to a Unicode dash (the "
             "en-dash LaTeX makes from --), which ATS date parsers drop; this check "
             "never folds, unlike --contains"
+        ),
+    )
+    parser.add_argument(
+        "--render",
+        action="store_true",
+        help=(
+            "also render each page to pages/<name>-<n>.png beside the PDF and list them, for "
+            "an agent that reads pictures but not PDFs (a PDF under user/cv/ or "
+            "user/cover_letters/ only)"
         ),
     )
     return parser
@@ -352,6 +423,14 @@ def _force_utf8_output() -> None:
             reconfigure(encoding="utf-8")
 
 
+def _shown(path):
+    """A page image's path as the agent that runs this from the repo's root opens it."""
+    try:
+        return path.resolve().relative_to(ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
 def main(argv=None):
     _force_utf8_output()
     args = build_parser().parse_args(argv)
@@ -360,7 +439,16 @@ def main(argv=None):
         if reason:
             print(f"Error: --dump-text {args.dump_text}: {reason}", file=sys.stderr)
             return 1
+    if args.render:
+        reason = check_render_target(args.pdf)
+        if reason:
+            print(f"Error: --render {args.pdf}: {reason}", file=sys.stderr)
+            return 1
     try:
+        # The pictures come before the checks, so a PDF that fails one can still be looked at.
+        if args.render:
+            for image in render_pages(args.pdf):
+                print(f"Page image: {_shown(image)}")
         extractor, text, pages = verify_pdf(
             args.pdf,
             args.pages,

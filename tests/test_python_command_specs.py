@@ -33,6 +33,8 @@ SPEC_GLOBS = (
     ".claude/commands/*.md",
     ".claude/skills/**/*.md",
     ".claude/agents/*.md",
+    # The clean copies of the files each user personalizes in user/ (never committed).
+    "templates/user/**/*.md",
 )
 
 SPECS = sorted(
@@ -44,8 +46,8 @@ KNOWN_TOOL_SPECS = {
     ".claude/commands/rank.md",
     ".claude/commands/apply.md",
     ".claude/skills/job-scraper/SKILL.md",
-    ".claude/skills/job-application-assistant/04-job-evaluation.md",
-    ".claude/skills/job-application-assistant/05-cv-templates.md",
+    "templates/user/profile/04-job-evaluation.md",
+    "templates/user/profile/05-cv-templates.md",
     ".claude/skills/job-application-assistant/09-web-research.md",
 }
 

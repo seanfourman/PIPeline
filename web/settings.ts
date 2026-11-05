@@ -1,7 +1,9 @@
 // Search settings: which markets and areas to search, and how to tell the agent about them.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { INDUSTRIES, INDUSTRY_IDS, portalById, webPortals, type OwnPortal, type PortalSettings } from "./portals";
 import { fromList, listedRole, matchListed, type Role } from "./roles";
+import { APP_DIR } from "./user";
 
 export type Tier = "near" | "ok" | "edge" | "far";
 export type Area = { name: string; places: string[]; tier: Tier };
@@ -24,22 +26,32 @@ export type Settings = {
   // The AI the site works with first, the others connected taking over when it fails (ai.ts).
   aiPrimary: "claude" | "openai";
   // The server runs the automation, so none of this reaches the agent's files.
-  automation: { enabled: boolean; email: string; maxPerDay: number; runAt: string; minScore: number };
+  automation: { enabled: boolean; email: string; maxPerDay: number; runTimes: string[]; minScore: number };
   // The quick search's own choices on the jobs page, kept from one visit to the next: how recent, which market
   // ("all" or a code), the work type ("" follows workMode), and which areas show. Only the page uses these.
   quickSearch: { days: "1" | "7" | "14" | "30"; market: string; mode: "" | "any" | "remote" | "hybrid" | "onsite"; areas: "relevant" | "listed" | "all" };
+  // Whether the introduction for a new user was finished or put aside (ui/views/welcome.tsx).
+  introDone: boolean;
+  // The industries wanted (portals.ts INDUSTRIES), none meaning all; whether employers outside high-tech (health
+  // funds, hospitals, insurers, banks, government) are read; and the portals page's own choices: the portals
+  // switched off, and the user's own.
+  industries: string[];
+  lowTech: boolean;
+  portals: PortalSettings;
 };
 
 export const REMOTE = "REMOTE";
 const TIERS: Tier[] = ["near", "ok", "edge", "far"];
-const SETTINGS_FILE = path.join(import.meta.dir, "data", "settings.json");
+const SETTINGS_FILE = path.join(APP_DIR, "settings.json");
 
 export const EMPTY_SETTINGS: Settings = {
   displayName: "", home: "", markets: [], areas: [], workMode: "any", seniority: "any", relocate: false,
   roles: [{ id: "software", label: "Software", query: "Software Engineer" }],
   salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he", aiPrimary: "claude",
-  automation: { enabled: false, email: "", maxPerDay: 3, runAt: "09:00", minScore: 60 },
+  automation: { enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60 },
   quickSearch: { days: "14", market: "all", mode: "", areas: "relevant" },
+  introDone: false,
+  industries: [], lowTech: true, portals: { off: [], mine: [] },
 };
 
 // Ready-made areas for countries whose job locations are hard to type by hand.
@@ -54,6 +66,32 @@ export const REGION_PRESETS: Record<string, { name: string; places: string[] }[]
   ],
 };
 
+// The Israeli boards (boards.ts) name places in Hebrew, the areas above in English: each Hebrew name stands for the
+// English one the areas use, so a posting in "פתח תקווה" falls in the area with "petah". "קריית" is written "קרית"
+// and "תקוה" "תקווה" before they are looked up.
+export const HEBREW_PLACES: [string, string][] = [
+  ["תל אביב", "tel aviv"], ["רמת גן", "ramat gan"], ["גבעתיים", "givatayim"], ["בני ברק", "bnei brak"], ["פתח תקווה", "petah tikva"],
+  ["ראש העין", "rosh haayin"], ["חולון", "holon"], ["בת ים", "bat yam"], ["ראשון לציון", "rishon lezion"], ["רחובות", "rehovot"],
+  ["נס ציונה", "ness ziona"], ["יהוד", "yehud"], ["איירפורט סיטי", "airport city"], ["לוד", "lod"], ["רמלה", "ramla"],
+  ["קרית אונו", "kiryat ono"], ["אור יהודה", "or yehuda"], ["גבעת שמואל", "givat shmuel"], ["שוהם", "shoham"], ["יבנה", "yavne"],
+  ["נתניה", "netanya"], ["חדרה", "hadera"], ["אבן יהודה", "even yehuda"], ["קדימה", "kadima"], ["תל מונד", "tel mond"],
+  ["כפר סבא", "kfar saba"], ["רעננה", "raanana"], ["הרצליה", "herzliya"], ["הוד השרון", "hod hasharon"], ["רמת השרון", "ramat hasharon"],
+  ["כפר יונה", "kfar yona"], ["פרדס חנה", "pardes hanna"], ["אור עקיבא", "or akiva"], ["זכרון יעקב", "zichron"], ["בנימינה", "binyamina"],
+  ["חיפה", "haifa"], ["יקנעם", "yokneam"], ["קיסריה", "caesarea"], ["טירת כרמל", "tirat carmel"], ["נשר", "nesher"],
+  ["מגדל העמק", "migdal haemek"], ["עפולה", "afula"], ["נצרת", "nazareth"], ["נוף הגליל", "nof hagalil"], ["כרמיאל", "karmiel"],
+  ["בית שאן", "beit shean"], ["קרית ביאליק", "kiryat bialik"], ["קרית אתא", "kiryat ata"], ["קרית מוצקין", "kiryat motzkin"],
+  ["קרית ים", "kiryat yam"], ["קרית חיים", "kiryat haim"], ["קרית טבעון", "kiryat tivon"], ["קרית שמונה", "kiryat shmona"],
+  ["עכו", "akko"], ["נהריה", "nahariya"], ["טבריה", "tiberias"], ["צפת", "safed"],
+  ["מודיעין", "modiin"], ["ירושלים", "jerusalem"], ["בית שמש", "beit shemesh"], ["מבשרת ציון", "mevaseret"], ["מעלה אדומים", "maale adumim"],
+  ["אשדוד", "ashdod"], ["אשקלון", "ashkelon"], ["קרית גת", "kiryat gat"], ["קרית מלאכי", "kiryat malakhi"], ["באר שבע", "beer sheva"],
+  ["ירוחם", "yeruham"], ["דימונה", "dimona"], ["ערד", "arad"], ["אילת", "eilat"], ["שדרות", "sderot"], ["נתיבות", "netivot"], ["אופקים", "ofakim"],
+  ["גדרה", "gedera"], ["אריאל", "ariel"],
+];
+export function inEnglish(place: string) {
+  const he = place.replace(/קריית/g, "קרית").replace(/תקוה/g, "תקווה");
+  return HEBREW_PLACES.filter(([h]) => he.includes(h)).map(([, en]) => en).join(", ");
+}
+
 // These values end up in files the agent reads, so they stay single-line, short and plain.
 export const clean = (value: unknown, max = 80) =>
   String(value ?? "").replace(/[\u0000-\u001f\u007f<>`|]/g, " ").replace(/\s+/g, " ").trim().replace(/^-+/, "").slice(0, max);
@@ -62,6 +100,32 @@ const wholeNumber = (value: unknown, max: number) => {
   const number = Math.round(Number(value));
   return number > 0 && number <= max ? number : 0;
 };
+
+// A web address the user added as a portal: http or https on a named host, never this computer or its network,
+// since the portals check fetches a careers page added here.
+export function portalUrl(value: unknown) {
+  try {
+    const url = new URL(String(value ?? "").trim());
+    const host = url.hostname.toLowerCase();
+    if (!/^https?:$/.test(url.protocol) || !host.includes(".") || url.username || url.password) return "";
+    if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|0\.)|^172\.(1[6-9]|2\d|3[01])\.|\.local$|^\[/.test(host)) return "";
+    return url.href.slice(0, 500);
+  } catch {
+    return "";
+  }
+}
+
+function portalSettings(input: any): PortalSettings {
+  const mine = (Array.isArray(input?.mine) ? input.mine : []).slice(0, 60).flatMap((p: any): OwnPortal[] => {
+    const id = String(p?.id ?? "");
+    const url = portalUrl(p?.url);
+    const name = clean(p?.name, 60) || (url ? new URL(url).hostname.replace(/^www\./, "") : "");
+    return /^own-[a-z0-9]{4,16}$/.test(id) && url ? [{ id, name, url, kind: (["page", "group", "link"] as const).find((k) => k === p?.kind) ?? "link" }] : [];
+  });
+  const known = (id: string) => Boolean(portalById(id)) || mine.some((p) => p.id === id);
+  const off = [...new Set((Array.isArray(input?.off) ? input.off : []).map(String))].filter(known);
+  return { off, mine };
+}
 
 export function validateSettings(input: any): Settings {
   const markets = (Array.isArray(input?.markets) ? input.markets : []).slice(0, 3).flatMap((m: any): Market[] => {
@@ -91,7 +155,9 @@ export function validateSettings(input: any): Settings {
   const salary = [wholeNumber(input?.salaryMin, 10_000_000), wholeNumber(input?.salaryMax, 10_000_000)];
   const [salaryMin, salaryMax] = salary[0] && salary[1] ? salary.sort((a, b) => a - b) : salary;
   const email = clean(input?.automation?.email, 120);
-  const runAt = String(input?.automation?.runAt ?? "");
+  // Up to three run times a day, in order; a settings file from before keeps its one runAt.
+  const times = (Array.isArray(input?.automation?.runTimes) ? input.automation.runTimes : [input?.automation?.runAt])
+    .map(String).filter((t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t));
   return {
     displayName: clean(input?.displayName, 40),
     home: clean(input?.home),
@@ -112,7 +178,7 @@ export function validateSettings(input: any): Settings {
       enabled: input?.automation?.enabled === true,
       email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "",
       maxPerDay: Math.min(wholeNumber(input?.automation?.maxPerDay, 1000) || 3, 10),
-      runAt: /^([01]\d|2[0-3]):[0-5]\d$/.test(runAt) ? runAt : "09:00",
+      runTimes: times.length ? [...new Set<string>(times)].sort().slice(0, 3) : ["09:00"],
       minScore: wholeNumber(input?.automation?.minScore, 100) || 60,
     },
     // pick's first option is the one a missing or strange value gets; a market no longer chosen falls back to all.
@@ -122,6 +188,11 @@ export function validateSettings(input: any): Settings {
       mode: pick(input?.quickSearch?.mode, ["", "any", "remote", "hybrid", "onsite"] as const),
       areas: pick(input?.quickSearch?.areas, ["relevant", "listed", "all"] as const),
     },
+    introDone: input?.introDone === true,
+    industries: [...new Set((Array.isArray(input?.industries) ? input.industries : []).map(String))].filter((i) => INDUSTRY_IDS.includes(i)),
+    // On unless switched off, so settings saved before it existed get it.
+    lowTech: input?.lowTech !== false,
+    portals: portalSettings(input?.portals),
   };
 }
 
@@ -181,6 +252,10 @@ export function renderBlock(s: Settings) {
     "- **Anything else:** Inside a listed market but not in a listed area, FLAG it when areas are set, otherwise PASS. Remote and hybrid jobs that hire in a listed market PASS unless the work mode above excludes them. Outside every listed market, FAIL.",
     `- **Role focus:** ${s.roles.map((r) => r.query).join("; ") || "not set"}`,
     `- **Fields of interest:** ${s.fields || "not set"}`,
+    `- **Industries wanted:** ${s.industries.map((id) => INDUSTRIES.find((i) => i.id === id)?.en).filter(Boolean).join(", ") || "any"}`,
+    `- **Employers outside high-tech:** ${s.lowTech ? "wanted (health funds, hospitals, insurers, banks, government, academia and the like), and rank them like any other employer" : "not wanted, so skip them"}.`,
+    "- **Read by the web interface itself:** the Israeli boards AllJobs, Drushim and JobMaster, and the employers on its portals page, are searched by the server's portals check in the same daily run, so don't search those here.",
+    `- **Also search with WebSearch** (sites the search tools don't cover; run each role, in English and in Hebrew, with site:): ${webPortals(s).map((p) => `site:${p.site}`).join(", ") || "none"}. For posts, add words like hiring, מגייסים or דרושים to the role; a post only counts when it names an employer and a way to apply.`,
     `- **Student positions:** ${STUDENT_JOBS[s.studentJobs]}.`,
     `- **Salary expectations:** ${salaryLine(s)}.`,
     `- **Conversation language:** ${s.language === "en" ? "English" : "Hebrew"}. Talk to the candidate in this language. CVs and application material keep their own language rules.`,
@@ -198,13 +273,17 @@ function replaceBlock(text: string, block: string) {
   return text.slice(0, start) + block + text.slice(end + END.length);
 }
 
-const AGENT_FILES = ["CLAUDE.md", ".claude/skills/job-scraper/search-queries.md"];
+// The user's own instructions and queries, in user/ (user.ts); one not there yet starts from templates/user/.
+const AGENT_FILES = ["user/CLAUDE.md", "user/search-queries.md"];
 
 export function syncWorkspace(settings: Settings, repo: string) {
   const block = renderBlock(settings);
   for (const rel of AGENT_FILES) {
     const file = path.join(repo, rel);
-    writeFileSync(file, replaceBlock(readFileSync(file, "utf8"), block));
+    const starting = path.join(repo, "templates", rel);
+    const text = existsSync(file) ? readFileSync(file, "utf8") : existsSync(starting) ? readFileSync(starting, "utf8") : "";
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, replaceBlock(text, block));
   }
 }
 

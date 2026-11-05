@@ -591,22 +591,34 @@ function Quick() {
   }, [shut]);
   const showing = (which: typeof menu) => menu === which || shut === which;
   const panelClass = (which: typeof menu) => (menu === which ? "" : "closing");
-  // The first search of a visit: everything rises from the middle of the page to the top (from where the box
-  // was, rise). Pip rides up on the box for a moment, frightened, then leaps off it and runs away (EscapingPip).
-  // He is back on the box the next time the page opens.
+  // The first search of a visit: the box and the roles rise from the middle of the page to the top (from where
+  // the box was, rise), and the question over them goes down into the box as it rises, fading, gone by the time
+  // the box is up. Pip rides up on the box for a moment, frightened, then leaps off it and runs away
+  // (EscapingPip). He is back on the box the next time the page opens.
   const page = useRef<HTMLDivElement>(null);
-  const rise = useRef<number | null>(null);
+  const rise = useRef<{ box: number; title: number } | null>(null);
   const [pip, setPip] = useState<{ phase: "rest" | "scared" | "escape" | "gone"; x?: number; y?: number }>({ phase: "rest" });
   const asked = search.results !== null || search.busy;
   useLayoutEffect(() => {
     const before = rise.current;
     rise.current = null;
     const box = page.current?.querySelector<HTMLElement>(".seek-box");
+    const title = page.current?.querySelector<HTMLElement>(".seek-title");
     if (before === null || !box) return;
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setPip({ phase: "gone" }); return; }
-    const dy = before - box.getBoundingClientRect().top;
-    for (const el of page.current!.querySelectorAll<HTMLElement>(":scope > .seek-title, :scope > .seek-box, :scope > .seek-pills")) {
-      el.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], { duration: RISE_MS, easing: "cubic-bezier(0.45, 0, 0.25, 1)" });
+    const easing = "cubic-bezier(0.45, 0, 0.25, 1)";
+    const now = box.getBoundingClientRect();
+    const dy = before.box - now.top;
+    for (const el of page.current!.querySelectorAll<HTMLElement>(":scope > .seek-box, :scope > .seek-pills")) {
+      el.animate([{ translate: `0 ${dy}px` }, { translate: "0 0" }], { duration: RISE_MS, easing });
+    }
+    if (title) {
+      // From where it was to the middle of the box where it ends up, with the box's easing, so it keeps going down
+      // into the box all the way up; it slips under the box's top edge as it fades out.
+      const at = title.getBoundingClientRect();
+      const into = now.top + now.height / 2 - at.height / 2 - at.top;
+      title.animate([{ translate: `0 ${before.title - at.top}px`, scale: 1 }, { translate: `0 ${into}px`, scale: 0.6 }], { duration: RISE_MS, easing });
+      title.animate([{ opacity: 1 }, { opacity: 0 }], { duration: RISE_MS * 0.55, easing: "ease-in" });
     }
   }, [asked]);
   // A moment of fright on the rising box, then off it, from where he is by then.
@@ -634,7 +646,9 @@ function Quick() {
 
   const run = async (query = q) => {
     if (!asked) {
-      rise.current = page.current?.querySelector(".seek-box")?.getBoundingClientRect().top ?? null;
+      const box = page.current?.querySelector(".seek-box")?.getBoundingClientRect();
+      const title = page.current?.querySelector(".seek-title")?.getBoundingClientRect();
+      rise.current = box ? { box: box.top, title: title?.top ?? box.top } : null;
       if (pip.phase === "rest") setPip({ phase: "scared" });
     }
     search.q = query;

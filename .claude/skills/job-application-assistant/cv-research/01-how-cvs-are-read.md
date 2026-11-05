@@ -1,0 +1,39 @@
+---
+framework_version: 1.0.0
+---
+
+# How CVs Are Read
+
+The evidence for rules 1 to 3 in `../10-cv-best-practices.md`.
+
+## What to take from it
+
+- Software parses a CV first. Recruiters then search it by title and keywords, and at many large employers an AI grades it against the posting before a person sees it.
+- A person's first look takes seconds and lands on job titles, employers and the first words of lines. A CV that passes that look is then read with care.
+- Employers look for evidence of problem-solving, teamwork, communication and initiative, and only facts on the page can show it.
+
+## The first screen
+
+- **Seconds, and mostly the titles.** TheLadders' eye-tracking studies measured 6 seconds on average in 2012 and 7.4 seconds in 2018. Recruiters spent most of that time on job titles, and simple layouts read in an F or E pattern did best. Sources: [HR Dive on the 2018 study](https://www.hrdive.com/news/recruiters-spend-74-seconds-looking-at-your-resume/541582/), [the 2012 study (PDF)](https://csuglobal.edu/sites/default/files/blog-files/theladders-eyetracking-studyc2.pdf).
+- **Other measures are longer.** IBM's careers blog says reviewers often spend about 30 seconds on a CV, and an Israeli recruiting manager (Cervello) says recruiters decide in about 30 seconds whether to read on. Sources: [IBM](https://www.ibm.com/careers/blog/eight-common-resume-writing-mistakes-that-keep-you-from-getting-your-dream-job), [Mako](https://www.mako.co.il/finances-money/Article-02c0a6072605581027.htm).
+- **A CV that passes is read with care.** In Resume Genius's 2024 survey of 625 US hiring managers, most said they evaluate each CV carefully, and the 7-second figure has been called a myth. Both views lead to the same rule: the top of the page decides whether the rest is read. Sources: [Resume Genius](https://resumegenius.com/blog/resume-help/resume-red-flags), [ClearanceJobs](https://news.clearancejobs.com/2024/09/23/the-7-second-resume-review-stat-is-a-lie/).
+
+## Hiring systems
+
+- **They rarely reject a CV on their own.** The claim that 75% of CVs are rejected by software traces back to a 2012 sales pitch by a company called Preptel. In Enhancv's survey of recruiters, 92% said their system does not auto-reject CVs for their format or content. Sources: [ITBrief](https://itbrief.co.uk/story/study-reveals-ats-rarely-auto-rejects-cvs-debunks-75-myth), [HiringThing](https://blog.hiringthing.com/applicant-tracking-systems-arent-excluding-job-applicants-people-are).
+- **Recruiters search them, now and later.** Greenhouse lets recruiters run full-text Boolean searches across their candidates. Lever's advanced search combines keywords, Boolean logic and filters (title, company, location, a resume keyword) across the whole database, the active pipeline and the archive alike. A CV sent today can therefore be found for another role months later, but only by the words it contains. Sources: [Greenhouse support](https://support.greenhouse.io/hc/en-us/articles/202360199-Search-candidates-using-Boolean-queries), [Lever help: searching the database](https://help.lever.co/hc/en-us/articles/20087317030685), [Lever help: advanced search and rediscovery](https://help.lever.co/hc/en-us/articles/20087212721309).
+- **AI grades them at large employers.** Workday's HiredScore grades each candidate from A to D by how well the CV matches the skills, education and experience in the job description. A means the candidate meets or exceeds the basic requirements, B that they meet them, C that they meet some, and D that they meet none. Since an August 2026 update, a candidate who meets every basic qualification gets an A or a B, and the preferred qualifications separate A from B. Workday tells recruiters that C and D candidates may still fit and should be reviewed too. Sources: [Workday's documentation](https://doc.workday.com/hiredscore/en-us/workday-hiredscore/recruiter-productivity-/concept--hiredscore-grades.html), [the August 2026 release note](https://doc.workday.com/hiredscore/en-us/workday-hiredscore/hiredscore-release-notes/2026/august/wednesday--5th-august.html).
+- **AI screeners read for evidence.** Tools such as Eightfold and HiredScore infer skills from the whole CV, so a skill shown in use counts where a bare list may not. Careers that don't run in a straight line can be ranked lower. Sources: [Jobmentis on Eightfold](https://www.jobmentis.com/en/guide/eightfold-ai-ats), [Jobscan on AI screening](https://www.jobscan.co/blog/blog-ai-resume-screening/).
+- **Exact words count.** Jobscan, which sells a matching tool, says most systems match keywords exactly ("project management" does not match "managed projects") and that some weigh how often a term appears. Vendor guidance. Source: [Jobscan's tutorial](https://www.jobscan.co/jobscan-tutorial).
+- **Layout can break the parsing.** Tables and columns can be read out of order, and text in headers and footers is often skipped. Enhancv's tests found that modern parsers mostly cope with two columns, but not all of them do, so one column is the layout that never fails. Sources: [Jobscan on tables and columns](https://www.jobscan.co/blog/resume-tables-columns-ats/), [Jobscan on formatting mistakes](https://www.jobscan.co/blog/ats-formatting-mistakes/), [Enhancv's two-column test](https://enhancv.com/blog/two-column-resume-ats-test/).
+
+## What employers look for
+
+- **On a CV: problem-solving, teamwork, communication, initiative.** In NACE's Job Outlook 2025 survey (237 employers, August and September 2024), nearly 90% look on a CV for evidence of problem-solving and nearly 80% for teamwork. At least 70% look for written communication, initiative, a strong work ethic and technical skills, and more than two-thirds for verbal communication, flexibility and analytical or quantitative skills. Source: [NACE](https://naceweb.org/talent-acquisition/candidate-selection/what-employers-seek-on-a-resume).
+- **At the largest employers: learning, ownership, impact.** Google's hiring attributes, as Laszlo Bock described them in 2014 and 2015, are general cognitive ability (the ability to learn), emergent leadership, "Googleyness" and role-related knowledge, which he called the least important. Microsoft says it seeks "candidates that demonstrate a growth mindset, always learning and showing curiosity". Amazon calls its Leadership Principles "the framework of how we evaluate potential candidates". Sources: [World Economic Forum, 2015](https://www.weforum.org/stories/2015/04/13-qualities-google-looks-for-in-job-candidates/), [Microsoft News](https://news.microsoft.com/en-cee/?p=2228), [Amazon](https://www.aboutamazon.com/news/workplace/successful-amazon-job-candidates).
+- **Skills first.** LinkedIn reports that recruiters are 25% more likely to search by skills than three years earlier. Source: [Jobscan on LinkedIn's report](https://www.jobscan.co/blog/linkedin-report-skills-first-hiring/).
+
+## Bias in the readers
+
+- **People.** In Bertrand and Mullainathan's field experiment, identical CVs with White-sounding names got more callbacks than those with Black-sounding names, and higher-quality CVs got about 30% more callbacks for White names. The CV's quality matters, and so do details that shouldn't. Source: [NBER working paper 9873](https://www.nber.org/papers/w9873).
+- **AI.** A 2024 University of Washington study ran three AI models over more than 550 real CVs with the names changed. White-associated names were preferred 85% of the time and Black-associated names 9%; male-associated names 52% and female-associated names 11%. Nothing on a CV fixes this, but it is one more reason the CV carries nothing personal beyond the name and the contact line. Sources: [UW News](https://www.washington.edu/news/2024/10/31/ai-bias-resume-screening-race-gender/), [the paper](https://arxiv.org/abs/2407.20371).

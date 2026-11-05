@@ -5,20 +5,28 @@
 // and says which aren't worth keeping; and all of them are stored (scrape_state.py store), the ones not kept as
 // skipped, so they aren't found as new again. The full scoring is the ranking's. Claude's /job-scraper command
 // stays as it is, for a conversation.
-import { rmSync, writeFileSync } from "node:fs";
+//
+// The portals check (scanPortals) goes the same way from another start: the employers on the portals page
+// (portals.ts), each one's own list of jobs read for the roles' fields (boards.ts), and in the daily run the Israeli
+// boards searched for every role as well, since the run's agent searches only LinkedIn and freehire.
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pageFetcher, readEmployer, readOwnPage, type Fetch, type Found } from "./boards";
 import { ChatbotError } from "./chatbots";
-import { searchJobs } from "./data";
+import { classifyLocation, searchJobs } from "./data";
+import { employersToRead } from "./portals";
 import { candidateContext, FATAL, PYTHON, runTool, type Ask, type Run, type Steps } from "./ranker";
 import { loadSettings, type Settings } from "./settings";
+import { APP_DIR } from "./user";
 
 const AT_ONCE = 3;
 // Hits judged in one answer.
 const BATCH = 40;
 const FITS = ["high", "medium", "low"];
 
-type Hit = { title: string; company: string; location: string; tier: string; date: string; url: string; source: string };
+// portal: for a hit found on an employer's own list, that employer on the portals page.
+type Hit = { title: string; company: string; location: string; tier: string; date: string; url: string; source: string; portal?: string };
 export type Search = (role: string, settings: Settings) => Promise<{ results: Hit[]; failed: string[] }>;
 type Judged = { fit: string; keep: boolean; reason: string };
 
@@ -58,6 +66,8 @@ const WORDS = {
     unjudged: (n: number) => `${n} לא נבדקו, ויימצאו שוב בחיפוש הבא.`, stopped: "החיפוש נעצר באמצע, ומה שכבר נבדק נשמר.",
     cols: ["#", "התאמה", "תפקיד", "חברה", "מקום", "קישור"], open: "פתיחה", fits: { high: "גבוהה", medium: "בינונית", low: "נמוכה" } as Record<string, string>,
     next: "אפשר עכשיו לדרג אותן מתפריט הכוכבים בדף המשרות.",
+    portals: "בדיקת פורטלים", read: (n: number) => `קראתי את רשימות המשרות של ${n === 1 ? "מעסיק אחד" : `${n} מעסיקים`}.`, boards: "וחיפשתי את התפקידים ב-AllJobs, בדרושים וב-JobMaster.",
+    none: "אין עכשיו פורטלים לקרוא: כולם כבויים, או שמעסיקים שמחוץ להייטק כבויים בהגדרות.",
   },
   en: {
     title: "Smart search", searched: (roles: number, markets: number) => `Searched ${roles} roles in ${markets === 1 ? "one market" : `${markets} markets`}.`,
@@ -66,44 +76,23 @@ const WORDS = {
     unjudged: (n: number) => `${n} weren't checked, and will be found again next search.`, stopped: "The search stopped partway; what was checked is saved.",
     cols: ["#", "Fit", "Role", "Company", "Place", "Link"], open: "Open", fits: { high: "High", medium: "Medium", low: "Low" } as Record<string, string>,
     next: "You can rank them now from the sparkles' menu on the jobs page.",
+    portals: "Portals check", read: (n: number) => `Read the job lists of ${n === 1 ? "one employer" : `${n} employers`}.`, boards: "Searched the roles on AllJobs, Drushim and JobMaster too.",
+    none: "There are no portals to read right now: they're all switched off, or employers outside high-tech are off in the settings.",
   },
 };
 
 const defaultSearch: Search = (role, settings) => searchJobs(role, "14", "all", settings.workMode, settings);
 
-export async function scrapeJobs(o: { ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; settings?: Settings; run?: Run; search?: Search; system?: string; today?: string }) {
-  const { ask, steps, signal, lang, run = runTool, search = defaultSearch } = o;
-  const settings = o.settings ?? loadSettings();
-  const w = WORDS[lang];
-  const roles = [...new Set(settings.roles.map((r) => r.query).filter(Boolean))];
-  if (!settings.markets.length) throw new ChatbotError("scrape_no_market");
-  if (!roles.length) throw new ChatbotError("scrape_no_roles");
+type Judging = { ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; run?: Run; system?: string; today?: string };
 
-  // Every role, three at a time; a posting found by two roles counts once.
-  const hits = new Map<string, Hit>();
-  const failed = new Set<string>();
-  let next = 0;
-  const worker = async () => {
-    while (!signal.aborted && next < roles.length) {
-      const role = roles[next++];
-      const id = `search-${next}`;
-      steps.start(id, role, "SearchRole");
-      try {
-        const found = await search(role, settings);
-        for (const hit of found.results) if (hit.url && !hits.has(hit.url)) hits.set(hit.url, hit);
-        found.failed.forEach((f) => failed.add(f));
-        steps.done(id, true, `${found.results.length}`);
-      } catch (err) {
-        steps.done(id, false, oneLine((err as Error)?.message ?? err));
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: AT_ONCE }, worker));
-
+// The hits found, through the list's own tool, judged by the AI a batch at a time and stored, kept and skipped alike.
+async function judgeAndStore(found: Hit[], o: Judging & { run: Run }) {
+  const { ask, steps, signal, lang, run } = o;
   // What the list already has, or was applied to, is left out before anything is judged.
-  const pool = [...hits.values()].map((h) => ({
+  const pool = found.map((h) => ({
     title: h.title, company: h.company, url: h.url, location: h.location, tier: h.tier,
-    portal: `${h.source}-search`, source: "cli", posted_date: /^\d{4}-\d{2}-\d{2}/.test(h.date) ? h.date.slice(0, 10) : null,
+    portal: h.source === "page" ? "careers-page" : `${h.source}-search`, source: "cli", posted_date: /^\d{4}-\d{2}-\d{2}/.test(h.date) ? h.date.slice(0, 10) : null,
+    ...(h.portal ? { portal_id: h.portal } : {}),
   }));
   const file = path.join(os.tmpdir(), `ai-job-search-scrape-${crypto.randomUUID()}.json`);
   let fresh: typeof pool = [];
@@ -165,20 +154,134 @@ export async function scrapeJobs(o: { ask: Ask; steps: Steps; signal: AbortSigna
       rmSync(file, { force: true });
     }
   }
-
   const kept = fresh.map((h, i) => ({ h, j: judged.get(i) })).filter((x) => x.j?.keep).sort((a, b) => FITS.indexOf(a.j!.fit) - FITS.indexOf(b.j!.fit));
   const skipped = fresh.map((h, i) => ({ h, j: judged.get(i) })).filter((x) => x.j && !x.j.keep);
+  return { kept, skipped, unjudged: fresh.length - judged.size, already, engines };
+}
+
+// The report the conversation ends with: what was done, the kept jobs in a table, best first, and what was skipped.
+function report(lang: "he" | "en", head: string, done: Awaited<ReturnType<typeof judgeAndStore>>, failed: Set<string>, stopped: boolean) {
+  const w = WORDS[lang];
+  const { kept, skipped, unjudged, already, engines } = done;
   const cell = (v: unknown) => String(v ?? "").replace(/\|/g, "/").replace(/\s+/g, " ").trim();
   const link = (url: string) => `[${w.open}](${url.replace(/[()\s]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`)})`;
-  const out = [`## ${w.title}`, [w.searched(roles.length, settings.markets.length), w.found(kept.length), w.already(already), engines.size ? w.by([...engines].join(", ")) : "", signal.aborted ? w.stopped : ""].filter(Boolean).join(" ")];
+  const out = [head, [w.found(kept.length), w.already(already), engines.size ? w.by([...engines].join(", ")) : "", stopped ? w.stopped : ""].filter(Boolean).join(" ")];
   if (kept.length) {
     out.push([`| ${w.cols.join(" | ")} |`, `|${w.cols.map(() => "---").join("|")}|`,
       ...kept.map(({ h, j }, i) => `| ${i + 1} | ${w.fits[j!.fit]} | ${cell(h.title)} | ${cell(h.company)} | ${cell(h.location)} | ${link(h.url)} |`)].join("\n"));
   }
   if (skipped.length) out.push(`### ${w.skipped}`, skipped.map(({ h, j }) => `- ${cell(h.title)}, ${cell(h.company)}${j!.reason ? `: ${cell(j!.reason)}` : ""}`).join("\n"));
-  const unjudged = fresh.length - judged.size;
   if (unjudged > 0) out.push(w.unjudged(unjudged));
   if (failed.size) out.push(w.failed([...failed].join(", ")));
   if (kept.length) out.push(w.next);
-  return out.join("\n\n");
+  return out;
+}
+
+// Every role, three at a time; a posting found by two roles counts once.
+async function searchRoles(roles: string[], settings: Settings, search: Search, steps: Steps, signal: AbortSignal) {
+  const hits = new Map<string, Hit>();
+  const failed = new Set<string>();
+  let next = 0;
+  const worker = async () => {
+    while (!signal.aborted && next < roles.length) {
+      const role = roles[next++];
+      const id = `search-${next}`;
+      steps.start(id, role, "SearchRole");
+      try {
+        const found = await search(role, settings);
+        for (const hit of found.results) if (hit.url && !hits.has(hit.url)) hits.set(hit.url, hit);
+        found.failed.forEach((f) => failed.add(f));
+        steps.done(id, true, `${found.results.length}`);
+      } catch (err) {
+        steps.done(id, false, oneLine((err as Error)?.message ?? err));
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: AT_ONCE }, worker));
+  return { hits, failed };
+}
+
+export async function scrapeJobs(o: { ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; settings?: Settings; run?: Run; search?: Search; system?: string; today?: string }) {
+  const { steps, signal, lang, run = runTool, search = defaultSearch } = o;
+  const settings = o.settings ?? loadSettings();
+  const w = WORDS[lang];
+  const roles = [...new Set(settings.roles.map((r) => r.query).filter(Boolean))];
+  if (!settings.markets.length) throw new ChatbotError("scrape_no_market");
+  if (!roles.length) throw new ChatbotError("scrape_no_roles");
+  const { hits, failed } = await searchRoles(roles, settings, search, steps, signal);
+  const done = await judgeAndStore([...hits.values()], { ...o, run });
+  const [head, line, ...rest] = report(lang, `## ${w.title}`, done, failed, signal.aborted);
+  return [head, [w.searched(roles.length, settings.markets.length), line].join(" "), ...rest].join("\n\n");
+}
+
+// ---------- the portals check ----------
+
+// Each portal's last check, for the portals page: when, how many postings for the roles it had, how many were new
+// and kept, and what went wrong if it did.
+export type PortalCheck = { checked: string; found: number; kept: number; error?: string };
+const CHECKS_FILE = path.join(APP_DIR, "portals.json");
+export function readPortalChecks(file = CHECKS_FILE): Record<string, PortalCheck> {
+  try { return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {}; } catch { return {}; }
+}
+
+const boardsOnly: Search = (role, settings) => searchJobs(role, "14", "all", settings.workMode, settings, "boards");
+
+// The employers on the portals page read, four at a time (each site still one page at a time, boards.ts), and the
+// user's own careers pages; with boards, the Israeli boards searched for every role as well. checks is where each
+// portal's result is kept.
+export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; boards?: boolean; search?: Search; checks?: string }) {
+  const { steps, signal, lang, run = runTool } = o;
+  const settings = o.settings ?? loadSettings();
+  const fetch = o.fetch ?? pageFetcher(run);
+  const w = WORDS[lang];
+  const today = o.today ?? new Date().toLocaleDateString("en-CA");
+  if (!settings.roles.length) throw new ChatbotError("scrape_no_roles");
+  const employers = employersToRead(settings);
+  const own = settings.portals.mine.filter((p) => p.kind === "page" && !settings.portals.off.includes(p.id));
+  const israel = settings.markets.some((m) => m.code === "IL");
+  if (!employers.length && !own.length && !(o.boards && israel)) return `## ${w.portals}\n\n${w.none}`;
+
+  const found: Hit[] = [];
+  const failed = new Set<string>();
+  const checks = readPortalChecks(o.checks);
+  const checkedAt = new Date().toISOString();
+  const lists = [
+    ...employers.map((p) => ({ id: p.id, name: lang === "he" ? p.he : p.en, read: () => readEmployer(p, settings.roles, { fetch, today, signal }) })),
+    ...own.map((p) => ({ id: p.id, name: p.name, read: () => readOwnPage(p.id, p.name, p.url, settings.roles, { fetch, today, signal }) })),
+  ];
+  const perPortal = new Map<string, Found[]>();
+  let next = 0;
+  const worker = async () => {
+    while (!signal.aborted && next < lists.length) {
+      const list = lists[next++];
+      steps.start(`portal-${list.id}`, list.name, "ReadPortal");
+      try {
+        const postings = await list.read();
+        perPortal.set(list.id, postings);
+        found.push(...postings.map((p) => ({ ...p, tier: classifyLocation(p.location, settings.areas) })));
+        checks[list.id] = { checked: checkedAt, found: postings.length, kept: 0 };
+        steps.done(`portal-${list.id}`, true, `${postings.length}`);
+      } catch (err) {
+        failed.add(list.name);
+        checks[list.id] = { checked: checkedAt, found: 0, kept: 0, error: oneLine((err as Error)?.message ?? err, 120) };
+        steps.done(`portal-${list.id}`, false, oneLine((err as Error)?.message ?? err));
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: 4 }, worker));
+
+  const roles = [...new Set(settings.roles.map((r) => r.query).filter(Boolean))];
+  if (o.boards && israel && !signal.aborted) {
+    const searched = await searchRoles(roles, settings, o.search ?? boardsOnly, steps, signal);
+    found.push(...searched.hits.values());
+    searched.failed.forEach((f) => failed.add(f));
+  }
+
+  const done = await judgeAndStore(found, { ...o, run, today: o.today });
+  for (const { h } of done.kept) if (h.portal_id && checks[h.portal_id]) checks[h.portal_id].kept++;
+  mkdirSync(path.dirname(o.checks ?? CHECKS_FILE), { recursive: true });
+  writeFileSync(o.checks ?? CHECKS_FILE, JSON.stringify(checks, null, 2));
+  const head = [w.read(lists.length), o.boards && israel ? w.boards : ""].filter(Boolean).join(" ");
+  const [title, line, ...rest] = report(lang, `## ${w.portals}`, done, failed, signal.aborted);
+  return [title, [head, line].join(" "), ...rest].join("\n\n");
 }

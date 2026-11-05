@@ -19,11 +19,13 @@ import unittest
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-SKILL_DIR = REPO / ".claude" / "skills" / "job-application-assistant"
+# The clean copies of the guides; each user's own are in user/profile/, never committed.
+SKILL_DIR = REPO / "templates" / "user" / "profile"
 CV_TEMPLATES = SKILL_DIR / "05-cv-templates.md"
 COVER_TEMPLATES = SKILL_DIR / "06-cover-letter-templates.md"
 APPLY = REPO / ".claude" / "commands" / "apply.md"
-EXAMPLE_CV = REPO / "cv" / "main_example.tex"
+# The clean master CV a new user starts from; each user's own is user/cv/main_example.tex.
+EXAMPLE_CV = REPO / "templates" / "user" / "cv" / "main_example.tex"
 EXAMPLE_COVER = REPO / "cover_letters" / "cover_example.tex"
 
 # \item whose body starts with [ - with or without whitespace between.
@@ -177,20 +179,20 @@ class TestPdflatexFontEncodingGuard(unittest.TestCase):
 
 
 class TestGeometryScaleAlignment(unittest.TestCase):
-    """The geometry scale specified in 05-cv-templates.md must match cv/main_example.tex."""
+    """The geometry scale specified in 05-cv-templates.md must match the example master CV."""
 
     GEOMETRY_SCALE = re.compile(r"\\usepackage\[scale=([0-9.]+)\]\{geometry\}")
 
     def test_cv_guide_and_example_cv_share_geometry_scale(self):
         cv_match = self.GEOMETRY_SCALE.search(EXAMPLE_CV.read_text(encoding="utf-8"))
         guide_match = self.GEOMETRY_SCALE.search(CV_TEMPLATES.read_text(encoding="utf-8"))
-        self.assertIsNotNone(cv_match, "cv/main_example.tex must declare geometry scale")
+        self.assertIsNotNone(cv_match, "the example master CV must declare geometry scale")
         self.assertIsNotNone(guide_match, "05-cv-templates.md must declare geometry scale")
         self.assertEqual(
             guide_match.group(1),
             cv_match.group(1),
             f"05-cv-templates.md geometry scale ({guide_match.group(1)}) must match "
-            f"cv/main_example.tex ({cv_match.group(1)})",
+            f"templates/user/cv/main_example.tex ({cv_match.group(1)})",
         )
 
 

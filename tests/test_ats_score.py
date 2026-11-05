@@ -8,12 +8,12 @@ spec = importlib.util.spec_from_file_location("ats", REPO / "templates" / "cv" /
 ats = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ats)
 
-GOOD_CV = """DANA LEVI
-dana.levi@example.com | 050-123-4567
+GOOD_CV = """DANA COHEN
+dana.cohen@example.com | 050-123-4567
 TECHNICAL SKILLS
 Languages: TypeScript, Python
 PROFESSIONAL EXPERIENCE
-YOOZ - Junior Software Engineer (Part-Time) Aug 2025 - Present
+Example Ltd - Junior Software Engineer (Part-Time) Aug 2025 - Present
 Built features in React and Node.js.
 EDUCATION
 B.Sc. in Computer Science 2023 - 2026
@@ -57,7 +57,7 @@ class Score(unittest.TestCase):
         self.assertIsNone(ats.score(GOOD_CV, "Be a great teammate who knows React.")["score"])
 
     def test_an_unreadable_cv_scores_zero_however_many_terms_match(self):
-        result = ats.score(GOOD_CV.replace("dana.levi@example.com", "(cid:12)"), "TypeScript, React, Node.js")
+        result = ats.score(GOOD_CV.replace("dana.cohen@example.com", "(cid:12)"), "TypeScript, React, Node.js")
         self.assertEqual(result["score"], 0)
         self.assertEqual(len(result["problems"]), 2)
 
@@ -80,7 +80,7 @@ class ParseProblems(unittest.TestCase):
         cases = {
             "no phone number as text": GOOD_CV.replace("050-123-4567", "LINKEDIN"),
             "a main section heading is missing": GOOD_CV.replace("EDUCATION", "SCHOOL"),
-            "the section headings are out of order": "dana.levi@example.com 050-123-4567 Aug 2025 - Present EDUCATION TECHNICAL SKILLS PROFESSIONAL EXPERIENCE",
+            "the section headings are out of order": "dana.cohen@example.com 050-123-4567 Aug 2025 - Present EDUCATION TECHNICAL SKILLS PROFESSIONAL EXPERIENCE",
             "no job dates with months": GOOD_CV.replace("Aug 2025 - Present", "2025 - Present"),
             "a date range uses a non-ASCII dash": GOOD_CV.replace("2023 - 2026", "2023–2026"),
         }

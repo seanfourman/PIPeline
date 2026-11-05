@@ -93,8 +93,8 @@ export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scra
 // sections are for /apply), the profile without the ways to reach the candidate, which judging never needs, and
 // the search settings without the salary. The smart search's quick fit gets it too (scraper.ts).
 export function candidateContext(repoRead = read, settingsBlock = () => renderBlock(loadSettings())) {
-  const framework = repoRead(".claude/skills/job-application-assistant/04-job-evaluation.md").split("### 6. Salary Benchmark")[0].trim();
-  const profile = repoRead(".claude/skills/job-application-assistant/01-candidate-profile.md").split("\n")
+  const framework = repoRead("user/profile/04-job-evaluation.md").split("### 6. Salary Benchmark")[0].trim();
+  const profile = repoRead("user/profile/01-candidate-profile.md").split("\n")
     .filter((line) => !/^- \*\*(Phone|Email|LinkedIn|GitHub):\*\*/.test(line)).join("\n").trim();
   const settings = settingsBlock().split("\n").filter((line) => !/^<!--|Salary expectations|Conversation language/.test(line)).join("\n");
   return ["# Scoring framework", framework, "# Candidate profile", profile, "# Search settings", settings];

@@ -5,9 +5,14 @@ import { api, Btn, Card, External, Field, Icon, Page, Spinner } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Select } from "../select";
 import { fromList, listedRole, matchListed, ROLE_FIELDS, roleQuery } from "../../roles";
+import { PixelArt, Tick } from "./home";
+import { IndustryPicker } from "./portals";
 
 const COUNTRY_CODES = "AD AE AF AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BJ BN BO BR BS BT BW BY BZ CA CD CF CG CH CI CL CM CN CO CR CU CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FR GA GB GD GE GH GM GN GQ GR GT GW GY HK HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KG KH KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MK ML MM MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NZ OM PA PE PG PH PK PL PR PS PT PY QA RO RS RU RW SA SC SD SE SG SI SK SL SN SO SR SV SY SZ TD TG TH TJ TM TN TR TT TW TZ UA UG US UY UZ VE VN YE ZA ZM ZW".split(" ");
 const TIERS = ["near", "ok", "edge", "far"];
+// The daily run's times, up to three a day as settings.ts keeps them; one added takes the first of these not taken.
+const RUN_TIMES = 3;
+const nextTime = (times: string[]) => ["13:00", "17:00", "21:00", "09:00"].find((t) => !times.includes(t)) ?? "12:00";
 
 const regionName = (code: string, lang: Lang) => { try { return new Intl.DisplayNames([lang], { type: "region" }).of(code) ?? code; } catch { return code; } };
 
@@ -183,21 +188,34 @@ function Runner() {
 }
 
 const AI_PROVIDERS = [{ id: "openai", name: "ChatGPT", keys: "https://platform.openai.com/api-keys" }];
+// Where to get a key, inside the introduction's board: a key and the arrow out to another site, in its pixels.
+const KEY = [".XX.....", "X..XXXXX", "X..X.X.X", ".XX....."];
+const OUT = [".XXX", "..XX", ".X.X", "X..."];
 const AI_IDS = ["claude", "openai"];
 const AI_NAMES: Record<string, string> = { claude: "Claude", openai: "ChatGPT" };
 
 // The AI the site works with (ai.ts): which one is primary, of those connected, and under it which takes over when
 // it fails; then each one's connection, with a mark of whether it is connected. Claude's is this computer's Claude
-// Code login, with nothing to set. ChatGPT signs in with the account the same way, through Codex (clis.ts): a
-// button opens Codex's sign-in in a window of its own, and the card sees it a few seconds after. An API key is the
-// other way, folded under it (chatbots.ts); like the mail account it is apart from the settings form, kept once
-// its box is left, or Enter pressed, and OpenAI took it; only whether one is saved comes back.
-function AiKeys({ primary, onPrimary }: { primary: string; onPrimary: (id: string) => void }) {
+// Code login, and ChatGPT's its Codex one (clis.ts): a button opens the sign-in in a window of its own, and the card
+// sees it a few seconds after. For ChatGPT an API key is the other way, folded under it (chatbots.ts); like the mail
+// account it is apart from the settings form, kept once its box is left, or Enter pressed, and OpenAI took it; only
+// whether one is saved comes back. bare: inside the introduction's board, which has its own heading.
+export function AiKeys({ primary, onPrimary, bare = false }: { primary: string; onPrimary: (id: string) => void | Promise<void>; bare?: boolean }) {
   const { s, t, err, refresh } = useApp();
   const logins = (s.aiLogins ?? {}) as Record<string, boolean>;
-  const connected = (id: string) => id === "claude" || Boolean(s.aiKeys[id] || logins[id]);
-  const first = connected(primary) ? primary : "claude";
-  const order = [first, ...AI_IDS.filter((id) => id !== first && connected(id))].map((id) => AI_NAMES[id]);
+  const connected = (id: string) => Boolean(s.aiKeys[id] || logins[id]);
+  // A pick shows at once, while it is saved; then the saved one shows, as it was if the save failed. moved: a pick
+  // has moved the switch, and from then on the introduction's board plays its landing (styles.css), never as the
+  // step comes in.
+  const [picked, setPicked] = useState("");
+  const [moved, setMoved] = useState(false);
+  const want = picked || primary;
+  const first = connected(want) ? want : AI_IDS.find(connected) ?? "claude";
+  const pick = (id: string) => {
+    if (id !== first) setMoved(true);
+    setPicked(id);
+    Promise.resolve(onPrimary(id)).finally(() => setPicked(""));
+  };
   const [typed, setTyped] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   const [status, setStatus] = useState<[string, boolean]>(["", false]);
@@ -215,27 +233,31 @@ function AiKeys({ primary, onPrimary }: { primary: string; onPrimary: (id: strin
     }
     setBusy("");
   };
-  const signIn = (p: (typeof AI_PROVIDERS)[number]) => {
+  const signIn = (p: { id: string; name: string }) => {
     setStatus([t("settings.ai.signingIn", { name: p.name }), false]);
     api("ai-login", { provider: p.id }).catch((e) => setStatus([err(e), true]));
   };
+  const Frame = bare ? "div" : Card;
+  // The mark of a saved key: the board's pixel tick inside the introduction, the site's check elsewhere.
+  const Mark = () => (bare ? <Tick /> : <Icon name="check" />);
   return (
-    <Card className="stack">
-      <h2>{t("settings.ai.title")}</h2>
-      <p className="note">{t("settings.ai.note")}</p>
+    <Frame className={bare ? "stack ai-setup" : "stack"}>
+      {!bare && <h2>{t("settings.ai.title")}</h2>}
+      {!bare && <p className="note">{t("settings.ai.note")}</p>}
       <div className="field">
         <span className="field-label">{t("settings.ai.primary")}</span>
-        <div className="segmented" role="group" aria-label={t("settings.ai.primary")}>
+        <div className={moved ? "segmented moved" : "segmented"} role="group" aria-label={t("settings.ai.primary")}>
           {AI_IDS.map((id) => (
-            <button key={id} type="button" aria-pressed={first === id} disabled={!connected(id)} onClick={() => onPrimary(id)}>{AI_NAMES[id]}</button>
+            <button key={id} type="button" aria-pressed={first === id && connected(id)} disabled={!connected(id)} onClick={() => pick(id)}>{AI_NAMES[id]}</button>
           ))}
         </div>
-        <small className="note">{order.length > 1 ? t("settings.ai.order", { first: order[0], rest: order.slice(1).join(", ") }) : t("settings.ai.alone", { first: order[0] })}</small>
       </div>
       <div className="ai-list">
         <div className="ai-row">
-          <div className="ai-row-head"><strong>Claude</strong><span className="ai-state on">{t("settings.ai.on")}</span></div>
-          <p className="note">{t("settings.ai.claude")}</p>
+          <div className="ai-row-head"><strong>Claude</strong><span className={`ai-state ${logins.claude ? "on" : ""}`}>{t(logins.claude ? "settings.ai.on" : "settings.ai.off")}</span></div>
+          {logins.claude
+            ? <p className="note">{t("settings.ai.claude")}</p>
+            : <div className="ai-sign-in"><Btn onClick={() => signIn({ id: "claude", name: "Claude" })}>{t("settings.ai.signIn")}</Btn><small className="note">{t("settings.ai.claudeHow")}</small></div>}
         </div>
         {AI_PROVIDERS.map((p) => {
           const value = typed[p.id] ?? "";
@@ -249,23 +271,78 @@ function AiKeys({ primary, onPrimary }: { primary: string; onPrimary: (id: strin
               {logins[p.id]
                 ? <p className="note">{t(`settings.ai.${p.id}Login`)}</p>
                 : <div className="ai-sign-in"><Btn onClick={() => signIn(p)}>{t("settings.ai.signIn")}</Btn><small className="note">{t(`settings.ai.${p.id}How`)}</small></div>}
-              {/* The other way, a key, folded unless one is saved. */}
-              <details className="ai-key" open={Boolean(s.aiKeys[p.id]) || undefined}>
+              {/* The other way, a key, folded until opened; inside, whether one is saved, and only then is there a
+                  key to remove. */}
+              <details className="ai-key">
                 <summary>{t("settings.ai.orKey")}</summary>
+                {s.aiKeys[p.id] && (
+                  <div className="key-saved-row">
+                    <span className="key-saved"><Mark />{t("settings.ai.keyOn")}</span>
+                    <Btn kind="danger" disabled={Boolean(busy)} onClick={() => keep(p, "")}>{t("settings.ai.removeKey")}</Btn>
+                  </div>
+                )}
                 <div className="key-row">
                   {/* Empty, the box takes the page's direction, so the hint starts on the page's side. */}
                   <input type="password" dir={value ? "ltr" : undefined} autoComplete="off" spellCheck={false} aria-label={t(`settings.ai.${p.id}`)}
-                    placeholder={t(s.aiKeys[p.id] ? "settings.ai.saved" : "settings.ai.paste")} value={value} disabled={busy === p.id}
+                    placeholder={t(s.aiKeys[p.id] ? "settings.ai.replace" : "settings.ai.paste")} value={value} disabled={busy === p.id}
                     onChange={(e) => setTyped((cur) => ({ ...cur, [p.id]: e.target.value }))} onBlur={save} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
-                  {s.aiKeys[p.id] && <Btn kind="ghost" disabled={Boolean(busy)} onClick={() => keep(p, "")}>{t("settings.ai.remove")}</Btn>}
                 </div>
-                <External url={p.keys} className="key-link">{t("settings.ai.get")}<Icon name="open" /></External>
+                {bare
+                  ? <External url={p.keys} className="key-link"><PixelArt className="key-icon" rows={KEY} />{t("settings.ai.get")}<PixelArt className="key-out" rows={OUT} /></External>
+                  : <External url={p.keys} className="key-link">{t("settings.ai.get")}<Icon name="open" /></External>}
               </details>
             </div>
           );
         })}
       </div>
       {status[0] && <p className={status[1] ? "error-line" : "note"} role="status" dir="auto">{status[0]}</p>}
+    </Frame>
+  );
+}
+
+// Phone access (remote.ts): the site's address, and linking this computer there under the account's name; once
+// linked, where to go on the phone, as whom, and whether the computer is connected to the site right now.
+function Remote() {
+  const { s, t, err, refresh } = useApp();
+  const r = s.remote ?? { linked: false, site: "", name: "", state: "off", error: "" };
+  const [site, setSite] = useState(r.site);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const host = r.site.replace(/^https?:\/\//, "");
+  const run = async (path: string, body: unknown) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api(path, body);
+      await refresh();
+    } catch (e) {
+      setError(err(e));
+    }
+    setBusy(false);
+  };
+  const problem = error || (r.linked && r.state !== "on" && r.error ? err(Object.assign(new Error(r.error), { code: r.error })) : "");
+  return (
+    <Card className="stack">
+      <h2>{t("settings.remote.title")}</h2>
+      <p className="note">{t("settings.remote.note")}</p>
+      {r.linked ? (
+        <>
+          <div className="ai-row-head">
+            <strong dir="ltr">{host}</strong>
+            <span className={`ai-state ${r.state === "on" ? "on" : ""}`}>{t(`settings.remote.${r.state}`)}</span>
+          </div>
+          <p className="note">{t("settings.remote.how", { site: host, name: r.name })}</p>
+          <div className="row">
+            <Btn kind="ghost" disabled={busy} onClick={() => { if (confirm(t("settings.remote.confirm"))) run("remote/unlink", {}); }}>{t("settings.remote.unlink")}</Btn>
+          </div>
+        </>
+      ) : (
+        <form className="row" onSubmit={(e) => { e.preventDefault(); run("remote/link", { site }); }}>
+          <input type="text" dir="ltr" placeholder="pip.example.com" aria-label={t("settings.remote.site")} value={site} onChange={(e) => setSite(e.target.value)} />
+          <Btn type="submit" disabled={busy || !site.trim()}>{t("settings.remote.link")}</Btn>
+        </form>
+      )}
+      {problem && <p className="error-line" role="alert" dir="auto">{problem}</p>}
     </Card>
   );
 }
@@ -288,6 +365,7 @@ export function Settings() {
   const update = (fn: (d: any) => void) => { const next = structuredClone(draft); fn(next); setDraft(next); };
   const set = (key: string, value: unknown) => update((d) => { d[key] = value; });
   const setAuto = (key: string, value: unknown) => update((d) => { d.automation[key] = value; });
+  const times: string[] = draft.automation.runTimes?.length ? draft.automation.runTimes : ["09:00"];
   const ownRoles = draft.roles.filter((r: any) => !listedRole(r.id));
   const later = !LANGUAGES_ON && !THEMES_ON;
 
@@ -324,6 +402,7 @@ export function Settings() {
         </div>
       </Card>
       <AiKeys primary={draft.aiPrimary} onPrimary={(id) => set("aiPrimary", id)} />
+      <Remote />
 
       <Card className="stack">
         <MarketsEditor draft={draft} update={update} title={<h2>{t("settings.markets")}</h2>} />
@@ -402,6 +481,12 @@ export function Settings() {
         <p className="note">{t("settings.rolesLevel", { example: roleQuery(listedRole("backend")!, draft.seniority) })}</p>
       </Card>
 
+      {/* Which industries to search and whether employers outside high-tech are read; the portals page lists them all. */}
+      <Card className="stack">
+        <IndustryPicker draft={draft} update={update} />
+        <a className="portal-link" href="#/portals">{t("settings.toPortals")}</a>
+      </Card>
+
       <Card className="stack">
         <h2>{t("settings.applying")}</h2>
         <p className="note">{t("settings.applyingNote")}</p>
@@ -427,8 +512,24 @@ export function Settings() {
           <Field label={t("settings.email")}><input type="email" dir="ltr" value={draft.automation.email} onChange={(e) => setAuto("email", e.target.value)} /></Field>
           {number(t("settings.perDay"), draft.automation.maxPerDay, (n) => setAuto("maxPerDay", n))}
           {number(t("settings.minScore"), draft.automation.minScore, (n) => setAuto("minScore", n))}
-          <Field label={t("settings.runAt")}><input type="time" dir="ltr" value={draft.automation.runAt} onChange={(e) => setAuto("runAt", e.target.value)} /></Field>
         </div>
+        {/* A row of its own, so the times and the button for another stay on one line. */}
+        <Field label={t("settings.runTimes")} hint={t("settings.runTimesNote")}>
+          <span className="run-times">
+            {times.map((time: string, i: number) => (
+              <span key={i} className="run-time">
+                <input type="time" dir="ltr" value={time} aria-label={t("settings.runTime", { n: i + 1 })}
+                  onChange={(e) => setAuto("runTimes", times.map((x: string, j: number) => (j === i ? e.target.value : x)))} />
+                {times.length > 1 && (
+                  <button type="button" className="tag-x" aria-label={t("settings.removeTime", { time })}
+                    onClick={() => setAuto("runTimes", times.filter((_: string, j: number) => j !== i))}>×</button>
+                )}
+              </span>
+            ))}
+            {times.length < RUN_TIMES && <Btn kind="ghost" onClick={() => setAuto("runTimes", [...times, nextTime(times)])}>{t("settings.addTime")}</Btn>}
+          </span>
+        </Field>
+        <p className="note">{t("settings.dailyTip")}</p>
         <Runner />
       </Card>
     </Page>

@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { Fetch } from "./boards";
 import { ChatbotError } from "./chatbots";
 import type { Run } from "./ranker";
-import { fitSystem, parseFits, scrapeJobs, type Search } from "./scraper";
-import { EMPTY_SETTINGS, type Settings } from "./settings";
+import { fitSystem, parseFits, scanPortals, scrapeJobs, type Search } from "./scraper";
+import { EMPTY_SETTINGS, validateSettings, type Settings } from "./settings";
 
 const never = new AbortController().signal;
 const settings: Settings = {
@@ -84,6 +87,33 @@ describe("scraper", () => {
     expect(text).toContain("1 weren't checked");
     const failing = scrapeJobs({ ask: async () => { throw new ChatbotError("ai_none"); }, steps: steps().steps, signal: never, lang: "en", settings, run, search, system: "rules" });
     await expect(failing).rejects.toMatchObject({ code: "ai_none" });
+  });
+
+  test("the portals check reads each employer, judges what fits the roles, stores it with its portal, and keeps each one's result", async () => {
+    const checks = path.join(mkdtempSync(path.join(os.tmpdir(), "job-portals-")), "portals.json");
+    const portalSettings = validateSettings({
+      ...settings, roles: [{ id: "analyst" }], industries: ["insurance"],
+      portals: { off: ["harel", "migdal", "clal", "menora", "menora-pension", "aig", "shomera", "passportcard"] },
+    });
+    // Of the insurers, only the Phoenix is on: its page has a data category with one analyst job.
+    const fetch: Fetch = async (url) => (url.endsWith("cid=173831")
+      ? `<a href="/x?cid=173831&amp;JobCategoriesFilter=1806">דאטה (1)</a><div class="job-content-top-date">לפני שעה</div><a href="/Search/UploadSingle.aspx?JobID=5"><h2>אנליסט/ית נתונים</h2></a>`
+      : url.includes("JobCategoriesFilter=1806") ? `<a href="/Search/UploadSingle.aspx?JobID=5"><h2>אנליסט/ית נתונים</h2></a>` : null);
+    const { run, stored } = fakeTools();
+    const { lines, steps: s } = steps();
+    const ask = async (_s: string, prompt: string) => JSON.stringify(JSON.parse(prompt.slice(prompt.indexOf("["))).map((h: any) => ({ i: h.i, fit: "high", keep: true })));
+    const text = await scanPortals({ ask, steps: s, signal: never, lang: "he", settings: portalSettings, run, fetch, system: "rules", today: "2026-11-05", checks });
+    expect(lines).toEqual(expect.arrayContaining(["ReadPortal:הפניקס", "ok 1", "SaveJobs:1"]));
+    expect(stored[0]).toEqual([expect.objectContaining({ title: "אנליסט/ית נתונים", company: "הפניקס", portal: "alljobs-search", portal_id: "phoenix", status: "new" })]);
+    expect(JSON.parse(readFileSync(checks, "utf8")).phoenix).toMatchObject({ found: 1, kept: 1 });
+    expect(text).toContain("בדיקת פורטלים");
+    expect(text).toContain("נשמרו 1 משרות חדשות.");
+  });
+
+  test("the portals check with nothing to read says so", async () => {
+    const off = validateSettings({ ...settings, roles: [{ id: "analyst" }], lowTech: false, industries: ["health"] });
+    const text = await scanPortals({ ask: async () => "[]", steps: steps().steps, signal: never, lang: "en", settings: { ...off, markets: [] }, run: fakeTools().run, fetch: async () => null, system: "rules" });
+    expect(text).toContain("no portals to read");
   });
 
   test("needs a market and a role first", async () => {

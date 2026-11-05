@@ -32,10 +32,50 @@ process.stdin.on("data", (chunk) => {
   }
 });`;
 
-function run(text: string, decide: (tool: string, input: any) => "allow" | "deny") {
+// One with a sub-agent, in the shapes Codex 0.163 sends: the turn starts /apply's reviewer (a subAgentActivity on
+// its own thread), which searches the web (the query only there at the end), asks to change a file, says its review
+// and ends; then the conversation's own thread looks at a page of the PDF, says what became of the change, and ends.
+const FAKE_HELPER = `
+const out = (m) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...m }) + "\\n");
+const sub = (method, params) => out({ method, params: { threadId: "thread-2", turnId: "turn-9", ...params } });
+const main = (method, params) => out({ method, params: { threadId: "thread-1", turnId: "turn-1", ...params } });
+const activity = (kind) => ({ type: "subAgentActivity", id: "call-" + kind, kind, agentThreadId: "thread-2", agentPath: "/root/application_reviewer" });
+let buf = "";
+process.stdin.on("data", (chunk) => {
+  buf += chunk;
+  let at;
+  while ((at = buf.indexOf("\\n")) >= 0) {
+    const m = JSON.parse(buf.slice(0, at)); buf = buf.slice(at + 1);
+    if (m.method === "initialize") out({ id: m.id, result: {} });
+    if (m.method === "thread/start") out({ id: m.id, result: { thread: { id: "thread-1" } } });
+    if (m.method === "turn/start") {
+      out({ id: m.id, result: { turn: { id: "turn-1", status: "inProgress" } } });
+      main("item/started", { item: activity("started") });
+      main("item/completed", { item: activity("started") });
+      sub("item/started", { item: { type: "webSearch", id: "c1", query: "" } });
+      sub("item/completed", { item: { type: "webSearch", id: "c1", query: "Acme Ltd careers", action: { type: "search", query: "Acme Ltd careers" } } });
+      sub("item/started", { item: { type: "fileChange", id: "f1", changes: [{ path: "user/cv/main_acme.tex", kind: { type: "update" } }] } });
+      out({ id: 901, method: "item/fileChange/requestApproval", params: { threadId: "thread-2", turnId: "turn-9", itemId: "f1" } });
+    }
+    if (m.id === 901) {
+      sub("item/completed", { item: { type: "fileChange", id: "f1", status: "declined" } });
+      sub("item/agentMessage/delta", { itemId: "r1", delta: "The rev" });
+      sub("item/completed", { item: { type: "agentMessage", id: "r1", text: "The review, for the drafter" } });
+      main("item/started", { item: activity("completed") });
+      sub("turn/completed", { turn: { id: "turn-9", status: "completed" } });
+      main("item/completed", { item: activity("completed") });
+      main("item/started", { item: { type: "imageView", id: "v1", path: "user/cv/pages/main_acme-1.png" } });
+      main("item/completed", { item: { type: "imageView", id: "v1", path: "user/cv/pages/main_acme-1.png" } });
+      main("item/completed", { item: { type: "agentMessage", id: "a1", text: "The change was " + m.result.decision } });
+      main("turn/completed", { turn: { id: "turn-1", status: "completed" } });
+    }
+  }
+});`;
+
+function run(text: string, decide: (tool: string, input: any) => "allow" | "deny", fake = FAKE) {
   const dir = mkdtempSync(path.join(os.tmpdir(), "codex-fake-"));
   const script = path.join(dir, "fake.js");
-  writeFileSync(script, FAKE);
+  writeFileSync(script, fake);
   const events: any[] = [];
   const asked: any[] = [];
   return new Promise<{ events: any[]; asked: any[]; ok: boolean; thread: string }>((resolve) => {
@@ -86,5 +126,28 @@ describe("codex", () => {
     expect(r.asked).toEqual([]);
     expect(r.events.find((e) => e.t === "error")).toMatchObject({ code: "codex_denied" });
     expect(r.events.find((e) => e.t === "text").text).toBe("Not allowed");
+  });
+
+  test("shows a sub-agent's steps nested under the line that started it, and only the conversation's turn ends it", async () => {
+    const r = await run("/apply https://example.com/job", () => "allow", FAKE_HELPER);
+    const tools = r.events.filter((e) => e.t === "tool");
+    expect(tools.filter((e) => e.name === "Agent")).toHaveLength(1);
+    expect(tools[0]).toMatchObject({ id: "agent:thread-2", name: "Agent", target: "application reviewer", nested: false });
+    expect(tools[1]).toMatchObject({ id: "thread-2:c1", name: "WebSearch", target: "Acme Ltd careers", nested: true });
+    expect(tools.find((e) => e.id === "v1")).toMatchObject({ name: "Read", target: "pages/main_acme-1.png", nested: false });
+    // The helper's line is done once, when it says it has ended, and its turn ending does not end the conversation's.
+    const results = r.events.filter((e) => e.t === "tool_result").map((e) => e.id);
+    expect(results).toEqual(["thread-2:c1", "thread-2:f1", "agent:thread-2", "v1"]);
+    expect(r.events.filter((e) => e.t === "result")).toEqual([]);
+    expect(r.ok).toBe(true);
+    // Its words are its answer to the drafter, not a message of the conversation's.
+    expect(r.events.filter((e) => e.t === "delta")).toEqual([]);
+    expect(r.events.filter((e) => e.t === "text").map((e) => e.text)).toEqual(["The change was decline"]);
+  });
+
+  test("declines a sub-agent's file change without asking anyone", async () => {
+    const r = await run("/apply https://example.com/job", () => "allow", FAKE_HELPER);
+    expect(r.asked).toEqual([]);
+    expect(r.events.find((e) => e.t === "text").text).toBe("The change was decline");
   });
 });

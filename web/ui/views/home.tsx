@@ -6,13 +6,13 @@ import { Pip, PipAsleep, pixelPath } from "../pip";
 
 // Small one-colour drawings in the banner's pixel blocks rather than a font's or an icon set's: the tick on a
 // stage passed, the numbers, and the pictures on the signs under the banner.
-const PixelArt = ({ rows, className }: { rows: string[]; className: string }) => (
+export const PixelArt = ({ rows, className }: { rows: string[]; className: string }) => (
   <svg className={className} viewBox={`0 0 ${rows[0].length} ${rows.length}`} shapeRendering="crispEdges" aria-hidden="true">
     <path d={pixelPath(rows)} fill="currentColor" />
   </svg>
 );
 
-const Tick = () => <PixelArt className="tick" rows={[".....X", "....XX", "X..XX.", "XXXX..", ".XX..."]} />;
+export const Tick = () => <PixelArt className="tick" rows={[".....X", "....XX", "X..XX.", "XXXX..", ".XX..."]} />;
 
 // The line under the best jobs' heading, like the edge of a cave's mouth: a rocky ridge in the middle with points
 // hanging under it, and only a short thin stretch at each end.
@@ -50,7 +50,7 @@ const DIGITS: Record<string, string[]> = {
 };
 // A number in those digits, a block apart. It is only a picture: the list numbers the stages for screen readers,
 // and a sign's link says its number.
-function Digits({ n }: { n: number }) {
+export function Digits({ n }: { n: number }) {
   const glyphs = [...String(n)].map((d) => DIGITS[d]);
   return <PixelArt className="digits" rows={glyphs[0].map((_, y) => glyphs.map((g) => g[y]).join("."))} />;
 }
@@ -104,7 +104,8 @@ export function nextStep(s: AppState, t: ReturnType<typeof useApp>["t"], start: 
   const status = (a: Record<string, any>) => String(a.status ?? "").toLowerCase();
   const waiting = s.sessions.find((x) => x.status === "waiting");
   if (waiting) return step("waiting", go(`#/chat/${waiting.id}`));
-  if (!s.profileReady) return step("profile", () => start("/setup"));
+  // The introduction builds the profile; put aside, it opens again from here.
+  if (!s.profileReady) return step("profile", go("#/welcome"));
   if (!s.settings.markets?.length) return step("markets", go("#/settings"));
   const interview = s.applications.find((a) => status(a) === "interview");
   if (interview) return step("interview", () => start(`/interview ${interview.company} ${interview.role}`), { company: interview.company });

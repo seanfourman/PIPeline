@@ -1,8 +1,8 @@
 # CI for the framework itself: LaTeX smoke compiles, skill/command lint,
 # CLI typechecks, and (upstream only) placeholder integrity.
 #
-# Fork-friendly by design: forks personalize CLAUDE.md, the skill files, and
-# cv/main_example.tex via /setup, so the placeholder-integrity job and the
+# Fork-friendly by design: each user's own files live in user/ (never committed),
+# filled by /setup, so the placeholder-integrity job and the
 # exact page-count/content assertions run only on the upstream template repo.
 # Compile success, lint correctness, and an extractable PDF text layer are
 # asserted everywhere.
@@ -180,11 +180,11 @@ jobs:
           fi
       - name: Compile CV example (lualatex)
         run: |
-          cd cv
+          cd templates/user/cv
           lualatex -interaction=nonstopmode -halt-on-error main_example.tex
           test -f main_example.pdf
           if grep -q '^!' main_example.log; then
-            echo '::error::lualatex reported errors compiling cv/main_example.tex'
+            echo '::error::lualatex reported errors compiling templates/user/cv/main_example.tex'
             grep -A3 '^!' main_example.log
             exit 1
           fi
@@ -200,12 +200,12 @@ jobs:
           fi
       - name: Verify extractable PDF text
         run: |
-          python3 tools/verify_pdf.py cv/main_example.pdf --min-chars 100
+          python3 tools/verify_pdf.py templates/user/cv/main_example.pdf --min-chars 100
           python3 tools/verify_pdf.py cover_letters/cover_example.pdf --min-chars 100
       - name: Assert stock PDF structure (upstream template only)
         if: github.repository == 'ai-job-search-dev/ai-job-search'
         run: |
-          python3 tools/verify_pdf.py cv/main_example.pdf \
+          python3 tools/verify_pdf.py templates/user/cv/main_example.pdf \
             --pages 2 \
             --ascii-dates \
             --contains '[your.email@example.com]' \
@@ -284,10 +284,12 @@ jobs:
               fail=1
             fi
           }
-          check CLAUDE.md '\[YOUR_NAME\]'
-          check cv/main_example.tex '\\name{\[First\]}{\[Last\]}'
-          check cv/main_example.tex '\\email{\[your\.email@example\.com\]}'
+          check templates/user/CLAUDE.md '\[YOUR_NAME\]'
+          check templates/user/cv/main_example.tex '\\name{\[First\]}{\[Last\]}'
+          check templates/user/cv/main_example.tex '\\email{\[your\.email@example\.com\]}'
           check cover_letters/cover_example.tex '\[YOUR NAME\]'
-          check .claude/skills/job-application-assistant/01-candidate-profile.md '\[YOUR_EMAIL\]'
-          check .claude/skills/job-application-assistant/04-job-evaluation.md '\[YOUR_PRIMARY_SKILLS\]'
+          check templates/user/profile/01-candidate-profile.md '\[YOUR_EMAIL\]'
+          check templates/user/profile/04-job-evaluation.md '\[YOUR_PRIMARY_SKILLS\]'
+          # The user's own folder never reaches the repo.
+          if git ls-files --error-unmatch user >/dev/null 2>&1; then echo "::error::user/ is tracked - personal data was committed"; fail=1; fi
           exit $fail

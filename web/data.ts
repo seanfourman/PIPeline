@@ -1,8 +1,12 @@
 // Reads the workspace's files for the UI, and runs the portal CLIs for live search.
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
+import { BOARDS, pageFetcher, searchBoard, type Board, type Fetch } from "./boards";
 import { REPO } from "./policy";
-import { linkedinPlace, REMOTE, type Area, type Market, type Settings } from "./settings";
+import { boardOn } from "./portals";
+import { boardQueries } from "./roles";
+import { inEnglish, linkedinPlace, REMOTE, type Area, type Market, type Settings } from "./settings";
+import { profileReady } from "./user";
 
 export function parseCsv(text: string): Record<string, string>[] {
   const rows: string[][] = [];
@@ -35,10 +39,11 @@ const readJson = (file: string) => {
 
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// A place matches from the start of a word, so "lod" does not match "Melody".
+// A place matches from the start of a word, so "lod" does not match "Melody"; a Hebrew one, from the Israeli boards,
+// by its English name too (inEnglish).
 // Exclusions are checked first, so an excluded "Kiryat Gat" beats a wider acceptable area.
 export function classifyLocation(location: string, areas: Area[]): Area["tier"] | "unknown" {
-  const text = (location ?? "").toLowerCase();
+  const text = `${location ?? ""} ${inEnglish(location ?? "")}`.toLowerCase();
   for (const tier of ["far", "edge", "near", "ok"] as const) {
     const places = areas.filter((a) => a.tier === tier).flatMap((a) => a.places);
     if (places.some((p) => new RegExp(`(^|[^\\p{L}])${escapeRegex(p)}`, "u").test(text))) return tier;
@@ -49,9 +54,7 @@ export function classifyLocation(location: string, areas: Area[]): Area["tier"] 
 const httpUrl = (u: unknown) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : "");
 
 function seenJobs(areas: Area[]) {
-  const files = ["job_scraper/seen_jobs.json", ".claude/skills/job-scraper/job_scraper/seen_jobs.json"];
-  const seen: Record<string, any> = {};
-  for (const f of files) Object.assign(seen, readJson(path.join(REPO, f))?.seen ?? {});
+  const seen: Record<string, any> = readJson(path.join(REPO, "user", "job_scraper", "seen_jobs.json"))?.seen ?? {};
   return Object.entries(seen).map(([key, j]) => ({
     key,
     title: String(j.title ?? ""),
@@ -71,7 +74,7 @@ function seenJobs(areas: Area[]) {
 
 function listFiles() {
   const out: { path: string; name: string; modified: number }[] = [];
-  for (const dir of ["cv", "cover_letters", "reports"]) {
+  for (const dir of ["user/cv", "user/cover_letters", "user/reports"]) {
     const abs = path.join(REPO, dir);
     if (!existsSync(abs)) continue;
     for (const name of readdirSync(abs)) {
@@ -84,39 +87,77 @@ function listFiles() {
 
 export type AtsResult = { score: number | null; missing: string[]; problems: string[] };
 
-// The score ats.py saved beside the CV, found through the tracker row's CV file.
-export function readAts(cvFile: string, root = REPO): AtsResult | null {
-  const name = String(cvFile ?? "").trim().replaceAll("\\", "/").match(/^cv\/main_([a-z0-9_]+)\.\w+$/)?.[1];
+// A path an older tracker row or message gives without the user's folder (cv/main_x.tex) is the same file in user/.
+export const inUserFolder = (rel: string) => {
+  const clean = String(rel ?? "").trim().replaceAll("\\", "/").replace(/^\.\//, "");
+  return /^(cv|cover_letters|reports|documents)\//.test(clean) ? `user/${clean}` : clean;
+};
+
+// A JSON file ats.py saved in a CV's application folder, found through the tracker row's CV file.
+function applicationFile(cvFile: string, file: string, root: string) {
+  const name = inUserFolder(cvFile).match(/^user\/cv\/main_([a-z0-9_]+)\.\w+$/)?.[1];
   if (!name) return null;
   try {
-    const saved = JSON.parse(readFileSync(path.join(root, "documents", "applications", name, "ats.json"), "utf8"));
-    return { score: typeof saved.score === "number" ? saved.score : null, missing: saved.missing ?? [], problems: saved.problems ?? [] };
+    return JSON.parse(readFileSync(path.join(root, "user", "documents", "applications", name, file), "utf8"));
   } catch {
     return null;
   }
 }
 
+// The score ats.py saved beside the CV.
+export function readAts(cvFile: string, root = REPO): AtsResult | null {
+  const saved = applicationFile(cvFile, "ats.json", root);
+  return saved ? { score: typeof saved.score === "number" ? saved.score : null, missing: saved.missing ?? [], problems: saved.problems ?? [] } : null;
+}
+
+export type CardLens = { id: string; score: number | null; grade: string | null; checks: { id: string; ok: boolean; value?: number }[]; missing: string[] };
+export type ScoreCard = { overall: number | null; lenses: CardLens[] };
+const number = (v: unknown) => (typeof v === "number" ? v : null);
+
+// The scorecard ats.py saved beside the CV (scorecard.py): the CV scored by what each large employer publishes.
+export function readCard(cvFile: string, root = REPO): ScoreCard | null {
+  const saved = applicationFile(cvFile, "scorecard.json", root);
+  if (!Array.isArray(saved?.lenses)) return null;
+  const lenses = saved.lenses.filter((l: any) => typeof l?.id === "string").map((l: any): CardLens => ({
+    id: l.id, score: number(l.score), grade: typeof l.grade === "string" ? l.grade : null,
+    checks: (Array.isArray(l.checks) ? l.checks : []).filter((c: any) => typeof c?.id === "string")
+      .map((c: any) => ({ id: c.id, ok: c.ok === true, ...(typeof c.value === "number" ? { value: c.value } : {}) })),
+    missing: Array.isArray(l.missing) ? l.missing.map(String) : [],
+  }));
+  return { overall: number(saved.overall), lenses };
+}
+
+// The scorecard in one line, for the report after a CV is written and for the daily email.
+export function cardLine(card: ScoreCard, lang: "he" | "en") {
+  const names: Record<string, string> = {
+    google: "Google", amazon: "Amazon", meta: "Meta", microsoft: "Microsoft", nvidia: "Nvidia", ibm: "IBM", deloitte: "Deloitte", workday: "Workday",
+    systems: lang === "he" ? "מערכות הגיוס" : "Hiring systems", ats: "ATS", pip: lang === "he" ? "פיפ" : "Pip",
+  };
+  const lenses = card.lenses.filter((l) => l.score !== null).map((l) => `${names[l.id] ?? l.id} ${l.grade ? `${l.grade} (${l.score})` : l.score}`);
+  return [...lenses, `${lang === "he" ? "כללי" : "Overall"} ${card.overall ?? "–"}`].join(" · ");
+}
+
 export function loadState(settings: Settings) {
-  const trackerFile = path.join(REPO, "job_search_tracker.csv");
+  const trackerFile = path.join(REPO, "user", "job_search_tracker.csv");
   const applications = (existsSync(trackerFile) ? parseCsv(readFileSync(trackerFile, "utf8")) : [])
-    .map((row) => ({ ...row, ats: readAts(row.cv_file) }));
-  const profileReady = !readFileSync(path.join(REPO, "CLAUDE.md"), "utf8").includes("[YOUR_NAME]");
-  return { applications, jobs: seenJobs(settings.areas), files: listFiles(), profileReady };
+    .map((row) => ({ ...row, ats: readAts(row.cv_file), card: readCard(row.cv_file) }));
+  return { applications, jobs: seenJobs(settings.areas), files: listFiles(), profileReady: profileReady() };
 }
 
 // Only finished documents from the output folders are ever served.
 export function resolveDocument(requested: string): string | null {
   const rel = requested.replaceAll("\\", "/");
   // The workflow's documents: CVs, letters and reports, and the final CV saved in an application's folder.
-  if (!/^(cv|cover_letters|reports)\/[^/]+\.(pdf|html)$/i.test(rel) && !/^documents\/applications\/[A-Za-z0-9_-]+\/[^/]+\.pdf$/i.test(rel)) return null;
+  if (!/^user\/(cv|cover_letters|reports)\/[^/]+\.(pdf|html)$/i.test(rel) && !/^user\/documents\/applications\/[A-Za-z0-9_-]+\/[^/]+\.pdf$/i.test(rel)) return null;
   const abs = path.join(REPO, rel);
   return existsSync(abs) ? abs : null;
 }
 
 // Paths of documents named in some text, a command or a message, relative to the project: in the shapes
-// resolveDocument serves, after anything before them (an absolute path to the project, a quote).
-const DOCUMENT_PATH = /(?:cv|cover_letters|reports)\/[^\s"'`)\]/]+\.(?:pdf|html|tex)|documents\/applications\/[A-Za-z0-9_-]+\/[^\n"'`)\]/]+?\.pdf/gi;
-export const documentPaths = (text: string) => text.replaceAll("\\", "/").match(DOCUMENT_PATH) ?? [];
+// resolveDocument serves, after anything before them (an absolute path to the project, a quote). One an older
+// conversation named without the user's folder is the same file in user/.
+const DOCUMENT_PATH = /(?:user\/)?(?:(?:cv|cover_letters|reports)\/[^\s"'`)\]/]+\.(?:pdf|html|tex)|documents\/applications\/[A-Za-z0-9_-]+\/[^\n"'`)\]/]+?\.pdf)/gi;
+export const documentPaths = (text: string) => (text.replaceAll("\\", "/").match(DOCUMENT_PATH) ?? []).map(inUserFolder);
 
 // The documents a conversation made or changed that are there now, newest first: those its tools wrote or a
 // command of its named, and those Pip's messages name; a CV's or letter's .tex stands for its PDF. Tool results
@@ -128,7 +169,7 @@ export function conversationFiles(events: Record<string, unknown>[]): { path: st
   ]);
   const found = new Map<string, { path: string; name: string; modified: number }>();
   for (const raw of named) {
-    const rel = raw.replace(/\.tex$/i, ".pdf");
+    const rel = inUserFolder(raw).replace(/\.tex$/i, ".pdf");
     const abs = resolveDocument(rel);
     if (abs && !found.has(rel)) found.set(rel, { path: rel, name: path.basename(rel), modified: statSync(abs).mtimeMs });
   }
@@ -151,7 +192,10 @@ export function portalArgs(source: "linkedin" | "freehire", q: string, o: Search
   ];
 }
 
-async function runPortal(source: "linkedin" | "freehire", q: string, o: SearchOptions, areas: Area[]) {
+// A search's result, from a portal tool or an Israeli board.
+type Result = { id: string; title: string; company: string; location: string; tier: Area["tier"] | "unknown"; date: string; url: string; source: string };
+
+async function runPortal(source: "linkedin" | "freehire", q: string, o: SearchOptions, areas: Area[]): Promise<Result[]> {
   const proc = Bun.spawn([process.execPath, "run", `.agents/skills/${source}-search/cli/src/cli.ts`, ...portalArgs(source, q, o)], {
     cwd: REPO, stdout: "pipe", stderr: "ignore",
   });
@@ -181,7 +225,21 @@ export function matchesQuery(title: string, query: string) {
   return words.some((w) => lower.includes(w));
 }
 
-export async function searchJobs(q: string, days: string, marketCode: string, workMode: string, settings: Settings) {
+const boardFetch: Fetch = pageFetcher();
+
+// An Israeli board's postings for one search, in the shape the portal tools' results have. The boards match loosely
+// too ("אנליסט נתונים" also finds a credit risk manager), so a title needs one of the search's words.
+async function runBoard(board: Board, q: string, days: number, areas: Area[]): Promise<Result[]> {
+  const today = new Date().toLocaleDateString("en-CA");
+  return (await searchBoard(board, q, days, { fetch: boardFetch, today })).filter((p) => matchesQuery(p.title, q)).map((p) => ({
+    id: p.url, title: p.title, company: p.company, location: p.location, tier: classifyLocation(p.location, areas), date: p.date, url: p.url, source: board,
+  }));
+}
+
+// sources "boards" leaves LinkedIn and freehire out, for the daily run, whose agent searches those itself. The
+// Israeli boards are searched for a market in Israel, with the role's Hebrew name as well as its title; any site
+// switched off on the portals page is left out.
+export async function searchJobs(q: string, days: string, marketCode: string, workMode: string, settings: Settings, sources: "all" | "boards" = "all") {
   const query = q.trim().slice(0, 120);
   if (!query || query.startsWith("-")) throw new Error("bad query");
   const age = ["1", "7", "14", "30"].includes(days) ? days : "14";
@@ -190,10 +248,17 @@ export async function searchJobs(q: string, days: string, marketCode: string, wo
     : settings.markets;
   if (!markets.length) throw new Error("no market");
   const mode = (["any", "remote", "hybrid", "onsite"] as const).find((m) => m === workMode) ?? settings.workMode;
-  const runs = markets.flatMap((market) => (["linkedin", "freehire"] as const).map((source) => {
+  const tools = sources === "boards" ? [] : (["linkedin", "freehire"] as const).filter((s) => boardOn(s, settings));
+  const runs: { label: string; run: Promise<Result[]> }[] = markets.flatMap((market) => tools.map((source) => {
     const options = { days: age, market, workMode: mode, seniority: settings.seniority };
     return { label: `${source} ${market.label}`, run: runPortal(source, query, options, settings.areas) };
   }));
+  if (markets.some((m) => m.code === "IL")) {
+    const role = settings.roles.find((r) => r.query.toLowerCase() === query.toLowerCase());
+    for (const board of BOARDS.filter((b) => boardOn(b, settings))) {
+      for (const search of role ? boardQueries(role) : [query]) runs.push({ label: board, run: runBoard(board, search, Number(age), settings.areas) });
+    }
+  }
   const settled = await Promise.allSettled(runs.map((r) => r.run));
   const seen = new Set<string>();
   const results = settled
