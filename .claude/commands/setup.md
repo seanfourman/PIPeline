@@ -8,9 +8,13 @@ There are three paths into setup. Step 0 picks the right one; all three converge
 
 ## Step 0: Welcome & Choose Path
 
+Write to the user in the conversation language that the web settings in `user/CLAUDE.md` name (**Conversation language**), from your very first message: this file and its example messages are in English, and the user may not be.
+
 If `$ARGUMENTS` contains `--section <name>`, skip directly to that section in Path C for an update-only flow. Do not run the path-selection prompt below.
 
-If `$ARGUMENTS` contains `--from-documents`, the user has just put their CV (and maybe a LinkedIn PDF) into `user/documents/` from the web interface's introduction and asked you to read them: run the check below, then go straight to Path A without showing the path prompt.
+If `$ARGUMENTS` contains `--from-documents`, the user has just put their CV (and maybe a LinkedIn PDF) into `user/documents/` from the web interface's introduction and moved on to its next steps while you read them, so nobody is watching until you need them (the site marks the step while you work or wait). Run the check below without `gh`, which would wait for an approval: when the origin is on GitHub, its visibility cannot be determined here, so add the note to the first message you write to the user. Then go straight to Path A without showing the path prompt. On a first run (the profile files still hold their starting placeholders) everything you found is additive: write it without stopping at Step A6 to confirm it, and bring any cross-reference conflicts to the user together with the gap questions after the writes. In Step 3's 10, run `pick-roles.ts` with `--if-empty`: the introduction's next step lets the user pick the roles on the site, and theirs win.
+
+If `$ARGUMENTS` contains `--interview`, the user said in the web interface's introduction that they have no CV file: run the check below, then go straight to Path C without showing the path prompt.
 
 Otherwise, first check where this working copy would publish to — **before anything is
 written, not after** (the Step 4 privacy note fires only once every file is already on

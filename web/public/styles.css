@@ -1690,7 +1690,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 /* The words, to the start side as on a page: the title in the pixel font, two rules tall, marked over in yellow as
    with a highlighter; then each sentence of the text on a line of its own, a rule each. The title's negative margin
    takes back the gap after it, so the text starts on a rule. */
-.welcome-board h1 { margin-bottom: calc(var(--rule) / -2); font-family: var(--pixel); font-size: 40px; font-weight: 800; line-height: calc(var(--rule) * 2); text-align: start; }
+.welcome-board h1:not(.welcome-convo *) { margin-bottom: calc(var(--rule) / -2); font-family: var(--pixel); font-size: 40px; font-weight: 800; line-height: calc(var(--rule) * 2); text-align: start; }
 .welcome-mark {
   padding-inline: 6px; background: linear-gradient(to bottom, transparent 50%, var(--w-mark) 50% 86%, transparent 86%);
   -webkit-box-decoration-break: clone; box-decoration-break: clone;
@@ -1709,18 +1709,20 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-points [data-point="send"] { --c: var(--board-ink-2); color: var(--board-ink-2); }
 /* The way in under the list, one rule left empty above it: the page's gap and this margin make a rule. */
 .welcome-start { margin-top: calc(var(--rule) - 14px); }
-.welcome-board .field { gap: 9px; }
-.welcome-board .field-label, .welcome-sub, .welcome-board .section-head h2 {
+/* The board's look for its own parts, below, stops at a conversation on it (welcome-convo), which keeps the site's
+   chat look inside its frame: each of these rules is :not(.welcome-convo *). */
+.welcome-board .field:not(.welcome-convo *) { gap: 9px; }
+.welcome-board .field-label:not(.welcome-convo *), .welcome-sub, .welcome-board .section-head h2:not(.welcome-convo *) {
   color: var(--board-ink); font-family: var(--pixel); font-size: 21px; font-weight: 700; line-height: 1.1;
 }
 .welcome-board .role-field-name { color: var(--board-ink-2); font-family: var(--pixel); font-size: 18px; font-weight: 700; }
-.welcome-board .note { color: var(--board-ink-2); font-size: 14px; }
-.welcome-board .error-line { color: var(--w-bad); font-weight: 600; }
-.welcome-board a { color: var(--w-on); font-weight: 600; }
+.welcome-board .note:not(.welcome-convo *) { color: var(--board-ink-2); font-size: 14px; }
+.welcome-board .error-line:not(.welcome-convo *) { color: var(--w-bad); font-weight: 600; }
+.welcome-board a:not(.welcome-convo *) { color: var(--w-on); font-weight: 600; }
 .welcome-form, .welcome-section { display: flex; flex-direction: column; gap: 14px; }
 /* Sections apart by a dashed line of the board's blocks. */
 .welcome-section { padding-top: 18px; border-top: var(--px) dashed color-mix(in srgb, var(--board-ink) 18%, transparent); }
-.welcome-board .fields { gap: 18px; }
+.welcome-board .fields:not(.welcome-convo *) { gap: 18px; }
 /* A form (the name, the email) keeps to the rules as the text does: one rule left empty above it, as the page's gap
    and this margin make, each label on a rule, each field two rules tall, and every line under them a rule. */
 .welcome-board .welcome-form { gap: 0; margin-top: calc(var(--rule) - 14px); }
@@ -1738,28 +1740,28 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .ai-setup > .field > .field-label { line-height: var(--rule); }
 
 /* Fields, and the lists to pick from: square, on parchment, a stepped edge that turns green while in use. */
-.welcome-board :is(input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="time"]):not(.select-find *),
-.welcome-board .select {
+.welcome-board :is(input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="time"]):not(.select-find *, .welcome-convo *),
+.welcome-board .select:not(.welcome-convo *) {
   --ring-c: var(--w-field-ring); min-height: 46px; padding: 10px 12px; border: 0; border-radius: 0;
   background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade);
 }
-.welcome-board :is(input, .select):hover { border: 0; }
-.welcome-board :is(input:focus, .select:focus-visible, .select.open):not(.select-find *) { --ring-c: var(--w-focus); outline: none; box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade); }
-.welcome-board input::placeholder, .welcome-board .select-blank { color: var(--w-faint); }
-.welcome-board .select > .icon { color: var(--board-ink-2); }
-.welcome-board .select-panel { --ring-c: var(--edge); border: 0; border-radius: 0; background: var(--w-field); box-shadow: var(--ring), 0 10px 0 rgb(0 0 0 / 12%); }
-.welcome-board .select-find { border-radius: 0; background: var(--w-chip-hi); }
-.welcome-board .select-option { border-radius: 0; }
-.welcome-board .select-option.active { background: var(--w-chip); }
+.welcome-board :is(input, .select):not(.welcome-convo *):hover { border: 0; }
+.welcome-board :is(input:focus, .select:focus-visible, .select.open):not(.select-find *, .welcome-convo *) { --ring-c: var(--w-focus); outline: none; box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade); }
+.welcome-board input:not(.welcome-convo *)::placeholder, .welcome-board .select-blank:not(.welcome-convo *) { color: var(--w-faint); }
+.welcome-board .select:not(.welcome-convo *) > .icon { color: var(--board-ink-2); }
+.welcome-board .select-panel:not(.welcome-convo *) { --ring-c: var(--edge); border: 0; border-radius: 0; background: var(--w-field); box-shadow: var(--ring), 0 10px 0 rgb(0 0 0 / 12%); }
+.welcome-board .select-find:not(.welcome-convo *) { border-radius: 0; background: var(--w-chip-hi); }
+.welcome-board .select-option:not(.welcome-convo *) { border-radius: 0; }
+.welcome-board .select-option.active:not(.welcome-convo *) { background: var(--w-chip); }
 
 /* Buttons other than the main one: parchment in a wooden edge, lit along the top, pressing in. */
-.welcome-board .btn:not(.cta) {
+.welcome-board .btn:not(.cta, .welcome-convo *) {
   --ring-c: var(--edge); min-height: 42px; padding: 6px 16px 9px; border: 0; border-radius: 0; background: var(--w-chip); color: var(--board-ink);
   box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-chip-hi), inset 0 calc(var(--px) * -2) 0 0 var(--w-chip-lo);
   font-family: var(--pixel); font-size: 20px; font-weight: 700; line-height: 1.1; transition: none;
 }
-.welcome-board .btn:not(.cta):hover { filter: none; background: var(--w-chip-hi); }
-.welcome-board .btn:not(.cta):active { transform: translateY(var(--px)); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-chip-hi), inset 0 calc(var(--px) * -1) 0 0 var(--w-chip-lo); }
+.welcome-board .btn:not(.cta, .welcome-convo *):hover { filter: none; background: var(--w-chip-hi); }
+.welcome-board .btn:not(.cta, .welcome-convo *):active { transform: translateY(var(--px)); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-chip-hi), inset 0 calc(var(--px) * -1) 0 0 var(--w-chip-lo); }
 /* The main one: the banner's yellow block. */
 .welcome .btn.cta {
   --ring-c: var(--edge); min-height: 52px; padding: 6px 26px 10px; border: 0; border-radius: 0; background: var(--cta); color: var(--cta-ink);
@@ -1821,9 +1823,32 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
   background: var(--w-field); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade);
 }
 .welcome-board .ai-row-head strong { font-family: var(--pixel); font-size: 25px; font-weight: 800; line-height: 1; }
-.welcome-board .ai-state { gap: 7px; padding: 3px 9px 4px; border-radius: 0; background: var(--w-chip); color: var(--board-ink-2); font-family: var(--pixel); font-size: 17px; font-weight: 700; }
-.welcome-board .ai-state::before { width: 8px; height: 8px; border-radius: 0; background: currentColor; }
-.welcome-board .ai-state.on { background: var(--w-on); color: var(--w-on-ink); }
+/* Whether each is connected: a pill in the board's pixels, its ends stepping in one block and then two (::after,
+   under the words), with a light at its start (::before): lit green, glowing in two pixel steps like a power light,
+   while connected; dark on parchment while not. */
+.welcome-board .ai-state {
+  position: relative; isolation: isolate; gap: 8px; padding: 3px 14px 4px; border-radius: 0; background: none;
+  color: var(--board-ink-2); font-family: var(--pixel); font-size: 17px; font-weight: 700;
+}
+.welcome-board .ai-state::after {
+  content: ""; position: absolute; inset: 0; z-index: -1; background: var(--w-chip);
+  clip-path: polygon(calc(var(--px) * 2) 0, calc(100% - var(--px) * 2) 0, calc(100% - var(--px) * 2) var(--px), calc(100% - var(--px)) var(--px),
+    calc(100% - var(--px)) calc(var(--px) * 2), 100% calc(var(--px) * 2), 100% calc(100% - var(--px) * 2), calc(100% - var(--px)) calc(100% - var(--px) * 2),
+    calc(100% - var(--px)) calc(100% - var(--px)), calc(100% - var(--px) * 2) calc(100% - var(--px)), calc(100% - var(--px) * 2) 100%, calc(var(--px) * 2) 100%,
+    calc(var(--px) * 2) calc(100% - var(--px)), var(--px) calc(100% - var(--px)), var(--px) calc(100% - var(--px) * 2), 0 calc(100% - var(--px) * 2),
+    0 calc(var(--px) * 2), var(--px) calc(var(--px) * 2), var(--px) var(--px), calc(var(--px) * 2) var(--px));
+}
+.welcome-board .ai-state::before { width: 8px; height: 8px; border-radius: 0; background: var(--w-faint); }
+.welcome-board .ai-state.on { color: var(--w-on-lo); }
+.welcome-board .ai-state.on::after { background: #dcefd3; }
+.welcome-board .ai-state.on::before { background: var(--w-on-hi); animation: power-light 2.4s steps(1, end) infinite; }
+@keyframes power-light {
+  0%, 100% { box-shadow: 0 0 0 2px rgb(95 174 68 / 35%); }
+  50% { box-shadow: 0 0 0 4px rgb(95 174 68 / 20%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-board .ai-state.on::before { animation: none; box-shadow: 0 0 0 2px rgb(95 174 68 / 35%); }
+}
 .welcome-board .ai-key > summary { color: var(--board-ink-2); font-size: 14px; }
 /* Where to get a key: a quiet link all in one gold, its key and its arrow out to the other site in the board's pixels. */
 .welcome-board .key-link { gap: 7px; margin-top: 2px; color: var(--w-gold); font-size: 14px; font-weight: 700; }
@@ -1832,17 +1857,17 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .key-link .key-out { width: 12px; }
 /* A saved key, in the board's green and pixel letters, and the button that removes it, red. */
 .welcome-board .key-saved { gap: 6px; color: var(--w-on); font-family: var(--pixel); font-size: 17px; font-weight: 700; }
-.welcome-board .btn.danger:not(.cta) {
+.welcome-board .btn.danger:not(.cta, .welcome-convo *) {
   --ring-c: #b3261e; background: #fde3df; color: var(--w-bad);
   box-shadow: var(--ring), inset 0 var(--px) 0 0 #fff4f1, inset 0 calc(var(--px) * -2) 0 0 #efb2a8;
 }
-.welcome-board .btn.danger:not(.cta):hover { background: #fbcfc7; }
+.welcome-board .btn.danger:not(.cta, .welcome-convo *):hover { background: #fbcfc7; }
 
 /* Chips: a block each, green once picked. The gaps leave room for their edges. */
-.welcome-board .chips { gap: 12px; }
-.welcome-board .tag { --ring-c: var(--w-field-ring); gap: 7px; border-radius: 0; padding: 5px 9px; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring); }
-.welcome-board .tag .tick, .welcome-ok .tick { width: calc(var(--px) * 4); margin: 0; color: var(--w-on); }
-.welcome-board .tag-x { color: var(--board-ink-2); }
+.welcome-board .chips:not(.welcome-convo *) { gap: 12px; }
+.welcome-board .tag:not(.welcome-convo *) { --ring-c: var(--w-field-ring); gap: 7px; border-radius: 0; padding: 5px 9px; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring); }
+.welcome-board .tag:not(.welcome-convo *) .tick, .welcome-ok .tick { width: calc(var(--px) * 4); margin: 0; color: var(--w-on); }
+.welcome-board .tag-x:not(.welcome-convo *) { color: var(--board-ink-2); }
 .welcome-board .role-pick { --ring-c: var(--w-field-ring); padding: 6px 12px; border: 0; border-radius: 0; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring); }
 .welcome-board .role-pick:hover { background: var(--w-chip-hi); }
 .welcome-board .role-pick[aria-pressed="true"] { --ring-c: var(--w-on-lo); background: var(--w-on); color: var(--w-on-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--w-on-lo); }
@@ -1853,29 +1878,85 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .add-link { border-radius: 0; color: var(--w-on); font-family: var(--pixel); font-size: 19px; font-weight: 700; }
 .welcome-board .add-link:hover { background: none; text-decoration: underline; }
 
-/* A document drops on parchment inside a dashed edge of the board's blocks, or is picked by clicking it. */
+/* A document drops on parchment inside a dashed edge of the board's blocks, or is picked by clicking it. In the
+   middle, a folder with an arrow falling into it in three pixel steps, "drop here" in big pixel letters, what goes
+   in, and what it takes as blocks: the kinds of file, or LinkedIn's way to save one, step by step. Once a file is
+   there, the files as tags, and the arrow rests. */
 .welcome-drops { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 18px; }
 .welcome-drop {
-  position: relative; display: flex; flex-direction: column; gap: 10px; min-height: 128px; padding: 18px; cursor: pointer;
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+  min-height: 128px; padding: 20px 18px 24px; cursor: pointer; text-align: center;
   background: var(--w-field); color: var(--board-ink); outline: var(--px) dashed var(--w-field-ring); outline-offset: calc(var(--px) * -1);
 }
 .welcome-drop:hover, .welcome-drop.over { background: var(--w-chip-hi); }
 .welcome-drop:focus-within { outline-color: var(--w-focus); outline-style: solid; }
 .welcome-file { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.welcome-drop-head { display: flex; align-items: center; gap: 10px; }
-.welcome-drop-head strong { font-family: var(--pixel); font-size: 21px; font-weight: 700; line-height: 1.1; }
-.welcome-page { flex: none; width: 18px; height: auto; color: var(--board-ink-2); }
+.welcome-drop-art { position: relative; flex: none; width: 56px; height: 72px; }
+.welcome-drop-folder { position: absolute; bottom: 0; left: 0; width: 56px; height: auto; color: var(--frame); }
+.welcome-drop-arrow { position: absolute; top: 0; left: 14px; width: 28px; height: auto; color: var(--cta-lo); animation: drop-in 1.2s steps(1, end) infinite; }
+.welcome-drop.has .welcome-drop-arrow { animation: none; }
+@keyframes drop-in { 33% { translate: 0 var(--px); } 66% { translate: 0 calc(var(--px) * 2); } }
+.welcome-drop-call { font-family: var(--pixel); font-size: 26px; font-weight: 800; line-height: 1; color: var(--board-ink); }
+.welcome-drop-what { display: inline-flex; align-items: center; gap: 8px; color: var(--board-ink-2); font-family: var(--pixel); font-size: 18px; font-weight: 700; line-height: 1.1; }
+/* A step's other way in its foot, apart from the way on: a block lit along the top, pressing in. Without a CV it is
+   in the pins' red; back to the files from the conversation (a new CV, starting again), in the board's green. */
+.welcome-board .btn.welcome-other:not(.cta) {
+  --ring-c: var(--edge); background: var(--w-pin); color: #ffffff;
+  box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-pin-hi), inset 0 calc(var(--px) * -2) 0 0 #9c2222;
+}
+.welcome-board .btn.welcome-other:not(.cta):hover { background: #e03a36; }
+.welcome-board .btn.welcome-other:not(.cta):active { box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-pin-hi), inset 0 calc(var(--px) * -1) 0 0 #9c2222; }
+.welcome-board .btn.welcome-other.welcome-again:not(.cta) {
+  background: var(--w-on); color: var(--w-on-ink);
+  box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-on-hi), inset 0 calc(var(--px) * -2) 0 0 var(--w-on-lo);
+}
+.welcome-board .btn.welcome-other.welcome-again:not(.cta):hover { background: #3f8a3a; }
+.welcome-board .btn.welcome-other.welcome-again:not(.cta):active { box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-on-hi), inset 0 calc(var(--px) * -1) 0 0 var(--w-on-lo); }
+/* The files in it, from the left as their names read: the first ones as tags, then a tag of how many more, on
+   parchment, in pixel letters, with a plus in the arrow's gold where the files have their tick. */
+.welcome-drop-files { align-self: stretch; display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding-inline: var(--px); }
+.welcome-board .welcome-drop-rest { background: var(--w-chip); color: var(--board-ink-2); font-family: var(--pixel); font-size: 18px; font-weight: 700; line-height: 1.1; }
+.welcome-board .welcome-drop-rest .tick { color: var(--cta-lo); }
+.welcome-kinds, .welcome-path { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; }
+.welcome-path { gap: 8px; }
+.welcome-kinds > span, .welcome-path > span {
+  --ring-c: var(--w-field-ring); padding: 2px 8px 3px; background: var(--w-chip); color: var(--board-ink-2); box-shadow: var(--ring);
+  font-family: var(--pixel); font-size: 15px; font-weight: 700; line-height: 1.1;
+}
+.welcome-path > span { background: var(--w-field); color: var(--board-ink); }
+.welcome-path > svg { flex: none; width: 6px; height: auto; color: var(--board-ink-2); }
+@media (prefers-reduced-motion: reduce) {
+  .welcome-drop-arrow { animation: none; }
+}
 
-/* /setup's conversation, as on the conversations page, framed in parchment on the board. */
+/* /setup's conversation in a wooden frame on the board, inside it exactly as on the conversations page: the site's
+   messages, bubbles and box to write in, which none of the board's look reaches (above). */
 .welcome-convo {
   --ring-c: var(--w-field-ring); display: flex; flex-direction: column; flex: 1 1 0; min-height: 200px;
-  background: var(--w-field); color: var(--ink); box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade);
+  background: var(--bg); color: var(--ink); font: 15.5px/1.6 "Rubik", "Segoe UI", system-ui, sans-serif; box-shadow: var(--ring), inset 0 var(--px) 0 0 var(--w-field-shade);
 }
 .welcome-convo .log-column { width: calc(100% - 32px); }
-.welcome-convo .msg-bubble { border-radius: 0; background: var(--w-chip); color: var(--board-ink); }
 .welcome-convo .composer { width: calc(100% - 28px); padding-bottom: 14px; }
-.welcome-convo .composer-box { --ring-c: var(--w-field-ring); border: 0; border-radius: 0; background: #ffffff; box-shadow: var(--ring); }
-.welcome-convo .composer-box:focus-within { --ring-c: var(--w-focus); }
+/* Its bar, as a window's: what it is, in bold pixel letters, and at its end the way to make it big or small again,
+   the word and then its icon. */
+.welcome-convo-bar {
+  display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 12px 8px;
+  background: var(--w-chip); box-shadow: inset 0 calc(var(--px) * -1) 0 0 var(--w-field-ring);
+  color: var(--board-ink); font-family: var(--pixel); font-size: 20px; font-weight: 800; line-height: 1.1;
+}
+.welcome-convo-big {
+  display: inline-flex; align-items: center; gap: 8px; padding: 2px 4px; border: 0; background: none;
+  color: var(--board-ink); font: inherit; font-size: 18px; font-weight: 800; cursor: pointer;
+}
+.welcome-convo-big:hover { color: var(--edge); }
+.welcome-convo-big:focus-visible { outline: 2px solid var(--w-focus); outline-offset: 2px; }
+.welcome-convo-big-icon { flex: none; width: 20px; height: auto; }
+/* The box made big (ConversationBox): out of the board, nearly the whole window, over the dimmed introduction, the
+   conversation in it at the width it reads best; an empty room of its size keeps its place on the board. */
+.welcome-convo-room { flex: 1 1 0; min-height: 200px; }
+.welcome-convo.big { position: fixed; z-index: 70; top: 3dvh; left: 3vw; width: 94vw; height: 94dvh; min-height: 0; }
+.welcome-convo.big :is(.log-column, .composer) { width: min(820px, 100% - 32px); }
+.big-chat-shade { position: fixed; inset: 0; z-index: 69; background: rgb(10 14 20 / 55%); }
 .welcome-wait { display: inline-flex; align-items: center; gap: 8px; color: var(--board-ink-2); font-size: 14px; }
 .welcome-ok { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 
@@ -1892,9 +1973,22 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-track button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: #fff; cursor: pointer; }
 .welcome-track-name { padding: 3px 6px 4px; background: var(--edge); color: #fff; font-family: var(--pixel); font-size: 17px; font-weight: 700; line-height: 1; white-space: pre-line; text-align: center; }
 .welcome-track li.here .welcome-track-name { background: #fff; color: var(--cta-ink); }
-.welcome-track .flag { background: var(--edge); color: #fff; --ring-c: var(--edge); }
+.welcome-track .flag { position: relative; background: var(--edge); color: #fff; --ring-c: var(--edge); }
 .welcome-track li.done .flag { background: var(--cta); color: var(--cta-ink); box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo); }
 .welcome-track li.here .flag { background: #fff; color: var(--cta-ink); --ring-c: var(--cta); }
+/* The CV's step while Pip reads it in the background (reading): a light at its flag's corner, yellow and blinking in
+   two steps while he works, red with a "!" while he waits for the user. */
+.welcome-track-mark {
+  --ring-c: var(--edge); position: absolute; top: calc(var(--px) * -2); inset-inline-end: calc(var(--px) * -2);
+  display: grid; place-items: center; width: 16px; height: 16px; box-shadow: var(--ring);
+  color: #fff; font-family: var(--pixel); font-size: 15px; font-weight: 800; line-height: 1;
+}
+.welcome-track li.work .welcome-track-mark { background: var(--cta); animation: track-blink 1s steps(1, end) infinite; }
+.welcome-track li.ask .welcome-track-mark { background: var(--w-pin); }
+@keyframes track-blink { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) {
+  .welcome-track-mark { animation: none; }
+}
 .welcome-track button:focus-visible { outline: var(--px) solid #fff; outline-offset: calc(var(--px) * 2); }
 @media (max-width: 520px) {
   .welcome { --w-room: 96px; }

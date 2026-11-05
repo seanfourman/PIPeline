@@ -1,6 +1,9 @@
 // Chooses the website's roles from the ready-made list (roles.ts), for /setup to run once it knows the candidate:
 //   bun run web/pick-roles.ts --list                  the list, by field, each role's id and title
 //   bun run web/pick-roles.ts [--level junior] id ...  these roles, in this order, and the experience level
+//   bun run web/pick-roles.ts --if-empty ...           the same, only while no role is chosen yet: /setup reading in
+//                                                      the background while the introduction's search step lets the
+//                                                      user pick them, whose picks win
 // The roles chosen replace those chosen from the list before; any typed in by hand on the settings screen stay,
 // after them. Saving goes the same way as the settings screen's, so the search settings in CLAUDE.md and
 // search-queries.md follow.
@@ -9,7 +12,8 @@ import { listedRole, ROLE_FIELDS, type Level } from "./roles";
 import { loadSettings, pickRoles, saveSettings } from "./settings";
 
 const LEVELS: Level[] = ["any", "junior", "middle", "senior"];
-const args = process.argv.slice(2);
+const ifEmpty = process.argv.includes("--if-empty");
+const args = process.argv.slice(2).filter((a) => a !== "--if-empty");
 
 if (!args.length || args[0] === "--list") {
   for (const field of ROLE_FIELDS) {
@@ -32,6 +36,11 @@ if (unknown.length || !ids.length) {
   process.exit(1);
 }
 
-const saved = saveSettings(pickRoles(loadSettings(), ids, level as Level | undefined), REPO);
+const current = loadSettings();
+if (ifEmpty && current.roles.length) {
+  console.log(`Kept the roles already chosen on the site: ${current.roles.map((r) => r.label).join(", ")}`);
+  process.exit(0);
+}
+const saved = saveSettings(pickRoles(current, ids, level as Level | undefined), REPO);
 console.log(`Experience level: ${saved.seniority}`);
 console.log(`Roles: ${saved.roles.map((r) => `${r.label} (${r.query})`).join(", ")}`);

@@ -6,7 +6,7 @@
 // Going to another step is the login's change of language: Pip jumps down off the board, the board flips like a sign
 // to the new step, and Pip jumps back on.
 import React, { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { useApp } from "../app";
 import { paintStill } from "../intro";
 import { jump, OFF_BOARD, type Point } from "../jump";
@@ -37,7 +37,17 @@ const LINGER = 0.45;
 
 // The board's own little drawings, in its pixels: a page for a document, and the arrow back (drawn pointing to the
 // start of a right-to-left line, turned round in English by its class, like the site's back icon).
-const PAGE = ["XXXXXX...", "X....XX..", "X....X.X.", "X....XXXX", "X.......X", "X.XXXXX.X", "X.......X", "X.XXXXX.X", "X.......X", "X.XXX...X", "XXXXXXXXX"];
+// Where a document drops: a folder, an arrow falling into it, and the arrow between the steps of LinkedIn's way to
+// save a PDF (drawn going on along a right-to-left line, turned round in English).
+const FOLDER = ["XXXXX.........", "X...X.........", "X...XXXXXXXXXX", "X............X", "X............X", "X............X", "X............X", "X............X", "XXXXXXXXXXXXXX"];
+const DROP_ARROW = ["..XXX..", "..XXX..", "..XXX..", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..."];
+const ONWARD = ["...X", "..XX", ".XX.", "XX..", ".XX.", "..XX", "...X"];
+// Making the CV step's conversation big, four corners pointing out, and small again, pointing in.
+const EXPAND = ["XXX...XXX", "XX.....XX", "X.X...X.X", ".........", "X.X...X.X", "XX.....XX", "XXX...XXX"];
+const SHRINK = ["X.X...X.X", ".XX...XX.", "XXX...XXX", ".........", "XXX...XXX", ".XX...XX.", "X.X...X.X"];
+// The files a drop names; the rest it counts, on a tag of their own with a plus where the others have their tick.
+const SHOWN_FILES = 3;
+const PLUS = ["..XX..", "..XX..", "XXXXXX", "XXXXXX", "..XX..", "..XX.."];
 const BACK = ["X...", "XX..", ".XX.", "..XX", ".XX.", "XX..", "X..."];
 // The opening's list of what Pip does, a line of the paper each, with its picture seven blocks tall: a magnifier, a
 // star, a page, an envelope and a paper plane (drawn going on along a right-to-left line, turned round in English
@@ -210,35 +220,119 @@ function AiStep({ next, back }: { next: () => void; back: () => void }) {
   );
 }
 
-// A place to drop a document, or click to pick one; what is already there shows as tags.
-function Drop({ label, hint, files, busy, onFiles }: { label: string; hint?: string; files: string[]; busy: boolean; onFiles: (f: FileList | null) => void }) {
+// A place to drop documents, or click to pick them: a folder with an arrow falling into it, "drop here", what goes
+// in, and what it takes (the kinds of file, or LinkedIn's way to save one); once something is there, the files as
+// tags from the left, as their names read (the first few, then how many more), and the arrow rests.
+function Drop({ label, takes, files, busy, onFiles }: { label: string; takes: React.ReactNode; files: string[]; busy: boolean; onFiles: (f: FileList | null) => void }) {
   const { t } = useApp();
   const [over, setOver] = useState(false);
   return (
     <label
-      className={`welcome-drop ${over ? "over" : ""}`}
+      className={`welcome-drop ${over ? "over" : ""} ${files.length ? "has" : ""}`}
       onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
       onDrop={(e) => { e.preventDefault(); setOver(false); onFiles(e.dataTransfer.files); }}
     >
       <input type="file" accept={DOC_ACCEPT} multiple className="welcome-file" onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }} />
-      <span className="welcome-drop-head"><PixelArt className="welcome-page" rows={PAGE} /><strong>{label}</strong>{busy && <Spinner />}</span>
-      {files.length
-        ? <span className="chips">{files.map((f) => <span key={f} className="tag"><Tick /><bdi>{f}</bdi></span>)}</span>
-        : <span className="note">{t("welcome.cv.drop")}</span>}
-      {hint && <small className="note">{hint}</small>}
+      <span className="welcome-drop-art"><PixelArt className="welcome-drop-arrow" rows={DROP_ARROW} /><PixelArt className="welcome-drop-folder" rows={FOLDER} /></span>
+      {!files.length && <><span className="welcome-drop-call">{t("welcome.cv.dropHere")}</span><span className="note">{t("welcome.cv.orPick")}</span></>}
+      <strong className="welcome-drop-what">{label}{busy && <Spinner />}</strong>
+      {files.length ? (
+        <>
+          <span className="welcome-drop-files" dir="ltr">
+            {files.slice(0, SHOWN_FILES).map((f) => <span key={f} className="tag"><Tick /><bdi>{f}</bdi></span>)}
+            {files.length > SHOWN_FILES && (
+              <span className="tag welcome-drop-rest">
+                <PixelArt className="tick" rows={PLUS} />
+                <bdi dir="auto">{files.length - SHOWN_FILES === 1 ? t("welcome.cv.oneMore") : t("welcome.cv.nMore", { n: files.length - SHOWN_FILES })}</bdi>
+              </span>
+            )}
+          </span>
+        </>
+      ) : takes}
     </label>
   );
 }
 
-// The CV and a LinkedIn PDF go into the documents folder; then /setup reads them in a conversation on the board,
-// asking here what it needs. Without a CV it interviews instead.
-function CvStep({ next, back }: { next: () => void; back: () => void }) {
+// The CV step's conversation box, which can be made big: the box itself leaves the board for nearly the whole window,
+// over a dimmed introduction, and comes back, keeping its frame and bar and the one conversation in it, which fills
+// each size as the box grows and shrinks, so nothing in it is drawn again. While it is out, an empty room of the same
+// size keeps its place on the board, and Escape, or a click anywhere outside it, brings it back.
+function ConversationBox({ id }: { id: string }) {
+  const { t } = useApp();
+  const [big, setBig] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const room = useRef<HTMLDivElement>(null);
+  const shade = useRef<HTMLDivElement>(null);
+  const moving = useRef(false);
+  const calm = useRef(matchMedia("(prefers-reduced-motion: reduce)").matches).current;
+  const place = (r: DOMRect) => ({ top: `${r.top}px`, left: `${r.left}px`, width: `${r.width}px`, height: `${r.height}px` });
+  const timing = { duration: 280, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" };
+  const resize = async (toBig: boolean) => {
+    const el = box.current;
+    if (!el || moving.current) return;
+    if (calm) return setBig(toBig);
+    moving.current = true;
+    const start = el.getBoundingClientRect();
+    if (toBig) {
+      flushSync(() => setBig(true));
+      shade.current?.animate([{ opacity: 0 }, { opacity: 1 }], timing);
+      await el.animate([place(start), place(el.getBoundingClientRect())], timing).finished.catch(() => {});
+    } else {
+      const end = room.current!.getBoundingClientRect();
+      shade.current?.animate([{ opacity: 1 }, { opacity: 0 }], { ...timing, fill: "forwards" });
+      const back = el.animate([place(start), place(end)], { ...timing, fill: "forwards" });
+      await back.finished.catch(() => {});
+      flushSync(() => setBig(false));
+      back.cancel();
+    }
+    moving.current = false;
+  };
+  useEffect(() => {
+    if (!big) return;
+    const shut = (e: KeyboardEvent) => { if (e.key === "Escape") resize(false); };
+    addEventListener("keydown", shut);
+    return () => removeEventListener("keydown", shut);
+  });
+  return (
+    <>
+      {big && <div className="big-chat-shade" ref={shade} onClick={() => resize(false)} />}
+      {big && <div className="welcome-convo-room" ref={room} />}
+      <div className={`welcome-convo ${big ? "big" : ""}`} ref={box} role={big ? "dialog" : undefined} aria-modal={big || undefined} aria-label={big ? t("welcome.cv.convo") : undefined}>
+        {/* A bar over it, as a window's: what it is, and at its end the way to make it big or small again. */}
+        <div className="welcome-convo-bar">
+          <span>{t("welcome.cv.convo")}</span>
+          <button type="button" className="welcome-convo-big" onClick={() => resize(!big)}>
+            {t(big ? "welcome.cv.smaller" : "welcome.cv.bigger")}<PixelArt className="welcome-convo-big-icon" rows={big ? SHRINK : EXPAND} />
+          </button>
+        </div>
+        <Conversation key={id} id={id} bare />
+      </div>
+    </>
+  );
+}
+
+// The CV and a LinkedIn PDF go into the documents folder, and the way on starts /setup reading them in the
+// background: the introduction goes on, Pip working on every step and the track marking this one until the profile
+// is saved, and the step shows the conversation when it is back to (it asks there what it needs). Without a CV the
+// red button interviews instead, here. The step opens on the files: the conversation shows while it goes, before
+// the profile is saved, or once the interview was started here (talk), until the files are asked for again. Shown,
+// it tells the board what it is (onConversation), for the words over it, and it can be made big (BigConversation).
+function CvStep({ next, back, onConversation }: { next: () => void; back: () => void; onConversation: (kind: string) => void }) {
   const { s, t, err, refresh } = useApp();
   const docs = s.intro?.documents ?? { cv: [], linkedin: [] };
   const setup = s.sessions.filter((x) => /^\/setup\b/.test(x.title)).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const working = setup?.status === "running" || setup?.status === "waiting";
+  const [talk, setTalk] = useState(false);
   const [again, setAgain] = useState(false);
+  const shown = Boolean(setup && !again && (talk || working || !s.profileReady));
+  const kind = !shown ? "" : /--interview\b/.test(setup!.title) ? "interview" : /--from-documents\b/.test(setup!.title) ? "reading" : "other";
+  useEffect(() => { onConversation(kind); }, [kind, onConversation]);
+  useEffect(() => () => onConversation(""), [onConversation]);
+  // Files added on this visit, which the way on reads even with a profile saved already.
+  const [added, setAdded] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const any = docs.cv.length + docs.linkedin.length > 0;
   const upload = async (kind: "cv" | "linkedin", files: FileList | null) => {
     if (!files?.length) return;
     setBusy(kind);
@@ -246,10 +340,27 @@ function CvStep({ next, back }: { next: () => void; back: () => void }) {
     try {
       for (const f of Array.from(files)) await api("intro/document", { kind, name: f.name, data: await readBase64(f) });
       await refresh();
+      setAdded(true);
     } catch (x) {
       setError(err(x));
     }
     setBusy("");
+  };
+  // On, with the files read meanwhile if there is something new to read; the files stay on the board as it turns.
+  const onward = async () => {
+    if (any && (!s.profileReady || added)) {
+      setError("");
+      setAgain(true);
+      try {
+        await api("sessions", { prompt: "/setup --from-documents" });
+        await refresh();
+      } catch (x) {
+        setAgain(false);
+        setError(err(x));
+        return;
+      }
+    }
+    next();
   };
   const begin = async (prompt: string) => {
     setError("");
@@ -257,19 +368,28 @@ function CvStep({ next, back }: { next: () => void; back: () => void }) {
       await api("sessions", { prompt });
       await refresh();
       setAgain(false);
+      setTalk(true);
     } catch (x) {
       setError(err(x));
     }
   };
-  if (setup && !again) {
-    const working = setup.status === "running" || setup.status === "waiting";
+  if (setup && shown) {
+    // Back to the files: to start again when the conversation stopped before the profile was saved, or, with a
+    // profile saved already, to read a new CV, stopping this conversation first if it still goes.
+    const leave = async () => {
+      if (working) await api(`sessions/${setup.id}/interrupt`, {}).catch(() => {});
+      setAgain(true);
+      setTalk(false);
+    };
     return (
       <>
-        <div className="welcome-convo"><Conversation key={setup.id} id={setup.id} bare /></div>
-        <Actions back={back} note={!working && !s.profileReady && <button type="button" className="welcome-link" onClick={() => setAgain(true)}>{t("welcome.cv.again")}</button>}>
+        <ConversationBox id={setup.id} />
+        <Actions back={back} note={(s.profileReady || !working) && <Btn className="welcome-other welcome-again" onClick={leave}>{t(s.profileReady ? "welcome.cv.newCv" : "welcome.cv.again")}</Btn>}>
           {s.profileReady
             ? <Btn kind="cta" onClick={next}>{t("welcome.next")}</Btn>
-            : <span className="welcome-wait" role="status">{working && <Spinner />}{t(working ? "welcome.cv.working" : "welcome.cv.stuck")}</span>}
+            : working
+              ? <><span className="welcome-wait" role="status"><Spinner />{t("welcome.cv.working")}</span><Btn kind="cta" onClick={next}>{t("welcome.next")}</Btn></>
+              : <span className="welcome-wait" role="status">{t("welcome.cv.stuck")}</span>}
         </Actions>
       </>
     );
@@ -277,12 +397,17 @@ function CvStep({ next, back }: { next: () => void; back: () => void }) {
   return (
     <>
       <div className="welcome-drops">
-        <Drop label={t("welcome.cv.cv")} files={docs.cv} busy={busy === "cv"} onFiles={(f) => upload("cv", f)} />
-        <Drop label={t("welcome.cv.linkedin")} hint={t("welcome.cv.linkedinHow")} files={docs.linkedin} busy={busy === "linkedin"} onFiles={(f) => upload("linkedin", f)} />
+        <Drop label={t("welcome.cv.cv")} files={docs.cv} busy={busy === "cv"} onFiles={(f) => upload("cv", f)}
+          takes={<span className="welcome-kinds">{t("welcome.cv.kinds").split("|").map((k) => <span key={k}>{k}</span>)}</span>} />
+        <Drop label={t("welcome.cv.linkedin")} files={docs.linkedin} busy={busy === "linkedin"} onFiles={(f) => upload("linkedin", f)}
+          takes={<span className="welcome-path">{t("welcome.cv.linkedinSteps").split("|").map((step, i) => (
+            <React.Fragment key={step}>{i > 0 && <PixelArt className="icon-onward" rows={ONWARD} />}<span>{step}</span></React.Fragment>
+          ))}</span>} />
       </div>
       {error && <p className="error-line" role="alert" dir="auto">{error}</p>}
-      <Actions back={back} note={<button type="button" className="welcome-link" onClick={() => begin("/setup")}>{t("welcome.cv.none")}</button>}>
-        <Btn kind="cta" disabled={!docs.cv.length && !docs.linkedin.length} onClick={() => begin("/setup --from-documents")}>{t("welcome.cv.read")}</Btn>
+      {/* Without a CV file, the step's other way, a red button, starts the interview instead, straight away. */}
+      <Actions back={back} note={<Btn className="welcome-other" onClick={() => begin("/setup --interview")}>{t("welcome.cv.none")}</Btn>}>
+        <Btn kind="cta" disabled={!any && !s.profileReady} onClick={onward}>{t("welcome.next")}</Btn>
       </Actions>
     </>
   );
@@ -401,6 +526,8 @@ export function Welcome() {
   const at = STEPS.indexOf(step);
   const goTo = useStepChange(step, setStep);
   const [foot, setFoot] = useState<HTMLDivElement | null>(null);
+  // What the CV step's conversation is, while it shows one: the words over it are about it, not the files.
+  const [cvTalk, setCvTalk] = useState("");
   const go = (i: number) => goTo.to(STEPS[Math.max(0, Math.min(STEPS.length - 1, i))]);
   const next = () => go(at + 1);
   const back = () => go(at - 1);
@@ -414,15 +541,18 @@ export function Welcome() {
   const almost = step === "done" && missing.length > 0;
   const title = t(almost ? "welcome.done.almostTitle" : `welcome.${step}.title`);
   // The opening has its list of points instead.
-  const text = step === "hello" ? "" : String(t(almost ? "welcome.done.missing" : `welcome.${step}.text`));
+  const text = step === "hello" ? "" : String(t(almost ? "welcome.done.missing" : step === "cv" && cvTalk ? `welcome.cv.talk.${cvTalk}` : `welcome.${step}.text`));
   const setup = s.sessions.filter((x) => /^\/setup\b/.test(x.title)).sort((a, b) => b.createdAt - a.createdAt)[0];
+  // Pip reading the CV, in the background of the steps after it, until the profile is saved: working while /setup
+  // runs, and otherwise waiting for the user (an approval, his questions, or a run that stopped).
+  const reading: "" | "work" | "ask" = !setup || s.profileReady ? "" : setup.status === "running" ? "work" : "ask";
   const mood: Mood = step === "hello" ? "wave" : step === "done" ? (missing.length ? "idle" : "happy")
-    : step === "cv" && setup?.status === "waiting" ? "ask" : step === "cv" && setup?.status === "running" ? "work" : "idle";
+    : reading === "work" ? "work" : reading === "ask" ? "ask" : "idle";
   const body: Record<Step, React.ReactNode> = {
     hello: <Actions><Btn kind="cta" autoFocus onClick={next}>{t("welcome.hello.go")}</Btn></Actions>,
     name: <NameStep next={next} back={back} />,
     ai: <AiStep next={next} back={back} />,
-    cv: <CvStep next={next} back={back} />,
+    cv: <CvStep next={next} back={back} onConversation={setCvTalk} />,
     search: <SearchStep next={next} back={back} />,
     mail: <MailStep next={next} back={back} />,
     done: (
@@ -479,9 +609,14 @@ export function Welcome() {
           </section>
           <ol className="welcome-track" aria-label={t("welcome.label")}>
             {STEPS.map((x, i) => (
-              <li key={x} className={`${done[x] ? "done" : ""} ${x === step ? "here" : ""}`}>
-                <button type="button" aria-current={x === step ? "step" : undefined} aria-label={`${i + 1}. ${t(`welcome.${x}.title`)}`} onClick={() => goTo.to(x)}>
-                  <span className="flag">{done[x] && x !== step ? <Tick /> : <Digits n={i + 1} />}</span>
+              <li key={x} className={`${done[x] ? "done" : ""} ${x === step ? "here" : ""} ${x === "cv" && reading ? `reading ${reading}` : ""}`}>
+                <button type="button" aria-current={x === step ? "step" : undefined} onClick={() => goTo.to(x)}
+                  aria-label={`${i + 1}. ${t(`welcome.${x}.title`)}${x === "cv" && reading ? `, ${t(reading === "work" ? "welcome.cv.reading" : "welcome.cv.waiting")}` : ""}`}>
+                  <span className="flag">
+                    {done[x] && x !== step ? <Tick /> : <Digits n={i + 1} />}
+                    {/* The CV's step while Pip reads it: a light blinking while he works, a red mark while he waits. */}
+                    {x === "cv" && reading && <span className="welcome-track-mark" aria-hidden="true">{reading === "ask" ? "!" : ""}</span>}
+                  </span>
                   <span className="welcome-track-name">{t(`welcome.${x}.short`)}</span>
                 </button>
               </li>
