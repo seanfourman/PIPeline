@@ -555,12 +555,92 @@ function EscapingPip({ x, y, onGone }: { x: number; y: number; onGone: () => voi
   );
 }
 
+// The sparkles' circle under the pointer (styles.css): it won't keep quite round, as if something alive in it were
+// trying to get out. Once the pointer has stayed a moment, then every two seconds or so, at random, a whole lump of
+// it pushes out a little somewhere new, strains there a moment and draws slowly back into a gentle wobble; once
+// the pointer goes, it is round again. Each shape, the circle too, is a ring of points round the
+// middle, so the browser can turn one into the next.
+const BLOB_POINTS = 96;
+const LUMP_WIDTH = 1.1;
+// How long the pointer stays on the sparkles before the first lump.
+const BLOB_WAIT_MS = 800;
+type Wave = { k: number; size: number; turn: number };
+type Lump = { at: number; height: number };
+// Three gentle waves round it, each turned at random, together a pixel or two.
+function wobble(): Wave[] {
+  const turn = () => Math.random() * 2 * Math.PI;
+  return [
+    { k: 2, size: 0.6 + Math.random() * 0.5, turn: turn() },
+    { k: 3, size: 0.3 + Math.random() * 0.4, turn: turn() },
+    { k: 4, size: 0.2 + Math.random() * 0.2, turn: turn() },
+  ];
+}
+// One lump of 2 to 3 pixels, now and then a smaller second across from it, each over a wide arc, round all the
+// way; the far side gives a little, as the mass goes over.
+function lumps(): Lump[] {
+  const first = Math.random() * 2 * Math.PI;
+  const all = [{ at: first, height: 2 + Math.random() }];
+  if (Math.random() < 0.2) all.push({ at: first + Math.PI * (0.7 + Math.random() * 0.6), height: 1.5 + Math.random() });
+  return all;
+}
+function blobShape(waves: Wave[] = [], pushes: Lump[] = [], strength = 1) {
+  const swell = (off: number) => (off < LUMP_WIDTH ? Math.cos(((off / LUMP_WIDTH) * Math.PI) / 2) ** 2 : 0);
+  const points = Array.from({ length: BLOB_POINTS }, (_, i) => {
+    const a = (i / BLOB_POINTS) * 2 * Math.PI;
+    let r = waves.reduce((r, w) => r + w.size * Math.sin(w.k * a + w.turn), waves.length ? 22.4 : 22);
+    for (const lump of pushes) {
+      const off = Math.abs(Math.atan2(Math.sin(a - lump.at), Math.cos(a - lump.at)));
+      r += lump.height * strength * (swell(off) - 0.25 * swell(Math.PI - off));
+    }
+    return `calc(50% + ${(r * Math.cos(a)).toFixed(2)}px) calc(50% + ${(r * Math.sin(a)).toFixed(2)}px)`;
+  });
+  return `polygon(${points.join(", ")})`;
+}
+function useBlob() {
+  const lit = useRef<HTMLSpanElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  const moving = useRef<Animation>();
+  useEffect(() => () => { clearTimeout(timer.current); moving.current?.cancel(); }, []);
+  // From wherever the circle is now (the circle as points, the first time) through the shapes given, keeping the
+  // last; the first stretch eased as given.
+  const move = (frames: Keyframe[], duration: number, easing: string) => {
+    const el = lit.current;
+    if (!el) return;
+    const from = el.style.clipPath ? getComputedStyle(el).clipPath : blobShape();
+    moving.current?.cancel();
+    el.style.clipPath = String(frames[frames.length - 1].clipPath);
+    moving.current = el.animate([{ clipPath: from, easing }, ...frames], { duration });
+  };
+  // Out fairly fast most of the way, a last push as it strains, then slowly back in, to the same wobble under the
+  // lump; the next a couple of seconds later.
+  const lash = () => {
+    const waves = wobble(), pushes = lumps();
+    move([
+      { clipPath: blobShape(waves, pushes, 0.85), offset: 0.25, easing: "ease-in-out" },
+      { clipPath: blobShape(waves, pushes), offset: 0.45, easing: "cubic-bezier(0.4, 0, 0.3, 1)" },
+      { clipPath: blobShape(waves) },
+    ], 1500, "cubic-bezier(0.3, 0.7, 0.4, 1)");
+    timer.current = setTimeout(lash, 1800 + Math.random() * 800);
+  };
+  // A mouse's pointer only, and not with reduced motion; not at once either, but once it has stayed a moment.
+  const enter = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    clearTimeout(timer.current);
+    timer.current = setTimeout(lash, BLOB_WAIT_MS);
+  };
+  const leave = () => {
+    clearTimeout(timer.current);
+    if (lit.current?.style.clipPath) move([{ clipPath: blobShape() }], 450, "ease-out");
+  };
+  return { lit, enter, leave };
+}
+
 // The search, plain like a chat app's first screen: a question, one round box with Pip lying on its top edge,
 // and the first few roles in a row of glass buttons, with a + that unfolds the rest. At the box's end, a menu of where
 // and how to search, and the sparkles, for the smart search, which uses the settings' AI; once something is typed,
 // the search button flies in past them.
 function Quick() {
-  const { s, t, lang, err, start, refresh } = useApp();
+  const { s, t, lang, err, run: inBackground, refresh } = useApp();
   const [, paint] = useState(0);
   const repaint = () => paint((n) => n + 1);
   const [menu, setMenu] = useState<"" | "filters" | "ai">("");
@@ -571,8 +651,9 @@ function Quick() {
   const [q, setQ] = useState(search.q ?? "");
   const typing = q.trim() !== "";
   // The AI the smart search runs on, the settings' first while it is connected (as a new conversation's). The
-  // sparkles ask straight away to go ahead with it, as it takes from that AI's quota. Started, it opens in a
-  // conversation of its own (start in app.tsx); why it couldn't start shows where it was asked, until asked again.
+  // sparkles ask straight away to go ahead with it, as it takes from that AI's quota. Started, it runs in the
+  // background, in a conversation of its own listed with the rest, while Pip peeks out at work (run in app.tsx), and
+  // the box is itself again; why it couldn't start shows where it was asked, until asked again.
   const ai = MAKERS[useFirstAi()].name;
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
@@ -587,10 +668,11 @@ function Quick() {
     store(SMART_TIP, "done");
   }, [menu, tipDone]);
   const tip = !tipDone || menu === "ai";
+  const blob = useBlob();
   const smart = () => {
     setStarting(true);
     setStartError("");
-    start("/job-scraper").catch((e) => setStartError(err(e))).finally(() => setStarting(false));
+    inBackground("/job-scraper").then(() => setMenu("")).catch((e) => setStartError(err(e))).finally(() => setStarting(false));
   };
   // The search button's place, open while something is typed and while the button rolls back out; the settings
   // and the sparkles slide over as it opens and closes (useGoSlot in kit.tsx).
@@ -621,7 +703,7 @@ function Quick() {
   const showing = (which: typeof menu) => menu === which || shut === which;
   const panelClass = (which: typeof menu) => (menu === which ? "" : "closing");
   // Pressed, the sparkles ask in the box itself: their circle melts into it as it grows over all of it, its colours
-  // drifting in clouds, their mark staying, then Confirm comes out from under the mark and the question shows
+  // drifting in clouds, their mark staying, then Confirm shows, an outline that fills, and the question with it
   // (styles.css); going, the colours go back into the circle. It grows from their own middle, worked out from
   // where they are laid out in the box (so their slide in useGoSlot doesn't throw it; the row they are in is placed
   // too while they ask) as the asking starts, and shrinks back to it.
@@ -757,24 +839,26 @@ function Quick() {
                 <strong>{t("jobs.aiAsk")}</strong>
                 {startError
                   ? <small className="error-line" role="alert">{startError}</small>
-                  : <small>{roles.length === 1 ? t("jobs.aiAskOne", { ai }) : t("jobs.aiAskMany", { ai, n: roles.length })}</small>}
+                  : <small>{roles.length === 1 ? t("jobs.aiAskOne") : t("jobs.aiAskMany", { n: roles.length })} <b>{t("jobs.aiQuota", { ai })}</b></small>}
               </p>
             )}
           </div>
           <div className="seek-tools" ref={menuBox}>
+            {/* Confirm's fill is drawn over it with its words again (data-label, in styles.css), so its name is given. */}
             {asking ? (
-              <span className="smart-acts">
-                <button type="button" className="smart-go" autoFocus aria-describedby={askNote} disabled={starting} onClick={smart}>{t("jobs.aiGo")}</button>
-              </span>
+              <button type="button" className="smart-go" data-label={t("jobs.aiGo")} aria-label={t("jobs.aiGo")} autoFocus aria-describedby={askNote}
+                disabled={starting} onClick={smart}>{t("jobs.aiGo")}</button>
             ) : (
               <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
             )}
             {/* The sparkles, their colours drifting in clouds as the sky's do (styles.css), with their name floating
-                over them under the pointer, as a result's buttons have, until first pressed (tip); pressed, their
+                over them under the pointer, as a result's buttons have, until first pressed (tip), and their circle
+                pushing out in lumps under it (useBlob); pressed, their
                 circle melts into the colours it spreads over the box, and their mark stays, to be pressed again to
-                go back. Confirm comes before them, so they keep their place, and comes out from under the mark. */}
-            <button type="button" className="seek-ai" aria-label={t("jobs.ai", { ai })} aria-expanded={menu === "ai"} onClick={() => toggle("ai")}>
-              <span className="seek-ai-lit" aria-hidden="true">
+                go back. Confirm comes before them, so they keep their place. */}
+            <button type="button" className="seek-ai" aria-label={t("jobs.ai", { ai })} aria-expanded={menu === "ai"} onClick={() => toggle("ai")}
+              onPointerEnter={blob.enter} onPointerLeave={blob.leave}>
+              <span className="seek-ai-lit" ref={blob.lit} aria-hidden="true">
                 {[1, 2, 3, 4, 5].map((n) => <span key={n} className={`ai-blob ai-blob-${n}`} />)}
               </span>
               <Icon name="ai" />
@@ -845,7 +929,7 @@ export const Jobs = () => <div className="page jobs-page"><Quick /></div>;
 // page's links open Pip's; with nothing saved yet, Pip's opens first. Over Pip's list, while some of it waits to be
 // ranked, how many, and the button that ranks them.
 export function SavedJobs() {
-  const { s, t, arg, start, err } = useApp();
+  const { s, t, arg, start, run, say, err } = useApp();
   const found = pipFound(s.jobs);
   const mine = s.saved ?? [];
   const ai = MAKERS[useFirstAi()].name;
@@ -889,7 +973,7 @@ export function SavedJobs() {
           <Card className="joblist">{found.map((j) => <JobRow key={j.key} job={j as Job} scored />)}</Card>
         </>
       ) : (
-        <Card className="empty">{t("jobs.foundEmpty")}<Btn kind="primary" onClick={() => start("/job-scraper")}>{t("jobs.runSmart")}</Btn></Card>
+        <Card className="empty">{t("jobs.foundEmpty")}<Btn kind="primary" onClick={() => run("/job-scraper").catch((e) => say(err(e), "worried"))}>{t("jobs.runSmart")}</Btn></Card>
       )}
     </Page>
   );

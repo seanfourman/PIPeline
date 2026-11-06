@@ -31,6 +31,8 @@ export type AppState = {
   intro?: { done: boolean; name: string; documents: { cv: string[]; linkedin: string[] } };
   // Phone access through the site (remote.ts): whether this computer is linked, where, as whom, and connected now.
   remote?: { linked: boolean; site: string; name: string; state: "off" | "connecting" | "on"; error: string };
+  // The grade sheet kept from the settings, and whether it can be joined to a CV (transcript.ts).
+  transcript?: { size: number; joinable: boolean } | null;
 };
 
 type News = { text: string; mood: Mood } | null;
@@ -46,6 +48,9 @@ type Ctx = {
   // access is how much the conversation may do without asking (policy.ts); left out, it asks. files are the ids
   // of uploads attached to the first message (uploads.ts).
   start: (prompt: string, model?: string, access?: string, files?: string[]) => Promise<void>;
+  // The same in the background: the conversation is made and listed, but the page stays where it is, and Pip
+  // peeks out while it works (PeekingPip).
+  run: (prompt: string) => Promise<void>;
   draft: React.MutableRefObject<string>;
   logout: () => void;
 };
@@ -151,33 +156,48 @@ function Toast() {
 // How long Pip takes to slide back behind the sidebar; matches peek-in in styles.css.
 const PEEK_IN_MS = 420;
 
+// The commands that run in the background once started there (run): the smart search.
+const BACKGROUND = ["/job-scraper"];
+
 // When a conversation waits for an answer, Pip waits for you at the bottom of the screen, peeking out from
 // behind the sidebar (up from the screen's bottom on a phone, where the sidebar is a bar on top), quietly, with
 // no "!", saying in a pixel speech bubble that it waits for your answer; a click opens that conversation, whose
-// name is in its label for screen readers only. It slides out, leans out a little further now and then, and
-// slides back in when nothing waits or the conversations page is open (kept while it goes). The pages' own Pips
-// stay as they are.
+// name is in its label for screen readers only. While a command runs in the background, he peeks out the same
+// way, at work, saying what he is doing, and when it is done he says so in a notice. He slides out, leans out a
+// little further now and then, and slides back in when nothing waits or works or the conversations page is open
+// (kept while he goes). The pages' own Pips stay as they are.
 function PeekingPip() {
-  const { s, t, view } = useApp();
+  const { s, t, view, say } = useApp();
   // Not on the conversations page, where the conversations and what they wait for are in sight already.
   const waiting = s.sessions.find((x) => x.status === "waiting");
-  const id = waiting && view !== "chat" ? waiting.id : "";
-  const [kept, setKept] = useState(id);
-  const [title, setTitle] = useState("");
-  if (id && id !== kept) setKept(id);
-  if (waiting && id && waiting.title !== title) setTitle(waiting.title);
-  const leaving = !id && !!kept;
+  const working = s.sessions.find((x) => x.status === "running" && BACKGROUND.includes(x.title));
+  const now = view === "chat" ? undefined : waiting ?? working;
+  const [kept, setKept] = useState<{ id: string; title: string; work: boolean } | null>(null);
+  if (now && (kept?.id !== now.id || kept.title !== now.title || kept.work !== (now === working))) setKept({ id: now.id, title: now.title, work: now === working });
+  const leaving = !now && !!kept;
   useEffect(() => {
     if (!leaving) return;
-    const timer = setTimeout(() => setKept(""), matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PEEK_IN_MS);
+    const timer = setTimeout(() => setKept(null), matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : PEEK_IN_MS);
     return () => clearTimeout(timer);
   }, [leaving]);
+  // A background command seen at work, and then done or stopped: how it went.
+  const seen = useRef(new Set<string>());
+  useEffect(() => {
+    for (const x of s.sessions) {
+      if (!BACKGROUND.includes(x.title)) continue;
+      if (x.status === "running") seen.current.add(x.id);
+      else if ((x.status === "idle" || x.status === "error") && seen.current.delete(x.id)) {
+        say(t(x.status === "idle" ? "pip.workDone" : "pip.workStopped"), x.status === "idle" ? "happy" : "worried");
+      }
+    }
+  }, [s.sessions]);
   if (!kept) return null;
+  const says = t(kept.work ? "pip.peekWork" : "pip.peek");
   return (
-    <a className={`peek ${leaving ? "leaving" : ""}`} href={`#/chat/${kept}`} aria-label={`${t("pip.peek")} ${t("pip.peekIn")} ${friendlyTitle(title, t)}`}>
-      <Pip className="peek-pip" />
+    <a className={`peek ${leaving ? "leaving" : ""}`} href={`#/chat/${kept.id}`} aria-label={`${says} ${t("pip.peekIn")} ${friendlyTitle(kept.title, t)}`}>
+      <Pip className="peek-pip" mood={kept.work ? "work" : undefined} />
       <span className="peek-say">
-        <span className="peek-edge"><span className="peek-words">{t("pip.peek")}</span></span>
+        <span className="peek-edge"><span className="peek-words">{says}</span></span>
         <SpeechTail />
       </span>
     </a>
@@ -313,6 +333,15 @@ export function App() {
   useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ""}${t("brand.name")} / ${t(`nav.${welcome ? "welcome" : view === "dash" ? "home" : view}`)}`; }, [waiting, view, welcome, t]);
 
   const dark = theme === "dark" || (!theme && systemDark);
+  // A conversation begun, and the state brought in with it listed. Ranking the new jobs and the smart search, with
+  // nothing more asked, are done by the server with the settings' AI (ranker.ts, scraper.ts), from whichever
+  // button asks for them; with more after them they are Claude's commands.
+  const begin = async (prompt: string, model?: string, access?: string, files?: string[]) => {
+    const own = files?.length ? "" : ({ "/rank": "rank", "/job-scraper": "scrape" } as Record<string, string>)[prompt.trim()] ?? "";
+    const session = own ? await api<{ id: string }>(own, {}) : await api<{ id: string }>("sessions", { prompt, model, access, files });
+    await refresh();
+    return session;
+  };
   const ctx: Ctx = {
     s, loaded, refresh, shown: booted && loaded, lang, t, view, arg, news, draft, dark, theme,
     err: (e) => errorText(e as ApiError, lang),
@@ -336,15 +365,11 @@ export function App() {
       setNews({ text, mood });
       newsTimer.current = setTimeout(() => setNews(null), ms);
     },
-    // Ranking the new jobs and the smart search, with nothing more asked, are done by the server with the
-    // settings' AI (ranker.ts, scraper.ts), from whichever button asks for them; with more after them they are
-    // Claude's commands.
     start: async (prompt, model, access, files) => {
-      const own = files?.length ? "" : ({ "/rank": "rank", "/job-scraper": "scrape" } as Record<string, string>)[prompt.trim()] ?? "";
-      const session = own ? await api(own, {}) : await api("sessions", { prompt, model, access, files });
-      await refresh();
+      const session = await begin(prompt, model, access, files);
       location.hash = `#/chat/${session.id}`;
     },
+    run: async (prompt) => { await begin(prompt); },
     logout: () => {
       api("logout", {}).catch(() => {}).finally(() => { setIntro(false); setLoaded(false); setS(EMPTY); setAuth("out"); });
     },

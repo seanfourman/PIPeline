@@ -116,11 +116,11 @@ export function userProfile(root = USER_DIR): { name?: string } {
 }
 
 // The name the CV sent to employers carries, as build.py saves it (tools/user_profile.py): "<the user's name> -
-// Resume.pdf", or "Resume.pdf" with no name set.
+// Resume.pdf", or "Resume.pdf" with no name set; the grade sheet's, and the two joined, likewise (what).
 const fileSafe = (name: string) => name.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "").trim().slice(0, 60);
-export function cvFileName(root = USER_DIR) {
+export function cvFileName(root = USER_DIR, what = "Resume") {
   const name = fileSafe(String(userProfile(root).name ?? ""));
-  return name ? `${name} - Resume.pdf` : "Resume.pdf";
+  return name ? `${name} - ${what}.pdf` : `${what}.pdf`;
 }
 
 export class UserFileError extends Error {}

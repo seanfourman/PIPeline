@@ -10,7 +10,7 @@ import { createPortal, flushSync } from "react-dom";
 import { useApp } from "../app";
 import { paintStill } from "../intro";
 import { jump, OFF_BOARD, type Point } from "../jump";
-import { api, Btn, External, Field, Spinner } from "../kit";
+import { api, Btn, Field, Spinner } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, type Mood } from "../pip";
 import { ENGLISH_NAME, englishOnly } from "../../names";
@@ -18,12 +18,12 @@ import { INDUSTRIES, PORTALS } from "../../portals";
 import { fromList, type Level, type ListedRole, listedRole, matchListed, type Role, ROLE_FIELDS, roleQuery } from "../../roles";
 import { Conversation, readBase64 } from "./chat";
 import { Digits, PixelArt, Tick } from "./home";
-import { AiKeys, MarketsEditor } from "./settings";
+import { AiKeys, MarketsEditor, RunTimes } from "./settings";
 
 const STEPS = ["hello", "name", "ai", "cv", "search", "mail", "done"] as const;
 type Step = (typeof STEPS)[number];
 // The steps with a wider board (welcome-center.wide).
-const WIDE: Step[] = ["cv", "search"];
+const WIDE: Step[] = ["cv", "search", "mail"];
 // What the server takes into the documents folder (user.ts).
 const DOC_ACCEPT = ".pdf,.docx,.doc,.txt,.md,.rtf";
 // Each half of the board's flip, as the login's (FLIP_MS in ui/login.tsx).
@@ -721,23 +721,98 @@ function SearchStep({ next, back }: { next: () => void; back: () => void }) {
   );
 }
 
-// The daily email: the Gmail account it goes out from, and the same address to get it. Saved, the run is on;
-// it can wait, and the settings screen turns it on later.
+// Google's page for making an app password, and the code that opens it on a phone (public/app-passwords-qr.svg,
+// made from this address).
+const APP_PASSWORDS = "https://myaccount.google.com/apppasswords";
+
+// How to make an app password (MailStep): Google asks to confirm the sign-in with a fingerprint, a face or a passkey,
+// which a desktop computer often can't give. So first which computer this is: on one that can, Google's page opens
+// at once; otherwise the password is made on the phone, through the code or the address, and typed in here. A small
+// board over the step, its page ruled as the board's is; a click outside it or Escape closes it. Going on to the
+// phone keeps the same board: what is on the page slides away toward the start and fades, the board takes the new
+// page's height, and the new page slides in from the end.
+function AppPasswordHelp({ onClose, onTyping }: { onClose: () => void; onTyping: () => void }) {
+  const { t } = useApp();
+  const box = useRef<HTMLDialogElement>(null);
+  const page = useRef<HTMLDivElement>(null);
+  const [phone, setPhone] = useState(false);
+  const turning = useRef(false);
+  useEffect(() => { box.current?.showModal(); }, []);
+  const close = () => box.current?.close();
+  const toPhone = () => {
+    const board = box.current, sheet = page.current;
+    if (turning.current) return;
+    if (!board || !sheet || matchMedia("(prefers-reduced-motion: reduce)").matches) { setPhone(true); return; }
+    turning.current = true;
+    const out = document.documentElement.dir === "rtl" ? -1 : 1;
+    sheet.animate([{ opacity: 1, translate: "0 0" }, { opacity: 0, translate: `${out * -28}px 0` }], { duration: 140, easing: "ease-in", fill: "forwards" }).finished.then(() => {
+      // Its laid-out height, which the board's popping in as it opens doesn't scale.
+      const from = board.offsetHeight;
+      flushSync(() => setPhone(true));
+      const to = board.offsetHeight;
+      for (const a of sheet.getAnimations()) a.cancel();
+      board.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 260, easing: "cubic-bezier(0.3, 0.7, 0.4, 1)" });
+      sheet.animate([{ opacity: 0, translate: `${out * 28}px 0` }, { opacity: 1, translate: "0 0" }], { duration: 260, easing: "cubic-bezier(0.2, 0.8, 0.3, 1)" });
+      turning.current = false;
+    }).catch(() => { turning.current = false; });
+  };
+  return (
+    <dialog ref={box} className="welcome-ask" aria-labelledby="welcome-ask-title" onClose={onClose} onClick={(e) => { if (e.target === box.current) close(); }}>
+      {/* The page stays; what is written on it is what slides (page), cut off at its edges. */}
+      <div className="welcome-ask-page">
+        <div className="welcome-ask-content" ref={page}>
+          {/* The interface's own words, in its direction: dir="auto" would turn a line starting with Google round. */}
+          <h2 id="welcome-ask-title">{t(phone ? "welcome.mail.help.phoneTitle" : "welcome.mail.help.title")}</h2>
+          {phone ? (
+            <div className="welcome-ask-phone">
+              <img src="/app-passwords-qr.svg" width={148} height={148} alt={t("welcome.mail.help.code")} />
+              {/* Each step a line, numbered on a pixel flag like the steps under the board, the address to open by
+                  hand on a line of its own under them, and the button under that, beside the code. */}
+              <div className="welcome-ask-steps">
+                <ol>
+                  {(["scan", "confirm", "type"] as const).map((step, i) => (
+                    <li key={step}><span className="flag welcome-ask-n" aria-hidden="true"><Digits n={i + 1} /></span>{t(`welcome.mail.help.${step}`)}</li>
+                  ))}
+                </ol>
+                <p className="welcome-ask-or">{t("welcome.mail.help.address")} <span className="welcome-ask-url" dir="ltr">myaccount.google.com/apppasswords</span></p>
+                <div className="welcome-ask-foot"><Btn kind="cta" onClick={() => { close(); onTyping(); }}>{t("welcome.mail.help.done")}</Btn></div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p>{t("welcome.mail.help.text")}</p>
+              <p className="welcome-ask-q">{t("welcome.mail.help.question")}</p>
+              <div className="welcome-ask-choices">
+                <a className="btn" href={APP_PASSWORDS} target="_blank" rel="noopener noreferrer" onClick={close}>{t("welcome.mail.help.laptop")}</a>
+                <Btn onClick={toPhone}>{t("welcome.mail.help.desktop")}</Btn>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
+// The daily email: the Gmail account it goes out from, and the same address to get it, and at the bottom the times
+// it runs at, as in the settings. Saved, the run is on; it can wait, and the settings screen turns it on later.
 function MailStep({ next, back }: { next: () => void; back: () => void }) {
   const { s, t, err, refresh } = useApp();
   const on = Boolean(s.settings.automation?.enabled);
   const [email, setEmail] = useState(String(s.settings.automation?.email ?? ""));
   const [password, setPassword] = useState("");
+  const [help, setHelp] = useState(false);
+  const passwordBox = useRef<HTMLInputElement>(null);
+  const [times, setTimes] = useState<string[]>(() => (s.settings.automation?.runTimes?.length ? s.settings.automation.runTimes : ["09:00"]));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [before, after] = String(t("settings.accountNote")).split("{link}");
   const enable = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError("");
     try {
       await api("automation/mail", { user: email, password });
-      await api("settings", { ...s.settings, automation: { ...s.settings.automation, enabled: true, email } });
+      await api("settings", { ...s.settings, automation: { ...s.settings.automation, enabled: true, email, runTimes: times } });
       await refresh();
       next();
     } catch (x) {
@@ -757,9 +832,20 @@ function MailStep({ next, back }: { next: () => void; back: () => void }) {
     <form id="welcome-mail" className="welcome-form" onSubmit={enable}>
       <div className="fields">
         <Field label={t("settings.gmail")}><input type="email" dir="ltr" autoComplete="email" placeholder="you@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
-        <Field label={t("settings.appPassword")}><input type="password" dir="ltr" autoComplete="off" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+        {/* What an app password is shows where it is asked for: how to make one at the other end of its name's line
+            (AppPasswordHelp), and, in the box until something is typed, that it is not the usual password. Its
+            name labels the box alone, the button beside it outside the label. */}
+        <div className="field">
+          <span className="field-label">
+            <label htmlFor="welcome-app-password">{t("settings.appPassword")}</label>
+            <button type="button" className="welcome-help" onClick={() => setHelp(true)}>{t("welcome.mail.how")}</button>
+          </span>
+          <input id="welcome-app-password" ref={passwordBox} type="password" dir={password ? "ltr" : undefined} autoComplete="off" placeholder={t("welcome.mail.notUsual")}
+            value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
       </div>
-      <p className="note">{before}<External url="https://myaccount.google.com/apppasswords" className="">{t("settings.appPassword")}</External>{after}</p>
+      <Field label={t("settings.runTimes")}><RunTimes times={times} onChange={setTimes} /></Field>
+      {help && <AppPasswordHelp onClose={() => setHelp(false)} onTyping={() => passwordBox.current?.focus()} />}
       {error && <p className="error-line" role="alert" dir="auto">{error}</p>}
       <Actions back={back} note={<button type="button" className="welcome-link" onClick={next}>{t("welcome.mail.later")}</button>}>
         <Btn kind="cta" type="submit" form="welcome-mail" disabled={busy || !email.trim() || !password}>{t("welcome.mail.enable")}</Btn>

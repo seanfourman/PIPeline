@@ -707,8 +707,10 @@ textarea { resize: vertical; width: 100%; }
 /* The sparkles: a round button in the forest rainbow, its colours always drifting, five clouds of them over the
    sky's blue that drift slowly, turn and stretch inside the circle, each on its own course, as the sky's clouds do
    behind the search; in lite as well (five small clouds in one small circle). Round it, a soft glow of the colours
-   turning like a chroma. Under the pointer the colours in the circle deepen, fading in and out, and nothing else
-   changes. Pressed, the circle melts into the colours it spreads over the box, the mark staying (below). */
+   turning like a chroma. Under the pointer the circle won't keep quite round: every two seconds or so, at random,
+   a lump of it pushes out a little and draws slowly back, as if something alive in it were trying to get out
+   (useBlob in jobs.tsx), and it is round again once the pointer goes; the colours have room for that past it.
+   Pressed, the circle melts into the colours it spreads over the box, the mark staying (below). */
 @property --chroma { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .seek-ai { position: relative; isolation: isolate; background: none; color: #fff; font: inherit; }
 .seek-ai::before {
@@ -718,8 +720,10 @@ textarea { resize: vertical; width: 100%; }
 }
 .seek-ai .icon { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
 @keyframes chroma { to { --chroma: 360deg; } }
-.seek-ai-lit { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; background: var(--sky-3); transition: filter 0.25s ease; }
-.seek-ai:hover .seek-ai-lit { filter: saturate(2); }
+.seek-ai-lit {
+  position: absolute; inset: -8px; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; background: var(--sky-3);
+  clip-path: circle(22px);
+}
 .ai-blob {
   --tint: var(--sky-1);
   position: absolute; left: 50%; top: 50%; width: 38px; height: 32px; margin: -16px 0 0 -19px; border-radius: 50%;
@@ -827,11 +831,11 @@ textarea { resize: vertical; width: 100%; }
    circle melts into it, swelling a little as it fades, glow and all, while it grows from their middle over the
    whole box, unveiled at first, as it is, then a little veiled so the words on it stay clear; their mark stays
    where it is, over the colours. In them the circle's colours drift in clouds as its own do, seven larger ones
-   over the sky's blue, and a glow of them comes up about the box once it has grown, and breathes. Then Confirm, in
-   ink, comes out from under the mark, the way the words run back, and the question shows. Going (the mark pressed
-   again, Escape, or a click outside the box), Confirm goes back under it, the question fades and the colours
-   shrink back into the circle (SMART_OUT_MS), which is there again, its glow coming up. Meanwhile the words, their
-   hint and the search button are out of sight, and the settings' button makes way for Confirm. */
+   over the sky's blue, and a glow of them comes up about the box once it has grown, and breathes. Then Confirm
+   shows as an outline that fills with ink, and the question with it. Going (the mark pressed again, Escape, or a
+   click outside the box), Confirm and the question fade and the colours shrink back into the circle
+   (SMART_OUT_MS), which is there again, its glow coming up. Meanwhile the words, their hint and the search button
+   are out of sight, and the settings' button makes way for Confirm. */
 .seek-field { flex: 1; min-width: 0; display: grid; align-items: center; }
 .seek-field > * { grid-area: 1 / 1; min-width: 0; }
 .seek-box.asking { isolation: isolate; }
@@ -892,23 +896,34 @@ textarea { resize: vertical; width: 100%; }
 .seek-box.closing .smart-q { animation: ai-out 0.15s ease-in forwards; }
 @keyframes ai-ask-in { from { opacity: 0; translate: 0 4px; } }
 @keyframes ai-out { to { opacity: 0; } }
-/* Confirm fades out short of the mark, wherever it is, over the room between them (--out: which side that is), so
-   it comes softly out from under it; there is room left for its shadow above, below and at the start. */
-.smart-acts {
-  flex: none; display: flex; align-items: center;
-  margin: -16px; padding: 16px; margin-inline-end: -18px; padding-inline-end: 18px;
-  mask-image: linear-gradient(calc(180deg - var(--out) * 90deg), #000 calc(100% - 18px), transparent calc(100% - 2px));
-}
+/* Confirm comes as an outline, its word in ink, out of the mark's side (the end, --out: which side that is; the
+   left in Hebrew), a little way, fading in across itself from that side, the far side last. Then it fills with ink
+   in one swoop from the same side, its word turning to the page's colour as the ink passes: the fill is a layer
+   over it with the word again (data-label in jobs.tsx), uncovered from that side, and the shadow comes with it.
+   Going, it fades. */
 .smart-go {
-  flex: none; padding: 7px 18px; border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 18%); transition: background-color 0.2s ease, scale 0.12s ease;
-  animation: smart-in 0.4s cubic-bezier(0.2, 0.8, 0.3, 1) 0.34s backwards;
+  position: relative; flex: none; padding: 7px 18px; border: 0; border-radius: 999px; background: none;
+  color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  box-shadow: inset 0 0 0 1.5px var(--ink), 0 4px 12px rgb(0 0 0 / 18%); transition: scale 0.12s ease;
+  animation: go-reveal 0.42s ease-out 0.3s backwards, go-shade 0.24s cubic-bezier(0.4, 0, 0.2, 1) 0.7s backwards;
 }
-.seek-box.closing .smart-go { animation: smart-out 0.2s ease-in forwards; }
-@keyframes smart-in { from { opacity: 0; translate: calc(var(--out) * 50px) 0; } }
-@keyframes smart-out { to { opacity: 0; translate: calc(var(--out) * 50px) 0; } }
+.smart-go::before {
+  content: attr(data-label); position: absolute; inset: 0; display: grid; place-items: center; border-radius: inherit;
+  background: var(--ink); color: var(--bg); clip-path: inset(0 round 999px); transition: background-color 0.2s ease;
+  animation: go-fill 0.24s cubic-bezier(0.4, 0, 0.2, 1) 0.7s backwards;
+}
+.seek-box.closing .smart-go { animation: ai-out 0.15s ease-in forwards; }
+@keyframes go-reveal {
+  from {
+    mask-image: linear-gradient(calc(180deg - var(--out) * 90deg), transparent 33%, #000 66%); mask-size: 300% 100%;
+    mask-position: calc((1 - var(--out)) * 50%) 0; translate: calc(var(--out) * 12px) 0;
+  }
+  to { mask-image: linear-gradient(calc(180deg - var(--out) * 90deg), transparent 33%, #000 66%); mask-size: 300% 100%; mask-position: calc((1 + var(--out)) * 50%) 0; }
+}
+@keyframes go-fill { from { clip-path: inset(0 calc((1 - var(--out)) * 50%) 0 calc((1 + var(--out)) * 50%) round 999px); } }
+@keyframes go-shade { from { box-shadow: inset 0 0 0 1.5px var(--ink), 0 4px 12px rgb(0 0 0 / 0%); } }
 /* Under the pointer its ink softens a little toward the page, fading in and out. */
-.smart-go:hover { background: color-mix(in srgb, var(--ink) 82%, var(--bg)); }
+.smart-go:hover::before { background: color-mix(in srgb, var(--ink) 82%, var(--bg)); }
 .smart-go:active { scale: 0.97; }
 .smart-go:disabled { opacity: 0.6; cursor: progress; }
 .smart-go:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
@@ -1545,7 +1560,7 @@ html.lite .smart-glow { animation: ai-glow-in 0.5s ease-out 0.35s backwards, ai-
 html.lite :is(.seek-pill, .role-fan-item) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
 html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0 / 45%); }
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
   .pip-a { opacity: 1; }
 }
@@ -1985,10 +2000,69 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .welcome-form .fields { gap: var(--rule) 18px; }
 .welcome-board .welcome-form .field { gap: 0; }
 .welcome-board .welcome-form .field-label { line-height: var(--rule); }
-.welcome-board .welcome-form :is(input[type="text"], input[type="email"], input[type="password"]):not(.select-find *) {
+.welcome-board .welcome-form :is(input[type="text"], input[type="email"], input[type="password"], input[type="time"]):not(.select-find *) {
   height: calc(var(--rule) * 2); min-height: 0; padding-block: 0;
 }
 .welcome-board .welcome-form > :is(.note, .error-line) { margin: 0; line-height: var(--rule); }
+/* A field after the row of fields (the email's run times), a rule left empty above it as between the fields. */
+.welcome-board .welcome-form > .fields + .field { margin-top: var(--rule); }
+/* How to make an app password, at the other end of its name's line: smaller, bold, in the board's green, underlined
+   as the foot's quieter links are. It opens AppPasswordHelp. */
+.welcome-board .field-label:has(.welcome-help) { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.welcome-board .welcome-help {
+  padding: 0; border: 0; background: none; color: var(--w-on); font: inherit; font-size: 18px; font-weight: 800; cursor: pointer;
+  text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px;
+}
+.welcome-board .welcome-help:hover { color: var(--board-ink); }
+/* That window (AppPasswordHelp): a small board of the frame's planks over the step, its page ruled as the board's
+   and everything on it kept to the rules as the board's page is: an empty rule at its head and foot, the title two
+   rules tall, a line of text on each rule, the question in the labels' bold pixels, and the buttons two rules tall
+   with a rule between them, as fields are. For the phone, the code to scan beside the steps, in the board's ink on
+   white, pixel for pixel, in the middle of six rules. */
+.welcome-ask {
+  --ring-c: var(--edge); width: min(800px, calc(100vw - 32px)); padding: var(--sheet); border: 0; border-radius: 0;
+  background: var(--frame) repeating-linear-gradient(to bottom, transparent 0 44px, var(--frame-lo) 44px 48px);
+  color: var(--board-ink); box-shadow: var(--ring), var(--board);
+}
+/* A column, so the page fills the board while the board changes height as it goes on to the phone; the page cuts
+   off what slides on it. */
+.welcome-ask[open] { display: flex; flex-direction: column; overflow: hidden; animation: pop 0.36s steps(3, end); }
+.welcome-ask::backdrop { background: rgb(24 14 6 / 45%); }
+.welcome-ask-content { display: flex; flex-direction: column; }
+.welcome-ask-page {
+  --ring-c: var(--edge); flex: 1 1 auto; min-height: 0; overflow: hidden; padding: var(--rule) 28px;
+  background: var(--w-paper) repeating-linear-gradient(to bottom, transparent 0 calc(var(--rule) - 2px), var(--w-rule) calc(var(--rule) - 2px) var(--rule));
+  box-shadow: var(--ring), 0 calc(var(--px) * 3) 0 calc(var(--px) * -1) rgb(40 22 10 / 45%);
+}
+.welcome-ask h2 { margin: 0; font-family: var(--pixel); font-size: 32px; font-weight: 800; line-height: calc(var(--rule) * 2); }
+.welcome-ask p, .welcome-ask li { margin: 0; font-size: 16px; line-height: var(--rule); }
+.welcome-ask .welcome-ask-q { margin-top: var(--rule); font-family: var(--pixel); font-size: 22px; font-weight: 800; }
+.welcome-ask .welcome-ask-page .btn:not(.welcome-convo *) { min-height: calc(var(--rule) * 2); padding-block: 0; }
+.welcome-ask-choices { display: flex; flex-direction: column; gap: var(--rule); margin-top: var(--rule); }
+.welcome-ask-choices .btn { display: flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; }
+/* The code's edge level with the first step's rule, and the code six rules tall in all, as the steps, the address
+   and the button under them are. */
+.welcome-ask-phone { display: flex; align-items: flex-start; gap: 24px; }
+.welcome-ask-phone img { --ring-c: var(--edge); flex: none; margin-block: var(--px) calc(var(--rule) * 6 - 148px - var(--px)); image-rendering: pixelated; box-shadow: var(--ring); }
+.welcome-ask-steps { flex: 1; min-width: 0; }
+.welcome-ask-phone ol { margin: 0; padding: 0; list-style: none; }
+.welcome-ask-phone li { display: flex; align-items: center; gap: 12px; }
+/* Each step's number on a flag like the done steps' under the board: the button's yellow, lit, its digit in pixels. */
+.welcome-ask .welcome-ask-n {
+  width: 18px; height: 18px; flex: none; background: var(--cta); color: var(--cta-ink);
+  box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo);
+}
+.welcome-ask-n .digits { height: 12px; }
+.welcome-ask .welcome-ask-or { color: var(--board-ink-2); }
+.welcome-ask-url { font-weight: 700; white-space: nowrap; }
+.welcome-ask-foot { display: flex; justify-content: flex-end; margin-top: var(--rule); }
+.welcome-ask-steps .welcome-ask-foot { margin-top: 0; }
+@media (max-width: 520px) {
+  .welcome-ask-phone { flex-direction: column; align-items: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-ask[open] { animation: none; }
+}
 /* The AI to work with (AiKeys, ai-setup) starts as a form does: one rule left empty above it, the label of which one
    is primary on a rule of its own, and the switch right under it. */
 .welcome-board .ai-setup { margin-top: calc(var(--rule) - 14px); }

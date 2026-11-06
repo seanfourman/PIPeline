@@ -20,6 +20,7 @@ import { REPO } from "./policy";
 import { createRemote, RemoteError } from "./remote";
 import { readSaved, setSaved } from "./saved";
 import { loadSettings, REGION_PRESETS, saveSettings } from "./settings";
+import { joinWithTranscript, removeTranscript, saveTranscript, TRANSCRIPT, TranscriptError, transcriptInfo } from "./transcript";
 import { getUpload, saveUpload, UploadError } from "./uploads";
 import { APP_DIR, cvFileName, listUserDocuments, profileReady, saveUserDocument, saveUserName, UserFileError, userProfile } from "./user";
 
@@ -163,7 +164,7 @@ async function api(req: Request, url: URL): Promise<Response> {
       const settings = loadSettings();
       // The introduction shows until it is finished or put aside; someone set up before it was made never sees it.
       const intro = { done: settings.introDone || (profileReady() && settings.markets.length > 0), name: String(userProfile().name ?? ""), documents: listUserDocuments() };
-      return json({ ...loadState(settings), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), intro, remote: remote.status() });
+      return json({ ...loadState(settings), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), intro, remote: remote.status(), transcript: transcriptInfo() });
     }
     if (parts[0] === "profile" || parts[0] === "rules") return json(readDocument(parts[0]));
     if (parts[0] === "checks") return json(readChecks());
@@ -215,6 +216,17 @@ async function api(req: Request, url: URL): Promise<Response> {
     }
   }
   if (parts[0] === "settings") return json(saveSettings(body, REPO));
+  // The grade sheet, kept from the settings in its bytes as base64, or put away (transcript.ts).
+  if (parts[0] === "transcript") {
+    try {
+      if (parts[1] === "remove") removeTranscript();
+      else await saveTranscript(body.data);
+    } catch (err) {
+      if (err instanceof TranscriptError) throw new EditError(err.message);
+      throw err;
+    }
+    return json({ transcript: transcriptInfo() });
+  }
   // The introduction's own saves (ui/views/welcome.tsx): the name employers see, the documents /setup reads, and
   // its end. The name also greets the user, unless they chose another for that.
   if (parts[0] === "intro") {
@@ -366,14 +378,31 @@ const MIME: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8", ".woff2": "font/woff2", ".svg": "image/svg+xml",
 };
 
-function document(url: URL) {
-  const abs = resolveDocument(url.searchParams.get("path") ?? "");
+async function document(url: URL) {
+  const asked = url.searchParams.get("path") ?? "";
+  const abs = resolveDocument(asked);
   if (!abs) return new Response("Not found", { status: 404 });
   const isHtml = abs.toLowerCase().endsWith(".html");
-  // Saving a CV from the browser keeps the name employers should see; download=1 saves rather than shows it.
-  const name = /[\\/]cv[\\/][^\\/]+\.pdf$/i.test(abs) ? cvFileName() : path.basename(abs);
+  const isCv = /[\\/]cv[\\/][^\\/]+\.pdf$/i.test(abs);
+  // A CV asked for with the grade sheet comes joined to it, in one file (transcript.ts).
+  const joined = isCv && url.searchParams.get("with") === "transcript";
+  let body: Blob | Uint8Array = Bun.file(abs);
+  if (joined) {
+    if (!transcriptInfo()) return new Response("Not found", { status: 404 });
+    try {
+      body = await joinWithTranscript(abs);
+    } catch {
+      return new Response("The CV and the transcript could not be joined; they can be downloaded separately. לא הצלחתי לחבר את קורות החיים ואת גיליון הציונים, אפשר להוריד אותם בנפרד.", {
+        status: 422, headers: { ...SECURITY_HEADERS, "Content-Type": "text/plain; charset=utf-8" },
+      });
+    }
+  }
+  // Saving a CV from the browser keeps the name employers should see, and the grade sheet's likewise; download=1
+  // saves rather than shows it.
+  const name = joined ? cvFileName(undefined, "Resume and Transcript") : isCv ? cvFileName()
+    : asked.replaceAll("\\", "/") === TRANSCRIPT ? cvFileName(undefined, "Transcript") : path.basename(abs);
   const how = url.searchParams.get("download") === "1" ? "attachment" : "inline";
-  return new Response(Bun.file(abs), {
+  return new Response(body, {
     headers: {
       "Content-Type": isHtml ? "text/html; charset=utf-8" : "application/pdf",
       "X-Content-Type-Options": "nosniff",

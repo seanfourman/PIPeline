@@ -6,6 +6,7 @@ import { REPO } from "./policy";
 import { boardOn } from "./portals";
 import { boardQueries } from "./roles";
 import { inEnglish, linkedinPlace, REMOTE, type Area, type Market, type Settings } from "./settings";
+import { asksForTranscript, TRANSCRIPT } from "./transcript";
 import { profileReady } from "./user";
 
 export function parseCsv(text: string): Record<string, string>[] {
@@ -93,15 +94,23 @@ export const inUserFolder = (rel: string) => {
   return /^(cv|cover_letters|reports|documents)\//.test(clean) ? `user/${clean}` : clean;
 };
 
-// A JSON file ats.py saved in a CV's application folder, found through the tracker row's CV file.
-function applicationFile(cvFile: string, file: string, root: string) {
+// A file in a CV's application folder, found through the tracker row's CV file: a JSON file ats.py saved there, or
+// the posting /apply archived there as text.
+function applicationFile(cvFile: string, file: string, root: string, asText = false) {
   const name = inUserFolder(cvFile).match(/^user\/cv\/main_([a-z0-9_]+)\.\w+$/)?.[1];
   if (!name) return null;
   try {
-    return JSON.parse(readFileSync(path.join(root, "user", "documents", "applications", name, file), "utf8"));
+    const text = readFileSync(path.join(root, "user", "documents", "applications", name, file), "utf8");
+    return asText ? text : JSON.parse(text);
   } catch {
     return null;
   }
+}
+
+// Whether the job's posting asks for a grade sheet, which the applications page then offers (transcript.ts).
+export function postingAsksTranscript(cvFile: string, root = REPO) {
+  const posting = applicationFile(cvFile, "job_posting.md", root, true);
+  return typeof posting === "string" && asksForTranscript(posting);
 }
 
 // The score ats.py saved beside the CV.
@@ -140,15 +149,16 @@ export function cardLine(card: ScoreCard, lang: "he" | "en") {
 export function loadState(settings: Settings) {
   const trackerFile = path.join(REPO, "user", "job_search_tracker.csv");
   const applications = (existsSync(trackerFile) ? parseCsv(readFileSync(trackerFile, "utf8")) : [])
-    .map((row) => ({ ...row, ats: readAts(row.cv_file), card: readCard(row.cv_file) }));
+    .map((row) => ({ ...row, ats: readAts(row.cv_file), card: readCard(row.cv_file), asksTranscript: postingAsksTranscript(row.cv_file) }));
   return { applications, jobs: seenJobs(settings.areas), files: listFiles(), profileReady: profileReady() };
 }
 
 // Only finished documents from the output folders are ever served.
 export function resolveDocument(requested: string): string | null {
   const rel = requested.replaceAll("\\", "/");
-  // The workflow's documents: CVs, letters and reports, and the final CV saved in an application's folder.
-  if (!/^user\/(cv|cover_letters|reports)\/[^/]+\.(pdf|html)$/i.test(rel) && !/^user\/documents\/applications\/[A-Za-z0-9_-]+\/[^/]+\.pdf$/i.test(rel)) return null;
+  // The workflow's documents: CVs, letters and reports, and the final CV saved in an application's folder; and the
+  // grade sheet kept from the settings.
+  if (!/^user\/(cv|cover_letters|reports)\/[^/]+\.(pdf|html)$/i.test(rel) && !/^user\/documents\/applications\/[A-Za-z0-9_-]+\/[^/]+\.pdf$/i.test(rel) && rel !== TRANSCRIPT) return null;
   const abs = path.join(REPO, rel);
   return existsSync(abs) ? abs : null;
 }

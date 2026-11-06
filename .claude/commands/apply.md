@@ -389,6 +389,8 @@ List the files written:
 
 Tell the user: "Both files are ready for your review. Open them to check the final output before compiling."
 
+If the posting asks for a transcript or grade sheet (גיליון ציונים), say so: the applications page offers the one kept in the settings (`user/documents/diplomas/transcript.pdf`) beside this CV, on its own and joined to the CV in one file. If that file does not exist, say it can be uploaded in the settings, under the transcript.
+
 ### Step 6b: Record the Application
 
 Do this before the optional offer below, and before ending the turn for any other reason.

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { LANGUAGES_ON, THEMES_ON, useApp } from "../app";
 import { AREA_NAMES_EN, type Lang } from "../i18n";
 import { api, Btn, Card, External, Field, Icon, Page, Spinner } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Select } from "../select";
 import { fromList, listedRole, matchListed, ROLE_FIELDS, roleQuery } from "../../roles";
+import { readBase64 } from "./chat";
 import { PixelArt, Tick } from "./home";
 import { IndustryPicker } from "./portals";
 
@@ -15,6 +16,26 @@ const RUN_TIMES = 3;
 const nextTime = (times: string[]) => ["13:00", "17:00", "21:00", "09:00"].find((t) => !times.includes(t)) ?? "12:00";
 
 const regionName = (code: string, lang: Lang) => { try { return new Intl.DisplayNames([lang], { type: "region" }).of(code) ?? code; } catch { return code; } };
+
+// The daily run's times, here and in the introduction's step for the email: a field for each, with a × once there
+// are two, and a button for another while there are fewer than RUN_TIMES.
+export function RunTimes({ times, onChange }: { times: string[]; onChange: (times: string[]) => void }) {
+  const { t } = useApp();
+  return (
+    <span className="run-times">
+      {times.map((time, i) => (
+        <span key={i} className="run-time">
+          <input type="time" dir="ltr" value={time} aria-label={t("settings.runTime", { n: i + 1 })}
+            onChange={(e) => onChange(times.map((x, j) => (j === i ? e.target.value : x)))} />
+          {times.length > 1 && (
+            <button type="button" className="tag-x" aria-label={t("settings.removeTime", { time })} onClick={() => onChange(times.filter((_, j) => j !== i))}>×</button>
+          )}
+        </span>
+      ))}
+      {times.length < RUN_TIMES && <Btn kind="ghost" onClick={() => onChange([...times, nextTime(times)])}>{t("settings.addTime")}</Btn>}
+    </span>
+  );
+}
 
 // Country names come from the code, so they follow the interface language whatever was saved.
 export const marketLabel = (m: { code: string; label?: string }, lang: Lang, t: (k: string) => string) => (m.code === "REMOTE" ? t("settings.remoteMarket") : regionName(m.code, lang));
@@ -354,6 +375,47 @@ function Remote() {
   );
 }
 
+// Where the grade sheet opens, as the server serves it (data.ts).
+export const TRANSCRIPT_FILE = `/file?path=${encodeURIComponent("user/documents/diplomas/transcript.pdf")}`;
+
+// The grade sheet (transcript.ts), kept here once for the jobs that ask for one: the applications page offers it
+// beside their CV, on its own and joined to it in one file. A PDF; a new one takes the old one's place, and one
+// locked against copying is said to go on its own only.
+function Transcript() {
+  const { s, t, err, refresh } = useApp();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const picker = useRef<HTMLInputElement>(null);
+  const kept = s.transcript;
+  const run = async (work: () => Promise<unknown>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+      await refresh();
+    } catch (e) {
+      setError(err(e));
+    }
+    setBusy(false);
+  };
+  const take = (file?: File) => { if (file) run(async () => api("transcript", { data: await readBase64(file) })); };
+  return (
+    <Card className="stack">
+      <h2>{t("settings.transcript.title")}</h2>
+      <p className="note">{t("settings.transcript.note")}</p>
+      {kept && <a href={TRANSCRIPT_FILE} target="_blank" rel="noopener">{t("settings.transcript.open")}</a>}
+      {kept && !kept.joinable && <p className="warn-line">{t("settings.transcript.locked")}</p>}
+      <div className="row">
+        <Btn disabled={busy} onClick={() => picker.current?.click()}>{t(kept ? "settings.transcript.replace" : "settings.transcript.upload")}</Btn>
+        {kept && <Btn kind="ghost" disabled={busy} onClick={() => { if (confirm(t("settings.transcript.confirm"))) run(() => api("transcript/remove", {})); }}>{t("common.remove")}</Btn>}
+        {busy && <Spinner />}
+      </div>
+      <input ref={picker} type="file" accept=".pdf,application/pdf" hidden onChange={(e) => { take(e.target.files?.[0]); e.target.value = ""; }} />
+      {error && <p className="error-line" role="alert" dir="auto">{error}</p>}
+    </Card>
+  );
+}
+
 export function Settings() {
   const { s, t, lang, setLang, theme, setTheme, refresh, loaded } = useApp();
   // The screen can open before the first state is in, as when the page is reloaded here; until then it has no
@@ -509,6 +571,7 @@ export function Settings() {
           <input type="text" dir="auto" placeholder="All fields, including defense companies" value={draft.fields} onChange={(e) => set("fields", e.target.value)} />
         </Field>
       </Card>
+      <Transcript />
 
       <Card className="stack daily">
         <h2>{t("settings.daily")}</h2>
@@ -522,19 +585,7 @@ export function Settings() {
         </div>
         {/* A row of its own, so the times and the button for another stay on one line. */}
         <Field label={t("settings.runTimes")} hint={t("settings.runTimesNote")}>
-          <span className="run-times">
-            {times.map((time: string, i: number) => (
-              <span key={i} className="run-time">
-                <input type="time" dir="ltr" value={time} aria-label={t("settings.runTime", { n: i + 1 })}
-                  onChange={(e) => setAuto("runTimes", times.map((x: string, j: number) => (j === i ? e.target.value : x)))} />
-                {times.length > 1 && (
-                  <button type="button" className="tag-x" aria-label={t("settings.removeTime", { time })}
-                    onClick={() => setAuto("runTimes", times.filter((_: string, j: number) => j !== i))}>×</button>
-                )}
-              </span>
-            ))}
-            {times.length < RUN_TIMES && <Btn kind="ghost" onClick={() => setAuto("runTimes", [...times, nextTime(times)])}>{t("settings.addTime")}</Btn>}
-          </span>
+          <RunTimes times={times} onChange={(next) => setAuto("runTimes", next)} />
         </Field>
         <p className="note">{t("settings.dailyTip")}</p>
         <Runner />

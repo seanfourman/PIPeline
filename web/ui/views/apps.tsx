@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../app";
 import { api, Btn, Card, Page } from "../kit";
+import { TRANSCRIPT_FILE } from "./settings";
 
 const STATUSES = ["drafted", "applied", "interview", "offer", "hired", "rejected", "no_response", "offer_declined", "withdrawn"];
 const normal = (status: unknown) => String(status ?? "").toLowerCase().replace(" ", "_");
@@ -66,6 +67,21 @@ function DocLink({ path, label }: { path: unknown; label: string }) {
   return <a href={`/file?path=${encodeURIComponent(clean)}`} target="_blank" rel="noopener">{label}</a>;
 }
 
+// For a job whose posting asks for a grade sheet (data.ts): the one kept in the settings, on its own and, once the
+// CV is built, joined to it in one file (transcript.ts); with none kept yet, the way to the settings to put one.
+function TranscriptLinks({ cvFile }: { cvFile: unknown }) {
+  const { s, t } = useApp();
+  if (!s.transcript) return <a href="#/settings">{t("apps.addTranscript")}</a>;
+  const cv = inUserFolder(cvFile).replace(/\.tex$/i, ".pdf");
+  const built = /^user\/cv\/[^/]+\.pdf$/i.test(cv) && s.files.some((f) => f.path === cv);
+  return (
+    <>
+      <a href={TRANSCRIPT_FILE} target="_blank" rel="noopener">{t("apps.transcript")}</a>
+      {built && s.transcript.joinable && <a href={`/file?path=${encodeURIComponent(cv)}&with=transcript`} target="_blank" rel="noopener">{t("apps.joined")}</a>}
+    </>
+  );
+}
+
 export function Apps() {
   const { s, t, start, refresh, say, err } = useApp();
   const [error, setError] = useState("");
@@ -112,6 +128,7 @@ export function Apps() {
                       <DocLink path={a.cv_file} label={t("apps.cv")} />
                       {name && <a href={`#/cv/${name}`}>{t("common.edit")}</a>}
                       <DocLink path={a.cover_letter_file} label={t("apps.letter")} />
+                      {a.asksTranscript && <TranscriptLinks cvFile={a.cv_file} />}
                     </div></td>
                     <td><div className="row end">
                       <Btn onClick={() => start(`/outcome ${a.company} ${a.role}`)}>{t("apps.outcome")}</Btn>
