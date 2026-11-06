@@ -38,9 +38,9 @@ function Scorecard({ card }: { card: { overall: number | null; lenses: Lens[] } 
                 {/* The name and what it is apart, so a Latin name and a Hebrew note don't mix their directions. */}
                 <span className="scorecard-head">
                   <span className="scorecard-name"><span dir="auto">{t(`card.lens.${l.id}`)}</span>{HINTED.includes(l.id) && <span className="note">{t(`card.hint.${l.id}`)}</span>}</span>
-                  <strong dir="ltr">{l.score === null ? "–" : l.grade ? `${l.grade} · ${l.score}` : l.score}</strong>
+                  <strong dir="ltr">{l.score === null ? "–" : l.grade ? `${l.grade} (${l.score})` : l.score}</strong>
                 </span>
-                {failed.length > 0 && <span className="note" dir="auto">{failed.map((c) => t(`card.check.${c.id}`, { value: c.value ?? "" })).join(" · ")}</span>}
+                {failed.length > 0 && <span className="note" dir="auto">{failed.map((c) => t(`card.check.${c.id}`, { value: c.value ?? "" })).join(", ")}</span>}
                 {l.missing.length > 0 && <span className="note" dir="auto">{t("apps.missing")}: {l.missing.join(", ")}</span>}
               </li>
             );

@@ -15,6 +15,8 @@ import { Welcome } from "./views/welcome";
 
 export type AppState = {
   applications: Record<string, any>[]; jobs: Record<string, any>[]; files: { path: string; modified: number }[];
+  // The jobs the user saved themselves (saved.ts), apart from jobs, which Pip's searches found.
+  saved: { url: string; title: string; company: string; location: string; date: string; saved: string }[];
   // plain: chat only, answered by the settings' AI (agent.ts); engine: the name of the one that answered last.
   // agent: "codex" when ChatGPT works in it as an agent, through Codex (codex.ts).
   sessions: { id: string; title: string; status: string; createdAt: number; model?: string; access?: string; plain?: boolean; engine?: string; agent?: string }[];
@@ -51,7 +53,7 @@ type Ctx = {
 const AppContext = createContext<Ctx>(null as unknown as Ctx);
 export const useApp = () => useContext(AppContext);
 
-const EMPTY: AppState = { applications: [], jobs: [], files: [], sessions: [], settings: { markets: [], areas: [], roles: [], automation: {} }, presets: {}, profileReady: true, aiKeys: {}, intro: { done: true, name: "", documents: { cv: [], linkedin: [] } } };
+const EMPTY: AppState = { applications: [], jobs: [], saved: [], files: [], sessions: [], settings: { markets: [], areas: [], roles: [], automation: {} }, presets: {}, profileReady: true, aiKeys: {}, intro: { done: true, name: "", documents: { cv: [], linkedin: [] } } };
 
 // Browser storage only remembers small conveniences, and the page works without it.
 export const stored = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };

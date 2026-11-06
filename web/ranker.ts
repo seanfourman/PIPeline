@@ -246,7 +246,7 @@ export async function rankJobs(o: { ask: Ask; steps: Steps; signal: AbortSignal;
       while (!halt.signal.aborted && next < selected.length) {
         const job = selected[next++];
         const id = `rank-${next}`;
-        steps.start(id, `${job.title ?? ""} · ${job.company ?? ""}`);
+        steps.start(id, [job.title, job.company].filter(Boolean).join(", "));
         try {
           const got = await fetchPosting(job, run, halt.signal, scratch);
           if (halt.signal.aborted) { unscored.push(job); steps.done(id, false, "stopped"); break; }
@@ -260,7 +260,7 @@ export async function rankJobs(o: { ask: Ask; steps: Steps; signal: AbortSignal;
           if (by) engines.add(by);
           const score = parseScore(text);
           results.push({ key: job.key, ...score, guard: got.guard });
-          steps.done(id, score.status === "scored", `${score.status === "scored" ? `${weighted(score.scores as Record<string, number>)} / 100` : score.status}${by ? ` · ${by}` : ""}`);
+          steps.done(id, score.status === "scored", `${score.status === "scored" ? `${weighted(score.scores as Record<string, number>)} / 100` : score.status}${by ? ` (${by})` : ""}`);
         } catch (err) {
           unscored.push(job);
           if (halt.signal.aborted) { steps.done(id, false, "stopped"); break; }

@@ -48,8 +48,8 @@ describe("readCard", () => {
 
   test("one line for the report and the email, in the user's language, without the lenses that couldn't score", () => {
     const card = readCard("user/cv/main_acme_dev.tex", root)!;
-    expect(cardLine(card, "en")).toBe("Google 80 · Workday A (85) · Overall 83");
-    expect(cardLine(card, "he")).toBe("Google 80 · Workday A (85) · כללי 83");
+    expect(cardLine(card, "en")).toBe("Google 80, Workday A (85), Overall 83");
+    expect(cardLine(card, "he")).toBe("Google 80, Workday A (85), כללי 83");
   });
 });
 

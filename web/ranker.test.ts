@@ -112,7 +112,7 @@ describe("ranker", () => {
     const sweep = calls.find((c) => c.argv.includes("sweep"))!.argv;
     expect(sweep).toContain("--write");
     expect(sweep[sweep.indexOf("--exclude") + 1].split(",").sort()).toEqual(["a", "b"]);
-    expect(steps).toEqual(expect.arrayContaining(["start Junior Dev · Acme", "ok 73 / 100", "no unreachable: HTTP 403"]));
+    expect(steps).toEqual(expect.arrayContaining(["start Junior Dev, Acme", "ok 73 / 100", "no unreachable: HTTP 403"]));
     expect(text).toContain("| 1 | 74 | התאמה טובה | Junior Dev | Acme |");
     expect(text).toContain("[פתיחה](https://il.linkedin.com/jobs/view/1)");
     expect(text).toContain("Beta / Co");

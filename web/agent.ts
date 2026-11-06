@@ -289,7 +289,7 @@ class Session {
     this.pending.delete(requestId);
     if (body.answers) {
       request.resolve({ behavior: "allow", updatedInput: { ...request.input, answers: body.answers } });
-      this.emit({ t: "resolved", requestId, answer: Object.values(body.answers).join(" · ") });
+      this.emit({ t: "resolved", requestId, answer: Object.values(body.answers).join(", ") });
     } else if (body.allow) {
       if (body.remember && request.rememberKey) this.remembered.add(request.rememberKey);
       request.resolve({ behavior: "allow", updatedInput: request.input });

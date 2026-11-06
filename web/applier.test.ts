@@ -121,7 +121,7 @@ describe("applier", () => {
     expect(steps.filter((s) => s === "BuildCv")).toHaveLength(2);
     expect(text).toContain(`user/documents/applications/${name}/Dana Cohen - Resume.pdf`);
     expect(text).toContain("ציון ATS: 88. חסרים: Kafka.");
-    expect(text).toContain("ציון לפי מה שכל חברה מפרסמת: Google 90 · Workday A (85) · כללי 88.");
+    expect(text).toContain("ציון לפי מה שכל חברה מפרסמת: Google 90, Workday A (85), כללי 88.");
     expect(text).toContain("מכתב מקדים");
     expect(text).toContain("בגרסה המלאה של ההגשה");
   });

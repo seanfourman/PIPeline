@@ -18,6 +18,7 @@ import { conversationFiles, loadState, resolveDocument, searchJobs } from "./dat
 import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, listSources, readChecks, readDocument, readEditableFile, readSource, saveChecks, saveDocument, saveEditableFile, saveSource, setApplicationStatus } from "./edit";
 import { REPO } from "./policy";
 import { createRemote, RemoteError } from "./remote";
+import { readSaved, setSaved } from "./saved";
 import { loadSettings, REGION_PRESETS, saveSettings } from "./settings";
 import { getUpload, saveUpload, UploadError } from "./uploads";
 import { APP_DIR, cvFileName, listUserDocuments, profileReady, saveUserDocument, saveUserName, UserFileError, userProfile } from "./user";
@@ -162,7 +163,7 @@ async function api(req: Request, url: URL): Promise<Response> {
       const settings = loadSettings();
       // The introduction shows until it is finished or put aside; someone set up before it was made never sees it.
       const intro = { done: settings.introDone || (profileReady() && settings.markets.length > 0), name: String(userProfile().name ?? ""), documents: listUserDocuments() };
-      return json({ ...loadState(settings), settings, presets: REGION_PRESETS, sessions: listSessions(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), intro, remote: remote.status() });
+      return json({ ...loadState(settings), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), intro, remote: remote.status() });
     }
     if (parts[0] === "profile" || parts[0] === "rules") return json(readDocument(parts[0]));
     if (parts[0] === "checks") return json(readChecks());
@@ -237,6 +238,8 @@ async function api(req: Request, url: URL): Promise<Response> {
     setApplicationStatus(body);
     return json({ ok: true });
   }
+  // A job the user saved, or took off their saved jobs (saved.ts).
+  if (parts[0] === "saved") return json({ saved: setSaved(body) });
   if (parts[0] === "sources" && isSourceKind(parts[1] ?? "") && parts[2]) {
     const kind = parts[1] as "cv" | "letter";
     saveSource(kind, parts[2], body.source, body.base);

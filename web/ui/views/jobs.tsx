@@ -1,9 +1,10 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { useApp } from "../app";
-import { api, Badge, Btn, Card, ClaudeMark, External, Icon, Page, safeUrl, ThinBar, useGoSlot } from "../kit";
+import { store, stored, useApp } from "../app";
+import { api, Badge, Btn, Card, External, Icon, Page, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
+import { MAKERS, useFirstAi } from "./chat";
 import { areaName, AreasEditor, marketLabel, MarketsEditor } from "./settings";
 
 type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; verdict?: string; status?: string };
@@ -15,23 +16,36 @@ const search = { q: null as string | null, days: "14", market: "all", mode: "", 
 
 export const TIER_TONE: Record<string, string> = { near: "good", ok: "good", edge: "warn", far: "bad", unknown: "" };
 
-function JobRow({ job, saved }: { job: Job; saved?: boolean }) {
+// Whether a job is among those the user saved, and a click that saves it or takes it off (saved.ts).
+function useSave() {
+  const { s, refresh } = useApp();
+  const urls = new Set((s.saved ?? []).map((j) => j.url));
+  const toggle = (job: Pick<Job, "url" | "title" | "company" | "location" | "date">) =>
+    api("saved", { url: job.url, title: job.title, company: job.company, location: job.location, date: job.date, save: !urls.has(job.url) }).then(() => refresh()).catch(() => {});
+  return { isSaved: (url: string) => urls.has(url), toggle };
+}
+
+// A job in a list: one Pip found, with the ranking's score when scored is set, or one the user saved.
+function JobRow({ job, scored }: { job: Job; scored?: boolean }) {
   const { t, s, start } = useApp();
-  const showTier = !(job.tier === "unknown" && !s.settings.areas?.length);
+  const { isSaved, toggle } = useSave();
+  const on = isSaved(job.url);
+  const showTier = Boolean(job.tier) && !(job.tier === "unknown" && !s.settings.areas?.length);
   return (
     <article className="job">
       <div className="job-main">
-        {saved && <div className="score">{job.score ?? "–"}</div>}
+        {scored && <div className="score">{job.score ?? "–"}</div>}
         <div>
           <div className="job-title" dir="auto">{job.title}</div>
-          <div className="job-meta" dir="auto">{[job.company, job.location, job.date].filter(Boolean).join(" · ")}</div>
+          <div className="job-meta" dir="auto"><Spaced parts={[job.company, job.location, job.date].filter(Boolean)} /></div>
           <div className="row">
             {showTier && <Badge tone={TIER_TONE[job.tier] ?? ""}>{t(`tiers.${job.tier}`)}</Badge>}
-            {saved && job.verdict && <Badge>{job.verdict}</Badge>}
+            {scored && job.verdict && <Badge>{job.verdict}</Badge>}
           </div>
         </div>
       </div>
       <div className="row job-actions">
+        {safeUrl(job.url) && <Btn className={`save-btn ${on ? "on" : ""}`} aria-pressed={on} onClick={() => toggle(job)}><Icon name="saved" filled={on} />{on ? t("jobs.savedOne") : t("jobs.save")}</Btn>}
         <External url={job.url}>{t("jobs.open")}</External>
         {safeUrl(job.url) && <Btn kind="primary" onClick={() => start(`/apply ${job.url}`)}>{t("jobs.apply")}</Btn>}
       </div>
@@ -64,11 +78,13 @@ function tint(name: string) {
 }
 
 // A search result, as a plain row like a search engine's: the company's initial on a round tile, the title, the
-// company and place, chips for how long ago it was posted and its area, and two round buttons at its end, to
-// open the posting and to check it and apply; under the pointer, or reached by the keyboard, a button's name
-// floats over it. index is its place in the results, for rising in one after another.
+// company and place, chips for how long ago it was posted and its area, and three round buttons at its end, to
+// save it, open the posting and check it and apply; under the pointer, or reached by the keyboard, a button's
+// name floats over it. index is its place in the results, for rising in one after another.
 function ResultRow({ job, index }: { job: Job; index: number }) {
   const { t, s, start } = useApp();
+  const { isSaved, toggle } = useSave();
+  const on = isSaved(job.url);
   const showTier = !(job.tier === "unknown" && !s.settings.areas?.length);
   const href = safeUrl(job.url);
   const name = job.company || job.title || "?";
@@ -78,7 +94,7 @@ function ResultRow({ job, index }: { job: Job; index: number }) {
       <span className="result-mark" aria-hidden="true">{initial}</span>
       <div className="result-text">
         <h3 className="result-title">{job.title}</h3>
-        <p className="result-meta">{[job.company, job.location].filter(Boolean).join(" · ")}</p>
+        <p className="result-meta"><Spaced parts={[job.company, job.location].filter(Boolean)} /></p>
         <div className="result-chips">
           {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
           {showTier && <span className={`result-chip ${TIER_TONE[job.tier] ?? ""}`}>{t(`tiers.${job.tier}`)}</span>}
@@ -86,11 +102,14 @@ function ResultRow({ job, index }: { job: Job; index: number }) {
       </div>
       {href && (
         <div className="result-actions">
+          <button type="button" className={`result-act save ${on ? "on" : ""}`} aria-pressed={on} aria-label={`${on ? t("jobs.unsave") : t("jobs.save")}: ${job.title}`} onClick={() => toggle(job)}>
+            <Icon name="saved" filled={on} /><span className="act-label" aria-hidden="true">{on ? t("jobs.savedOne") : t("jobs.save")}</span>
+          </button>
           <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}>
-            <Icon name="open" /><span className="result-act-label" aria-hidden="true">{t("jobs.open")}</span>
+            <Icon name="open" /><span className="act-label" aria-hidden="true">{t("jobs.open")}</span>
           </a>
           <button type="button" className="result-act primary" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}>
-            <Icon name="apply" /><span className="result-act-label" aria-hidden="true">{t("jobs.apply")}</span>
+            <Icon name="apply" /><span className="act-label" aria-hidden="true">{t("jobs.apply")}</span>
           </button>
         </div>
       )}
@@ -223,18 +242,10 @@ function ResultsEnd({ count, hidden }: { count: number; hidden: number }) {
   );
 }
 
-function Saved() {
-  const { s, t, start } = useApp();
-  const jobs = s.jobs.filter((j) => j.tier !== "far" && j.status !== "skipped" && j.status !== "expired")
-    .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || String(b.date).localeCompare(String(a.date)));
-  if (!jobs.length) return <Card className="empty">{t("jobs.savedEmpty")}<Btn kind="primary" onClick={() => start("/job-scraper")}>{t("jobs.runSmart")}</Btn></Card>;
-  return (
-    <>
-      <p className="note">{t("jobs.priority")}</p>
-      <Card className="joblist">{jobs.map((j) => <JobRow key={j.key} job={j as Job} saved />)}</Card>
-    </>
-  );
-}
+// What Pip found that is still worth a look, in the areas wanted, the best scored first: what the ranking reads, not
+// what the AI skipped, nor the expired.
+const pipFound = (jobs: Record<string, any>[]) => jobs.filter((j) => j.tier !== "far" && j.status !== "skipped" && j.status !== "expired")
+  .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || String(b.date).localeCompare(String(a.date)));
 
 // Behind the search, only gradients, as if alive: a forest rainbow (the --sky colours, a sunny forest's by day and
 // the night forest's at night) as six clouds that drift, turn and stretch round a breathing glow, blending as they
@@ -437,6 +448,11 @@ function Choice({ label, value, options, onPick }: { label: string; value: strin
 const CLOSE_MS = 160;
 // How long a menu at the search box's end takes to fade away; matches panel-out in styles.css.
 const MENU_OUT_MS = 130;
+// How long the sparkles' colours take to go back into them, off the box they took over; matches smart-shrink in
+// styles.css.
+const SMART_OUT_MS = 300;
+// Kept once the sparkles have been pressed and have asked: their name floats over them no more after that.
+const SMART_TIP = "smart-tip";
 // Where to search, changed right on the jobs page in a window like a chat app's settings, rather than on the
 // settings screen: the markets and the areas' ratings, each change saved on its own a moment later (and at once
 // if the window closes first), with a quiet note by the title of how it went. A native modal dialog, so Escape,
@@ -541,8 +557,8 @@ function EscapingPip({ x, y, onGone }: { x: number; y: number; onGone: () => voi
 
 // The search, plain like a chat app's first screen: a question, one round box with Pip lying on its top edge,
 // and the first few roles in a row of glass buttons, with a + that unfolds the rest. At the box's end, a menu of where
-// and how to search, and the sparkles, for Pip's two jobs that use Claude; once something is typed, the search
-// button flies in past them.
+// and how to search, and the sparkles, for the smart search, which uses the settings' AI; once something is typed,
+// the search button flies in past them.
 function Quick() {
   const { s, t, lang, err, start, refresh } = useApp();
   const [, paint] = useState(0);
@@ -554,23 +570,36 @@ function Quick() {
   search.q ??= "";
   const [q, setQ] = useState(search.q ?? "");
   const typing = q.trim() !== "";
-  const toggle = (which: "filters" | "ai") => setMenu(menu === which ? "" : which);
-  // The server runs the ranking (ranker.ts, by start in app.tsx) under a conversation of its own, which opens like
-  // any other; why it couldn't start shows on its button.
-  const [ranking, setRanking] = useState(false);
-  const [rankError, setRankError] = useState("");
-  const rank = () => {
-    setRanking(true);
-    setRankError("");
-    start("/rank").catch((e) => setRankError(err(e))).finally(() => setRanking(false));
+  // The AI the smart search runs on, the settings' first while it is connected (as a new conversation's). The
+  // sparkles ask straight away to go ahead with it, as it takes from that AI's quota. Started, it opens in a
+  // conversation of its own (start in app.tsx); why it couldn't start shows where it was asked, until asked again.
+  const ai = MAKERS[useFirstAi()].name;
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState("");
+  const askNote = useId();
+  const toggle = (which: "filters" | "ai") => { setMenu(menu === which ? "" : which); setStartError(""); };
+  // The sparkles' name floats over them until they have been pressed once, in this browser (kept in its storage, as
+  // the theme is): it fades as they take over the box, and is gone once the box is back.
+  const [tipDone, setTipDone] = useState(() => stored(SMART_TIP) === "done");
+  useEffect(() => {
+    if (menu !== "ai" || tipDone) return;
+    setTipDone(true);
+    store(SMART_TIP, "done");
+  }, [menu, tipDone]);
+  const tip = !tipDone || menu === "ai";
+  const smart = () => {
+    setStarting(true);
+    setStartError("");
+    start("/job-scraper").catch((e) => setStartError(err(e))).finally(() => setStarting(false));
   };
   // The search button's place, open while something is typed and while the button rolls back out; the settings
   // and the sparkles slide over as it opens and closes (useGoSlot in kit.tsx).
   const slotOpen = useGoSlot(typing, menuBox, ".seek-icon, .seek-ai");
-  // A menu closes on a click outside the box's end, or on Escape.
+  // A menu closes on a click outside the box's end (outside the box, while the sparkles ask in it), or on Escape.
+  const boxRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (!menu) return;
-    const away = (e: PointerEvent) => { if (!menuBox.current?.contains(e.target as Node)) setMenu(""); };
+    const away = (e: PointerEvent) => { if (!(menu === "ai" ? boxRef : menuBox).current?.contains(e.target as Node)) setMenu(""); };
     const escape = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(""); };
     addEventListener("pointerdown", away);
     addEventListener("keydown", escape);
@@ -586,11 +615,24 @@ function Quick() {
   }
   useEffect(() => {
     if (!shut) return;
-    const timer = setTimeout(() => setShut(""), MENU_OUT_MS);
+    const timer = setTimeout(() => setShut(""), shut === "ai" ? SMART_OUT_MS : MENU_OUT_MS);
     return () => clearTimeout(timer);
   }, [shut]);
   const showing = (which: typeof menu) => menu === which || shut === which;
   const panelClass = (which: typeof menu) => (menu === which ? "" : "closing");
+  // Pressed, the sparkles ask in the box itself: their circle grows over all of it, its colours drifting in clouds,
+  // then Confirm and Cancel come out from under them and the question shows (styles.css); going, the colours go
+  // back into them. They grow from their own middle, worked out from where they are laid out in the box (so their
+  // slide in useGoSlot doesn't throw it; the row they are in is placed too while they ask) as the asking starts and
+  // ends.
+  const asking = showing("ai");
+  useLayoutEffect(() => {
+    const box = boxRef.current, spark = menuBox.current?.querySelector<HTMLElement>(".seek-ai");
+    if (!asking || !box || !spark) return;
+    let x = spark.offsetWidth / 2, at: Element | null = spark;
+    for (; at instanceof HTMLElement && at !== box; at = at.offsetParent) x += at.offsetLeft;
+    if (at === box) box.style.setProperty("--from-x", `${x}px`);
+  }, [asking, menu]);
   // The first search of a visit: the box and the roles rise from the middle of the page to the top (from where
   // the box was, rise), and the question over them goes down into the box as it rises, fading, gone by the time
   // the box is up. Pip rides up on the box for a moment, frightened, then leaps off it and runs away
@@ -642,7 +684,7 @@ function Quick() {
   if (search.market !== "all" && !markets.some((m: any) => m.code === search.market)) search.market = "all";
   const excluded = myAreas.filter((a: any) => a.tier === "far").map((a: any) => areaName(a.name, lang));
   const where = noMarket ? t("jobs.noMarket")
-    : markets.map((m: any) => (m.city ? `${m.city}, ${marketLabel(m, lang, t)}` : marketLabel(m, lang, t))).join(" · ");
+    : <Spaced parts={markets.map((m: any) => (m.city ? `${m.city}, ${marketLabel(m, lang, t)}` : marketLabel(m, lang, t)))} />;
 
   const run = async (query = q) => {
     if (!asked) {
@@ -688,16 +730,55 @@ function Quick() {
         {pip.phase === "escape" && <EscapingPip x={pip.x!} y={pip.y!} onGone={() => setPip({ phase: "gone" })} />}
         {whereOpen && <WhereDialog onClose={() => setWhereOpen(false)} />}
         <h1 className="seek-title">{t("jobs.prompt")}</h1>
-        <form className={`seek-box ${typing ? "typing" : ""} ${slotOpen ? "slot-open" : ""}`} onSubmit={(e) => { e.preventDefault(); setMenu(""); if (typing) run(); }}>
+        <form
+          ref={boxRef} className={`seek-box ${typing ? "typing" : ""} ${slotOpen ? "slot-open" : ""} ${asking ? `asking ${panelClass("ai")}` : ""}`}
+          onSubmit={(e) => { e.preventDefault(); setMenu(""); if (typing) run(); }}
+        >
           {(pip.phase === "rest" || pip.phase === "scared") && <PipLying className="seek-pip" scared={pip.phase === "scared"} />}
-          {/* Empty, the box takes the page's direction, so the hint starts on the page's side; typed words take their own. */}
-          <input
-            type="search" value={q} placeholder={hint} aria-label={t("jobs.query")} dir={q ? "auto" : undefined} disabled={noMarket}
-            onChange={(e) => { setQ(e.target.value); search.q = e.target.value; }}
-          />
+          {/* The sparkles' colours over the whole box while they ask, and their glow about it. */}
+          {asking && <>
+            <span className="smart-glow" aria-hidden="true" />
+            <span className="smart-sky" aria-hidden="true">
+              {[1, 2, 3, 4, 5, 6, 7].map((n) => <span key={n} className={`smart-blob smart-blob-${n}`} />)}
+            </span>
+          </>}
+          {/* The words to search for, and in their place while the sparkles ask, their question: what the smart
+              search will go over now, and that it takes from the quota of the AI it runs on, which the server does
+              it with (scraper.ts), or why it couldn't start. Ranking what it found is on the saved jobs page, by the
+              list. */}
+          <div className="seek-field">
+            {/* Empty, the box takes the page's direction, so the hint starts on the page's side; typed words take their own. */}
+            <input
+              type="search" value={q} placeholder={hint} aria-label={t("jobs.query")} dir={q ? "auto" : undefined} disabled={noMarket}
+              onChange={(e) => { setQ(e.target.value); search.q = e.target.value; }}
+            />
+            {asking && (
+              <p className="smart-q" id={askNote}>
+                <strong>{t("jobs.aiAsk")}</strong>
+                {startError
+                  ? <small className="error-line" role="alert">{startError}</small>
+                  : <small>{roles.length === 1 ? t("jobs.aiAskOne", { ai }) : t("jobs.aiAskMany", { ai, n: roles.length })}</small>}
+              </p>
+            )}
+          </div>
           <div className="seek-tools" ref={menuBox}>
-            <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
-            <button type="button" className="seek-ai" aria-label={t("jobs.ai")} aria-expanded={menu === "ai"} onClick={() => toggle("ai")}><Icon name="ai" /></button>
+            {asking ? <>
+              <button type="button" className="smart-go" autoFocus aria-describedby={askNote} disabled={starting} onClick={smart}>{t("jobs.aiGo")}</button>
+              <button type="button" className="smart-cancel" onClick={() => setMenu("")}>{t("jobs.aiCancel")}</button>
+            </> : (
+              <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
+            )}
+            {/* The sparkles, their colours drifting in clouds as the sky's do (styles.css), with their name floating
+                over them under the pointer, as a result's buttons have, until first pressed (tip); pressed, a swish
+                crosses them as their colours take over the box. Confirm and Cancel come before them, so they keep
+                their place. */}
+            <button type="button" className="seek-ai" aria-label={t("jobs.ai", { ai })} aria-expanded={menu === "ai"} onClick={() => toggle("ai")}>
+              <span className="seek-ai-lit" aria-hidden="true">
+                {[1, 2, 3, 4, 5].map((n) => <span key={n} className={`ai-blob ai-blob-${n}`} />)}
+              </span>
+              <Icon name="ai" />
+              {tip && <span className="act-label" aria-hidden="true">{t("jobs.aiTip")}</span>}
+            </button>
             {/* The search button's place, closed until something is typed. */}
             <span className="seek-go-slot">
               <button type="submit" className="seek-go" aria-label={t("jobs.search")} aria-hidden={!typing} tabIndex={typing ? undefined : -1} disabled={!typing || search.busy || noMarket}><Icon name="jobs" /></button>
@@ -725,28 +806,6 @@ function Quick() {
                     <Choice label={t("jobs.areaFilter")} value={search.areas} onPick={set("areas")} options={["relevant", "listed", "all"].map((v): [string, string] => [v, t(`jobs.areas.${v}`)])} />
                   )}
                 </>}
-              </div>
-            )}
-            {showing("ai") && (
-              <div className={`seek-panel seek-ai-panel ${panelClass("ai")}`} role="group" aria-label={t("jobs.ai")}>
-                {/* Claude's mark over the two jobs, and a warning about what they cost. The smart search is Claude's
-                    agent; the ranking is done by the server with the settings' AI (ranker.ts). */}
-                <header className="ai-head">
-                  <span className="ai-claude"><ClaudeMark /></span>
-                  <strong>{t("jobs.aiTitle")}</strong>
-                </header>
-                <p className="ai-warn" role="note"><Icon name="warn" /><span>{t("jobs.aiNote")}</span></p>
-                <button type="button" className="seek-action" onClick={() => start("/job-scraper")}>
-                  <span className="action-text"><strong>{t("jobs.smart")}</strong><small>{t("jobs.smartNote")}</small></span>
-                  <Icon name="onward" />
-                </button>
-                <button type="button" className="seek-action" disabled={ranking} onClick={rank}>
-                  <span className="action-text">
-                    <strong>{t("jobs.rank")}</strong><small>{t("jobs.rankNote")}</small>
-                    {rankError && <small className="rank-error" role="alert">{rankError}</small>}
-                  </span>
-                  <Icon name="onward" />
-                </button>
               </div>
             )}
           </div>
@@ -780,8 +839,57 @@ function Quick() {
 // foot.
 export const Jobs = () => <div className="page jobs-page"><Quick /></div>;
 
-// The saved jobs, a tab of their own in the sidebar.
+// The saved jobs, a tab of their own in the sidebar, in two tabs: the jobs the user saved, and those Pip found, with
+// the ranking's scores. Each tab says how many it shows. The tab is in the address (#/saved/found), so the home
+// page's links open Pip's; with nothing saved yet, Pip's opens first. Over Pip's list, while some of it waits to be
+// ranked, how many, and the button that ranks them.
 export function SavedJobs() {
-  const { s, t } = useApp();
-  return <Page title={t("jobs.saved", { n: s.jobs.length })}><Saved /></Page>;
+  const { s, t, arg, start, err } = useApp();
+  const found = pipFound(s.jobs);
+  const mine = s.saved ?? [];
+  const ai = MAKERS[useFirstAi()].name;
+  // What the ranking reads: the new ones, and those it couldn't read before. The server runs it (ranker.ts, by
+  // start in app.tsx) under a conversation of its own, which opens like any other; why it couldn't start shows here.
+  const waiting = s.jobs.filter((j) => j.status === "new" || j.status === "unreachable").length;
+  const [ranking, setRanking] = useState(false);
+  const [rankError, setRankError] = useState("");
+  const rank = () => {
+    setRanking(true);
+    setRankError("");
+    start("/rank").catch((e) => setRankError(err(e))).finally(() => setRanking(false));
+  };
+  const tab = arg === "mine" || arg === "found" ? arg : mine.length ? "mine" : "found";
+  const tabButton = (id: "mine" | "found", label: string) => (
+    <button type="button" role="tab" aria-selected={tab === id} onClick={() => { location.hash = `#/saved/${id}`; }}>{label}</button>
+  );
+  return (
+    <Page title={t("jobs.savedTitle")}>
+      <div className="segmented saved-tabs" role="tablist" aria-label={t("jobs.savedTitle")}>
+        {tabButton("mine", t("jobs.tabMine", { n: mine.length }))}
+        {tabButton("found", t("jobs.tabFound", { n: found.length }))}
+      </div>
+      {tab === "mine" ? (
+        mine.length ? <Card className="joblist">{mine.map((j) => <JobRow key={j.url} job={{ ...j, tier: "" }} />)}</Card>
+          : <Card className="empty">{t("jobs.mineEmpty")}</Card>
+      ) : found.length ? (
+        <>
+          {waiting > 0 && (
+            <div className="rank-bar">
+              <span className="action-art"><Icon name="gauge" /></span>
+              <span className="rank-bar-text">
+                <strong>{waiting === 1 ? t("jobs.rankOne") : t("jobs.rankMany", { n: waiting })}</strong>
+                <small>{t("jobs.rankBarNote", { ai })}</small>
+                {rankError && <small className="rank-error" role="alert">{rankError}</small>}
+              </span>
+              <Btn kind="primary" disabled={ranking} onClick={rank}>{t("jobs.rankNow")}</Btn>
+            </div>
+          )}
+          <p className="note">{t("jobs.priority")}</p>
+          <Card className="joblist">{found.map((j) => <JobRow key={j.key} job={j as Job} scored />)}</Card>
+        </>
+      ) : (
+        <Card className="empty">{t("jobs.foundEmpty")}<Btn kind="primary" onClick={() => start("/job-scraper")}>{t("jobs.runSmart")}</Btn></Card>
+      )}
+    </Page>
+  );
 }

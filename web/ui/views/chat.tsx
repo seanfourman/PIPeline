@@ -15,8 +15,8 @@ const ACCESS: Access[] = ["ask", "auto", "full"];
 const MODELS: [string, string][] = [["", "default"], ["claude-opus-5-5", "opus"], ["claude-sonnet-5-5", "sonnet"], ["claude-haiku-5-5", "haiku"]];
 // Which AI the settings put first (ai.ts): the primary while it is connected, Claude otherwise. With ChatGPT first
 // on a key alone, a new conversation is a plain one, chat only, unless its message is a command.
-const MAKERS: Record<string, { name: string; company: string }> = { claude: { name: "Claude", company: "Anthropic" }, openai: { name: "ChatGPT", company: "OpenAI" } };
-function useFirstAi() {
+export const MAKERS: Record<string, { name: string; company: string }> = { claude: { name: "Claude", company: "Anthropic" }, openai: { name: "ChatGPT", company: "OpenAI" } };
+export function useFirstAi() {
   const { s } = useApp();
   const primary = String(s.settings.aiPrimary ?? "claude");
   return primary !== "claude" && (s.aiKeys[primary] || s.aiLogins?.[primary]) ? primary : "claude";

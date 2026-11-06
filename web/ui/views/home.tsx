@@ -339,7 +339,7 @@ const PIN = [".XXX.", "XX.XX", "XX.XX", ".XXX.", "..X.."];
 // company, and the place by a pin.
 function Item({ job }: { job: Job }) {
   return (
-    <a className="item" href="#/saved" aria-label={`${job.score}: ${job.title}, ${job.company}`}>
+    <a className="item" href="#/saved/found" aria-label={`${job.score}: ${job.title}, ${job.company}`}>
       <span className="item-score"><Digits n={job.score} /></span>
       {/* The words run in their own language's direction inside each line. */}
       <strong className="item-title"><bdi dir="auto">{job.title}</bdi></strong>
@@ -369,7 +369,7 @@ export function Home() {
       <Hero />
       <div className="page home">
         <section className="stats" aria-label={t("home.glance")}>
-          {stat("fresh", fresh, "#/saved")}
+          {stat("fresh", fresh, "#/saved/found")}
           {stat("sent", st.sent, "#/apps")}
           {stat("interview", st.interview, "#/apps")}
           {stat("offer", st.offer, "#/apps")}
@@ -378,7 +378,7 @@ export function Home() {
           <div className="best-head">
             <h2>{t("home.topJobs")}</h2>
             <PixelArt className="best-ledge" rows={LEDGE} />
-            {top.length > 0 && <a className="best-all" href="#/saved">{t("home.allJobs")}</a>}
+            {top.length > 0 && <a className="best-all" href="#/saved/found">{t("home.allJobs")}</a>}
           </div>
           <Shelves jobs={top} />
           {!top.length && (

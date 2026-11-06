@@ -149,7 +149,16 @@ legend { padding: 0; }
 .segmented { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; border-radius: 12px; background: var(--surface-2); align-self: flex-start; }
 .segmented button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 16px; border: 0; border-radius: 9px; background: none; color: var(--ink-2); font: inherit; font-weight: 600; cursor: pointer; }
 .segmented button:hover { color: var(--ink); }
-.segmented button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 14%); }
+.segmented button[aria-pressed="true"], .segmented [role="tab"][aria-selected="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 14%); }
+/* The saved jobs page's two tabs, what the user saved and what Pip found, over the list they show. */
+.saved-tabs { margin-bottom: 4px; }
+/* Over Pip's list, while some of it waits to be ranked: the gauge in its round mark, how many wait and what the
+   ranking does and costs, and the button that starts it, at the end; on a narrow window the button goes under. */
+.rank-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.rank-bar-text { flex: 1 1 260px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rank-bar-text strong { font-size: 15px; font-weight: 600; }
+.rank-bar-text small { color: var(--ink-2); font-size: 13px; line-height: 1.45; }
+.rank-bar .rank-error { color: var(--bad); }
 .segmented .icon { width: 17px; height: 17px; }
 /* A choice not ready yet: faded and still under the pointer. A part of a page not ready yet has a small round
    "soon" beside its heading, and everything under it faded and still. */
@@ -695,11 +704,14 @@ textarea { resize: vertical; width: 100%; }
   transition: translate 0.45s cubic-bezier(0.22, 0.8, 0.3, 1), rotate 0.45s cubic-bezier(0.22, 0.8, 0.3, 1);
 }
 :is(.seek-box, .composer-box).typing .seek-go:disabled { opacity: 0.4; cursor: default; }
-/* The sparkles: a round button in the forest rainbow, its colours always turning round it like a chroma, with a
-   soft glow of the same colours about it, brighter under the pointer and while its menu is open. */
+/* The sparkles: a round button in the forest rainbow, its colours always drifting, five clouds of them over the
+   sky's blue that drift, turn and stretch inside the circle, each on its own course, as the sky's clouds do behind
+   the search; in lite as well (five small clouds in one small circle). Round it, a soft glow of the colours turning
+   like a chroma, brighter under the pointer and while the card they open is up. Pressed, a white swish crosses them
+   the way the words run, as one then crosses the card. */
 @property --chroma { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .seek-ai {
-  position: relative; isolation: isolate; color: #fff;
+  position: relative; isolation: isolate; color: #fff; font: inherit;
   background: conic-gradient(from var(--chroma), var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3));
   animation: chroma 5s linear infinite;
 }
@@ -707,6 +719,31 @@ textarea { resize: vertical; width: 100%; }
 .seek-ai:hover::before, .seek-ai[aria-expanded="true"]::before { opacity: 0.95; }
 .seek-ai .icon { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
 @keyframes chroma { to { --chroma: 360deg; } }
+.seek-ai-lit { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; background: var(--sky-3); }
+.ai-blob {
+  --tint: var(--sky-1);
+  position: absolute; left: 50%; top: 50%; width: 38px; height: 32px; margin: -16px 0 0 -19px; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--tint), color-mix(in srgb, var(--tint) 60%, transparent) 45%, transparent);
+  transform: translate(var(--dx), var(--dy)); animation: ai-drift 2.6s ease-in-out infinite;
+}
+.ai-blob-1 { --tint: var(--sky-6); --dx: -13px; --dy: -11px; }
+.ai-blob-2 { --tint: var(--sky-4); --dx: 13px; --dy: -9px; animation-duration: 3.1s; animation-delay: -0.8s; }
+.ai-blob-3 { --tint: var(--sky-1); --dx: 11px; --dy: 13px; animation-duration: 2.8s; animation-delay: -1.5s; animation-direction: reverse; }
+.ai-blob-4 { --tint: var(--sky-5); --dx: -12px; --dy: 12px; animation-duration: 3.4s; animation-delay: -2.2s; }
+.ai-blob-5 { --tint: var(--sky-2); --dx: 0px; --dy: 0px; width: 30px; height: 26px; margin: -13px 0 0 -15px; animation-duration: 3.8s; animation-delay: -0.4s; animation-direction: reverse; }
+@keyframes ai-drift {
+  0%, 100% { transform: translate(var(--dx), var(--dy)) rotate(0deg) scale(1, 1); }
+  25% { transform: translate(calc(var(--dx) * -0.5), calc(var(--dy) + 9px)) rotate(35deg) scale(1.3, 0.8); }
+  50% { transform: translate(calc(var(--dx) * -1), calc(var(--dy) * -0.7)) rotate(-20deg) scale(0.85, 1.25); }
+  75% { transform: translate(calc(var(--dx) * 0.5), calc(var(--dy) - 10px)) rotate(25deg) scale(1.2, 0.95); }
+}
+.seek-ai-lit::after {
+  content: ""; position: absolute; inset-block: 0; inset-inline-start: 0; width: 50%; opacity: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 75%), transparent); transform: skewX(-16deg);
+}
+.seek-ai[aria-expanded="true"] .seek-ai-lit::after { animation: ai-gleam 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+/* A band soft at both its sides, slanted, from wholly before the start to wholly past the end, slant and all. */
+@keyframes ai-gleam { from { opacity: 1; translate: calc(var(--out) * -160%) 0; } to { opacity: 1; translate: calc(var(--out) * 350%) 0; } }
 /* The menus open under the box's end, their top level with the role buttons' (the search's gap of 18, the
    buttons' 4 above them, and the box's border), popping like a chat app's: a quick fade and grow from the top. */
 .seek-panel {
@@ -793,44 +830,93 @@ textarea { resize: vertical; width: 100%; }
 /* An area's name and its rating's list beside it; the window's fields round, like its buttons. */
 .where-section .area-row { min-height: 52px; }
 .where-dialog .add-row input[type="text"], .where-dialog .add-row .select.country { min-height: 42px; border-radius: 999px; padding-inline: 16px; }
-/* The sparkles' menu, Pip's two jobs that use Claude. A faint glow of Claude's own colour at its top, a heading
-   with Claude's mark on a round tile, and a warning, in the warning colours, that each job uses the user's
-   Claude tokens. Each job is a plain card; under the pointer its frame lights up in the sparkles' turning
-   colours, a light shadow comes up under it and an arrow slides in, each fading in and out. */
-.seek-ai-panel {
-  --claude: #d97757;
-  width: 370px; gap: 8px; padding: 10px;
-  background: radial-gradient(120% 110px at 50% 0, color-mix(in srgb, var(--claude) 12%, transparent), transparent) no-repeat, var(--surface);
+/* Pressed, the sparkles ask in the box itself (Quick in jobs.tsx), its words making way for their question. Their
+   circle grows from their middle over the whole box, and in it their colours drift in clouds as theirs do, seven
+   larger ones over the sky's blue, a little veiled so the words on them stay clear, with a glow of the colours
+   about the box that comes up once it has grown, and breathes. Then Confirm, in ink, and a plain Cancel come out
+   from under the sparkles, the way the words run back, and the question shows. Going, the two go back under them,
+   the question fades and the colours shrink back into the sparkles (SMART_OUT_MS). Meanwhile the words, their hint
+   and the search button are out of sight, and the settings' button makes way for the two; the sparkles stay over
+   the colours, where they were. */
+.seek-field { flex: 1; min-width: 0; display: grid; align-items: center; }
+.seek-field > * { grid-area: 1 / 1; min-width: 0; }
+.seek-box.asking { isolation: isolate; }
+.seek-box.asking:focus-within { border-color: var(--line); }
+.seek-box.asking .seek-tools, .smart-q { position: relative; z-index: 2; }
+/* The words fade at once, before the room they have changes under them, and come back once the box is back. */
+.seek-box input { transition: opacity 0.2s ease; }
+.seek-box.asking input { opacity: 0; visibility: hidden; transition: opacity 0.12s ease, visibility 0s 0.12s; }
+.seek-box.asking .seek-go { visibility: hidden; }
+.smart-sky {
+  position: absolute; inset: -1px; z-index: 1; overflow: hidden; border-radius: inherit; background: var(--sky-3);
+  animation: smart-grow 0.55s cubic-bezier(0.55, 0, 0.25, 1) backwards;
 }
-.ai-head { display: flex; align-items: center; gap: 11px; padding: 6px 6px 2px; font-size: 15px; }
-.ai-head strong { font-weight: 700; }
-.ai-claude { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: color-mix(in srgb, var(--claude) 16%, var(--surface)); }
-.claude-mark { width: 20px; height: 20px; fill: var(--claude, #d97757); }
-.ai-warn {
-  display: flex; align-items: flex-start; gap: 9px; margin: 0 0 2px; padding: 9px 12px; border: 1px solid color-mix(in srgb, var(--warn) 24%, transparent); border-radius: 12px;
-  background: var(--warn-soft); color: color-mix(in srgb, var(--warn) 62%, var(--ink)); font-size: 13px; line-height: 1.45;
+.smart-sky::after { content: ""; position: absolute; inset: 0; background: color-mix(in srgb, var(--surface) 22%, transparent); }
+.seek-box.closing .smart-sky { animation: smart-shrink 0.3s cubic-bezier(0.5, 0, 0.75, 0.2) forwards; }
+@keyframes smart-grow { from { clip-path: circle(21px at var(--from-x, 50%) 50%); } to { clip-path: circle(150% at var(--from-x, 50%) 50%); } }
+@keyframes smart-shrink { from { clip-path: circle(150% at var(--from-x, 50%) 50%); } to { clip-path: circle(21px at var(--from-x, 50%) 50%); } }
+.smart-blob {
+  --tint: var(--sky-1);
+  position: absolute; top: 50%; width: 230px; height: 150px; margin: -75px 0 0 -115px; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--tint), color-mix(in srgb, var(--tint) 55%, transparent) 50%, transparent);
+  transform: translate(var(--dx), var(--dy)); animation: smart-drift 5s ease-in-out infinite;
 }
-.ai-warn .icon { flex: none; width: 16px; height: 16px; margin-top: 1px; color: var(--warn); }
-.seek-action {
-  position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px;
-  background: var(--surface); color: var(--ink); font: inherit; text-align: start; cursor: pointer; transition: box-shadow 0.25s ease;
+.smart-blob-1 { --tint: var(--sky-6); left: 6%; --dx: 0px; --dy: -14px; }
+.smart-blob-2 { --tint: var(--sky-4); left: 22%; --dx: 10px; --dy: 12px; animation-duration: 6.2s; animation-delay: -1.4s; }
+.smart-blob-3 { --tint: var(--sky-1); left: 38%; --dx: -8px; --dy: -10px; animation-duration: 5.6s; animation-delay: -3s; animation-direction: reverse; }
+.smart-blob-4 { --tint: var(--sky-5); left: 54%; --dx: 6px; --dy: 14px; animation-duration: 6.8s; animation-delay: -2.2s; }
+.smart-blob-5 { --tint: var(--sky-2); left: 70%; --dx: -10px; --dy: -12px; animation-duration: 5.2s; animation-delay: -4.1s; animation-direction: reverse; }
+.smart-blob-6 { --tint: var(--sky-6); left: 86%; --dx: 8px; --dy: 10px; animation-duration: 7.4s; animation-delay: -0.6s; }
+.smart-blob-7 { --tint: var(--sky-4); left: 98%; --dx: -6px; --dy: -8px; animation-duration: 6s; animation-delay: -2.8s; animation-direction: reverse; }
+@keyframes smart-drift {
+  0%, 100% { transform: translate(var(--dx), var(--dy)) rotate(0deg) scale(1, 1); }
+  25% { transform: translate(calc(var(--dx) + 60px), calc(var(--dy) + 12px)) rotate(28deg) scale(1.25, 0.85); }
+  50% { transform: translate(calc(var(--dx) - 30px), calc(var(--dy) - 14px)) rotate(-14deg) scale(0.9, 1.2); }
+  75% { transform: translate(calc(var(--dx) - 70px), calc(var(--dy) + 8px)) rotate(18deg) scale(1.15, 0.95); }
 }
-.seek-action::before {
-  content: ""; position: absolute; inset: -1px; padding: 1.5px; border-radius: inherit; pointer-events: none;
-  background: conic-gradient(from var(--chroma), var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3));
-  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
-  opacity: 0; transition: opacity 0.25s ease; animation: chroma 5s linear infinite;
+.smart-glow {
+  --rainbow: linear-gradient(90deg, var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2),
+    var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3)) 0 0 / 200% 100%;
+  position: absolute; inset: -6px; z-index: -1; border-radius: inherit; pointer-events: none; background: var(--rainbow);
+  opacity: 0.85; filter: blur(16px) saturate(1.4) opacity(1);
+  animation: ai-rainbow 2.4s linear infinite, ai-glow-in 0.5s ease-out 0.35s backwards, ai-breathe 1.6s ease-in-out 0.85s infinite alternate;
 }
-.seek-action:hover, .seek-action:focus-visible { outline: none; box-shadow: 0 8px 22px rgb(0 0 0 / 8%); }
-.seek-action:hover::before, .seek-action:focus-visible::before { opacity: 1; }
-.action-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.action-text strong { font-weight: 600; }
-.action-text small { color: var(--ink-2); font-size: 13px; line-height: 1.4; }
-.seek-action > .icon-onward { flex: none; width: 18px; height: 18px; color: var(--ink-2); opacity: 0; translate: 6px 0; transition: opacity 0.2s ease, translate 0.2s ease; }
-[dir="ltr"] .seek-action > .icon-onward { translate: -6px 0; }
-.seek-action:hover > .icon-onward, .seek-action:focus-visible > .icon-onward { opacity: 1; translate: 0 0; }
-/* Why the ranking didn't start, under its words. */
-.seek-action .rank-error { color: var(--bad); }
+/* Going, it fades by its filter, as its opacity breathes. */
+.seek-box.closing .smart-glow { filter: blur(16px) saturate(1.4) opacity(0); transition: filter 0.2s ease-in; }
+@keyframes ai-rainbow { to { background-position: 100% 0; } }
+@keyframes ai-glow-in { from { opacity: 0; inset: 0; } }
+@keyframes ai-breathe { to { opacity: 0.45; } }
+.smart-q { display: flex; flex-direction: column; gap: 1px; margin: 0; line-height: 1.3; animation: ai-ask-in 0.35s ease-out 0.62s backwards; }
+.smart-q strong { overflow: hidden; font-size: 15px; font-weight: 700; white-space: nowrap; text-overflow: ellipsis; }
+.smart-q small { overflow: hidden; color: color-mix(in srgb, var(--ink) 78%, transparent); font-size: 12.5px; white-space: nowrap; text-overflow: ellipsis; }
+.smart-q .error-line { color: var(--bad); }
+.seek-box.closing .smart-q { animation: ai-out 0.15s ease-in forwards; }
+@keyframes ai-ask-in { from { opacity: 0; translate: 0 4px; } }
+@keyframes ai-out { to { opacity: 0; } }
+.smart-go, .smart-cancel { flex: none; animation: smart-in 0.4s cubic-bezier(0.2, 0.8, 0.3, 1) 0.4s backwards; }
+.smart-cancel { animation-delay: 0.34s; }
+.seek-box.closing :is(.smart-go, .smart-cancel) { animation: smart-out 0.2s ease-in forwards; }
+@keyframes smart-in { from { opacity: 0; translate: calc(var(--out) * 50px) 0; } }
+@keyframes smart-out { to { opacity: 0; translate: calc(var(--out) * 50px) 0; } }
+/* The settings' button fades back in as it comes back. */
+.seek-tools > .seek-icon { animation: icon-in 0.2s ease-out; }
+@keyframes icon-in { from { opacity: 0; } }
+.smart-go {
+  padding: 7px 18px; border: 0; border-radius: 999px; background: var(--ink); color: var(--bg); font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 18%); transition: box-shadow 0.2s ease, scale 0.12s ease;
+}
+.smart-go:hover { box-shadow: 0 6px 16px rgb(0 0 0 / 26%); }
+.smart-go:active { scale: 0.97; }
+.smart-go:disabled { opacity: 0.6; cursor: progress; }
+.smart-cancel { padding: 7px 14px; border: 0; border-radius: 999px; background: none; color: var(--ink); font: inherit; font-size: 13.5px; cursor: pointer; transition: background-color 0.2s ease; }
+.smart-cancel:hover { background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.smart-go:focus-visible, .smart-cancel:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* A round grey mark for a picture: the gauge over Pip's list on the saved jobs page. */
+.action-art {
+  flex: none; display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 6%, var(--surface)); color: var(--ink-2);
+}
+.action-art .icon { width: 19px; height: 19px; }
 /* The first roles stay in a straight row. The + releases the rest down an inward-curving fan, without moving
    the search box, in more than one column when they don't all fit down the window. Each glass label unfolds
    from the trigger, then folds back in the opposite order. */
@@ -980,38 +1066,44 @@ textarea { resize: vertical; width: 100%; }
 .result-chip.warn { background: color-mix(in srgb, var(--warn) 18%, var(--surface)); color: color-mix(in srgb, var(--warn) 55%, var(--ink)); }
 .result-chip.bad { background: color-mix(in srgb, var(--bad) 14%, var(--surface)); color: color-mix(in srgb, var(--bad) 65%, var(--ink)); }
 .result-actions { flex: none; display: flex; gap: 6px; align-self: center; }
-/* A round button whose name floats over it, under the pointer or reached by the keyboard: a small white pill like
-   the page's menus, with a thin border, a soft shadow and a point down to the button, growing in a little after a
-   moment and fading as the pointer leaves. The page draws it, not the browser's own tooltip, and it takes no
-   clicks. */
+/* A round button whose name floats over it, under the pointer or reached by the keyboard (a result's buttons, and
+   the search box's sparkles): a small white pill like the page's menus, with a thin border, a soft shadow and a
+   point down to the button, growing in a little after a moment and fading as the pointer leaves. The page draws
+   it, not the browser's own tooltip, and it takes no clicks. */
 .result-act {
   position: relative; display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); border-radius: 50%;
   background: var(--surface); color: var(--ink-2); font: inherit; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
 }
 .result-act:hover { background: color-mix(in srgb, var(--ink) 7%, var(--surface)); color: var(--ink); }
 .result-act.primary { border-color: transparent; background: var(--primary); color: var(--primary-ink); }
+/* Saved, the bookmark is filled in the main colour, in the results and on a job in the lists alike. */
+.result-act.save.on, .btn.save-btn.on .icon { color: var(--primary); }
 .result-act.primary:hover { background: var(--primary-edge); color: var(--primary-ink); }
 .result-act .icon { width: 18px; height: 18px; }
 .result-act:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-.result-act-label {
+.act-label {
   position: absolute; z-index: 5; bottom: calc(100% + 10px); left: 50%; padding: 6px 13px; border: 1px solid var(--line); border-radius: 999px;
   background: var(--surface); color: var(--ink-2); box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
   font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.3; white-space: nowrap; pointer-events: none;
   opacity: 0; translate: -50% 4px; scale: 0.96; transform-origin: 50% 100%; transition: opacity 0.16s ease, translate 0.16s ease, scale 0.16s ease;
 }
-.result-act-label::after {
+.act-label::after {
   content: ""; position: absolute; top: calc(100% - 4px); left: 50%; width: 8px; height: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
   background: var(--surface); translate: -50% 0; rotate: 45deg;
 }
-.result-act:is(:hover, :focus-visible) .result-act-label {
+:is(.result-act, .seek-ai):is(:hover, :focus-visible) .act-label {
   opacity: 1; translate: -50% 0; scale: 1; transition-delay: 0.25s; transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
 }
+/* The sparkles' goes while the card they open is up: the card says it all. */
+.seek-ai[aria-expanded="true"] .act-label { opacity: 0; transition-delay: 0s; }
 .joblist { padding: 0; overflow: hidden; }
 .job { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 16px 20px; }
 .job + .job { border-top: 1px solid var(--line); }
 .job-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .job-title { font-weight: 600; font-size: 16px; }
 .job-meta { color: var(--ink-2); font-size: 14px; }
+/* The space between values side by side (Spaced in kit.tsx). */
+.spaced-gap { display: inline-block; width: 0.8em; }
 .job-actions { flex: none; }
 
 /* Tables */
@@ -1439,13 +1531,17 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 @keyframes boot-paw { 0% { opacity: 1; } 60% { opacity: 0.14; } }
 
 /* Lite, when the browser draws without the graphics card (public/boot.js): the sky stands still, the glass is
-   frosted without blurring what is behind it, the sparkles keep their colours still, and the window's backdrop
-   only dims. Those were what made the page crawl with hardware acceleration off. */
-html.lite .seek-sky *, html.lite .seek-ai, html.lite .seek-ai::before, html.lite .seek-action::before { animation: none !important; }
+   frosted without blurring what is behind it, the glow round the sparkles stops turning, and the window's
+   backdrop only dims. Those were what made the page crawl with hardware acceleration off. The sparkles' clouds
+   still drift (five small ones in one small circle, only moved, never repainted), and so do those they spread over
+   the box while they ask, for those moments; the glow about the box, which would be blurred anew every moment,
+   comes up and breathes but stands still. */
+html.lite .seek-sky *, html.lite .seek-ai, html.lite .seek-ai::before { animation: none !important; }
+html.lite .smart-glow { animation: ai-glow-in 0.5s ease-out 0.35s backwards, ai-breathe 1.6s ease-in-out 0.85s infinite alternate; }
 html.lite :is(.seek-pill, .role-fan-item) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
 html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0 / 45%); }
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .result-act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .seek-action, .seek-action::before, .seek-action > .icon, .seek-ai, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .smart-sky, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-cancel, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .seek-ai-lit::after, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
   .pip-a { opacity: 1; }
 }

@@ -134,7 +134,7 @@ export function cardLine(card: ScoreCard, lang: "he" | "en") {
     systems: lang === "he" ? "מערכות הגיוס" : "Hiring systems", ats: "ATS", pip: lang === "he" ? "פיפ" : "Pip",
   };
   const lenses = card.lenses.filter((l) => l.score !== null).map((l) => `${names[l.id] ?? l.id} ${l.grade ? `${l.grade} (${l.score})` : l.score}`);
-  return [...lenses, `${lang === "he" ? "כללי" : "Overall"} ${card.overall ?? "–"}`].join(" · ");
+  return [...lenses, `${lang === "he" ? "כללי" : "Overall"} ${card.overall ?? "–"}`].join(", ");
 }
 
 export function loadState(settings: Settings) {
