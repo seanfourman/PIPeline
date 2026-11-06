@@ -132,7 +132,7 @@ const he = {
   jobs: {
     prompt: "מה מחפשים היום?", menu: "איפה ואיך לחפש", whereTitle: "איפה מחפשים", whereMarkets: "מדינות וערים", ai: "חיפוש חכם עם {ai}", moreRoles: "עוד {n}", closeRoles: "סגירת התפקידים הנוספים", otherRoles: "תפקידים נוספים",
     noMarket: "עוד לא נבחר איפה לחפש.", hidden: "מוסתר: {names}", change: "שינוי",
-    aiAsk: "להתחיל חיפוש חכם?", aiGo: "אישור", aiCancel: "ביטול", aiTip: "חיפוש חכם",
+    aiAsk: "להתחיל חיפוש חכם?", aiGo: "אישור", aiTip: "חיפוש חכם",
     aiAskMany: "{n} תפקידים בכל האתרים. זה צורך מהמכסה שלך ב-{ai}.", aiAskOne: "התפקיד שלך בכל האתרים. זה צורך מהמכסה שלך ב-{ai}.",
     rankMany: "{n} משרות מחכות לדירוג", rankOne: "משרה אחת מחכה לדירוג", rankNow: "לדרג עכשיו",
     rankBarNote: "פיפ קורא כל אחת ונותן לה ציון לפי כמה היא מתאימה לך. זה צורך מהמכסה שלך ב-{ai}.",
@@ -519,7 +519,7 @@ const en: Dict = {
   jobs: {
     prompt: "What are we looking for today?", menu: "Where and how to search", whereTitle: "Where we search", whereMarkets: "Countries and cities", ai: "Smart search with {ai}", moreRoles: "{n} more", closeRoles: "Close additional roles", otherRoles: "Additional roles",
     noMarket: "You haven't chosen where to search yet.", hidden: "Hidden: {names}", change: "Change",
-    aiAsk: "Start a smart search?", aiGo: "Confirm", aiCancel: "Cancel", aiTip: "Smart search",
+    aiAsk: "Start a smart search?", aiGo: "Confirm", aiTip: "Smart search",
     aiAskMany: "{n} roles on every site. This takes from your {ai} allowance.", aiAskOne: "Your role on every site. This takes from your {ai} allowance.",
     rankMany: "{n} jobs waiting to be ranked", rankOne: "One job waiting to be ranked", rankNow: "Rank now",
     rankBarNote: "Pip reads each one and scores how well it fits you, taking from your {ai} allowance.",

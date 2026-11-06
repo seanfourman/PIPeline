@@ -620,11 +620,11 @@ function Quick() {
   }, [shut]);
   const showing = (which: typeof menu) => menu === which || shut === which;
   const panelClass = (which: typeof menu) => (menu === which ? "" : "closing");
-  // Pressed, the sparkles ask in the box itself: their circle grows over all of it, its colours drifting in clouds,
-  // then Confirm and Cancel come out from under them and the question shows (styles.css); going, the colours go
-  // back into them. They grow from their own middle, worked out from where they are laid out in the box (so their
-  // slide in useGoSlot doesn't throw it; the row they are in is placed too while they ask) as the asking starts and
-  // ends.
+  // Pressed, the sparkles ask in the box itself: their circle melts into it as it grows over all of it, its colours
+  // drifting in clouds, their mark staying, then Confirm comes out from under the mark and the question shows
+  // (styles.css); going, the colours go back into the circle. It grows from their own middle, worked out from
+  // where they are laid out in the box (so their slide in useGoSlot doesn't throw it; the row they are in is placed
+  // too while they ask) as the asking starts, and shrinks back to it.
   const asking = showing("ai");
   useLayoutEffect(() => {
     const box = boxRef.current, spark = menuBox.current?.querySelector<HTMLElement>(".seek-ai");
@@ -632,7 +632,7 @@ function Quick() {
     let x = spark.offsetWidth / 2, at: Element | null = spark;
     for (; at instanceof HTMLElement && at !== box; at = at.offsetParent) x += at.offsetLeft;
     if (at === box) box.style.setProperty("--from-x", `${x}px`);
-  }, [asking, menu]);
+  }, [asking]);
   // The first search of a visit: the box and the roles rise from the middle of the page to the top (from where
   // the box was, rise), and the question over them goes down into the box as it rises, fading, gone by the time
   // the box is up. Pip rides up on the box for a moment, frightened, then leaps off it and runs away
@@ -762,16 +762,17 @@ function Quick() {
             )}
           </div>
           <div className="seek-tools" ref={menuBox}>
-            {asking ? <>
-              <button type="button" className="smart-go" autoFocus aria-describedby={askNote} disabled={starting} onClick={smart}>{t("jobs.aiGo")}</button>
-              <button type="button" className="smart-cancel" onClick={() => setMenu("")}>{t("jobs.aiCancel")}</button>
-            </> : (
+            {asking ? (
+              <span className="smart-acts">
+                <button type="button" className="smart-go" autoFocus aria-describedby={askNote} disabled={starting} onClick={smart}>{t("jobs.aiGo")}</button>
+              </span>
+            ) : (
               <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
             )}
             {/* The sparkles, their colours drifting in clouds as the sky's do (styles.css), with their name floating
-                over them under the pointer, as a result's buttons have, until first pressed (tip); pressed, a swish
-                crosses them as their colours take over the box. Confirm and Cancel come before them, so they keep
-                their place. */}
+                over them under the pointer, as a result's buttons have, until first pressed (tip); pressed, their
+                circle melts into the colours it spreads over the box, and their mark stays, to be pressed again to
+                go back. Confirm comes before them, so they keep their place, and comes out from under the mark. */}
             <button type="button" className="seek-ai" aria-label={t("jobs.ai", { ai })} aria-expanded={menu === "ai"} onClick={() => toggle("ai")}>
               <span className="seek-ai-lit" aria-hidden="true">
                 {[1, 2, 3, 4, 5].map((n) => <span key={n} className={`ai-blob ai-blob-${n}`} />)}
