@@ -1723,6 +1723,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 }
 .welcome-center { position: relative; width: min(560px, 100%); }
 .welcome-center.wide { width: min(880px, 100%); }
+.welcome-center.ticket { width: min(760px, 100%); }
 /* The opening grows to its longest line, so each of Pip's points keeps to one line while the window has room. */
 .welcome-center.fit { width: max-content; min-width: min(560px, 100%); max-width: 100%; }
 /* A board of planks in the frame's wood, a dark seam between each, with the page pinned to it. */
@@ -1801,6 +1802,118 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-pip-fly.behind { z-index: 1; }
 .welcome-pip-fly .pip-leap, .welcome-pip-fly.air .pip-stand, .welcome-pip-fly.air .pip-shadow { visibility: hidden; }
 .welcome-pip-fly.air .pip-leap { visibility: visible; }
+/* Pip setting off at the end, beside the board (useStepChange's scene, on his jumping copy). The backpack flies up out
+   of him over his head and comes down into his paws, which take hold of it as it lands (pull); from behind, it comes
+   down onto his back and he squashes as it lands (on); then from the side he runs with it, the steps of the run quick,
+   turned to the side he runs to, wider than he is from the front (run). What flies over his head is not cut off. The
+   dust he leaves puffs out and fades. */
+.welcome-pip-fly svg { overflow: visible; }
+.welcome-pip-fly .pip-pack { transform-box: fill-box; transform-origin: 50% 100%; }
+.welcome-pip-fly.pull .pip-pack { animation: pack-out 0.6s ease-out backwards; }
+.welcome-pip-fly.pull .pip-paws { animation: paws-in 0.6s steps(1, end) backwards; }
+@keyframes pack-out {
+  from { translate: 0 -10px; scale: 0.2; opacity: 0; }
+  35% { translate: 0 -19px; scale: 1.15; opacity: 1; }
+  70% { translate: 0 1px; scale: 0.95; }
+  to { translate: 0 0; scale: 1; }
+}
+@keyframes paws-in { from, 65% { opacity: 0; } }
+.welcome-pip-fly.on .pip-pack { animation: pack-on 0.4s cubic-bezier(0.5, 0, 0.9, 0.4) backwards; }
+.welcome-pip-fly.on svg { transform-origin: 50% 100%; animation: pack-squash 0.6s backwards; }
+@keyframes pack-on { from { translate: 0 -16px; } }
+@keyframes pack-squash { 0%, 60% { scale: 1; } 72% { scale: 1.06 0.9; } 86% { scale: 0.98 1.03; } }
+.welcome-pip-fly.run svg { width: calc(100% * 24 / 22); margin-left: calc(100% * -1 / 22); animation: run-bob 0.18s steps(1) infinite; }
+.welcome-pip-fly.run:dir(ltr) svg, .welcome-pip-fly.run.back svg { scale: -1 1; }
+.welcome-pip-fly.run.back:dir(ltr) svg { scale: 1 1; }
+.welcome-pip-fly.run .pip-a, .welcome-pip-fly.run .pip-b { animation-duration: 0.18s; }
+@keyframes run-bob { 50% { translate: 0 -3px; } }
+.welcome-dust { position: fixed; z-index: 5; color: #f1e6d0; pointer-events: none; transform-origin: 50% 100%; animation: dust-out 0.5s steps(4, end) forwards; }
+.welcome-dust-art { display: block; width: 40px; height: auto; }
+@keyframes dust-out { from { scale: 0.5; } to { scale: 1.4; opacity: 0; } }
+/* The end's ticket for the road (Ticket in welcome.tsx, everything done), pinned to the wide board in the notebook
+   page's place by the same two red pins: the page is bare for it, with only the room round it for the ticket's dark
+   ring and its shadow. A card of the board's light amber: the title at the top of its main part, then its lines,
+   each with the points' picture, its name in the labels' bold pixels in a column of their own, and what it is, each
+   held to the start of its column whichever way its words run; the daily email quieter while off. Its stub at the
+   end, as tall as it, past a dashed line to tear it off along, with a notch cut out at each end of that showing the
+   wood: when it leaves, the day and the time in the board's pixel digits, and a barcode. Its lines and stub don't
+   show until Pip holds his bag open for it (go): then the lines come in one after another (--i), and the stub after
+   them (--n, its lines). Then Pip's paw is stamped in ink on its main part by the tear, crooked, the card showing
+   through the ink (PawStamp), coming down onto it from over it and landing with a thud the board takes (thud).
+   Until then the paw is not there at all, rather than waiting big over the page, which would make the page longer
+   than it is and give it a scrollbar. */
+.welcome-body:has(> .welcome-ticket) { padding: var(--px) var(--px) calc(var(--px) * 2); background: none; box-shadow: none; }
+.welcome-ticket {
+  --ring-c: var(--edge); --stub: 140px; position: relative; display: flex; background: var(--w-chip-hi);
+  box-shadow: var(--ring), 0 calc(var(--px) * 3) 0 calc(var(--px) * -1) rgb(40 22 10 / 45%);
+}
+.welcome-ticket-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 14px; padding: 18px 28px 22px; }
+.welcome-ticket .welcome-ticket-lines { display: grid; grid-template-columns: auto auto minmax(0, 1fr); column-gap: 10px; }
+.welcome-ticket .welcome-ticket-lines li { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; }
+.welcome-ticket-lines li > * { justify-self: start; }
+.welcome-ticket-lines b { color: var(--board-ink-2); font-family: var(--pixel); font-size: 18px; font-weight: 800; }
+/* What was picked, further from its picture and name than they are from each other. */
+.welcome-ticket-lines span { font-family: var(--pixel); font-size: 21px; font-weight: 600; }
+.welcome-ticket-lines li > span { margin-inline-start: 14px; }
+/* The digits a little apart from the words round them, as the font's letters are: its space alone is too narrow
+   beside them. */
+.welcome-ticket-num .digits { display: inline-block; width: auto; height: 14px; margin-inline: 2px; vertical-align: -1px; }
+.welcome-ticket-lines li.quiet { color: var(--board-ink-2); }
+.welcome-ticket-lines li.quiet .welcome-point { --c: var(--w-faint); }
+.welcome-points [data-point="ai"] { --c: #7b55c7; }
+.welcome-ticket-stub {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: var(--stub);
+  border-inline-start: 3px dashed var(--w-chip-lo); color: var(--board-ink);
+}
+.welcome-ticket-notch { position: absolute; top: calc(var(--px) * -1); inset-inline-start: -16px; width: 28px; height: auto; color: var(--frame); }
+.welcome-ticket-notch.bottom { top: auto; bottom: calc(var(--px) * -1); scale: 1 -1; }
+.welcome-ticket-leaves { color: var(--board-ink-2); font-family: var(--pixel); font-size: 16px; font-weight: 700; line-height: 1; }
+.welcome-ticket-stub strong { font-family: var(--pixel); font-size: 20px; font-weight: 800; line-height: 1; }
+.welcome-ticket-time .digits { display: block; width: auto; height: 22px; }
+.welcome-ticket-code { width: 84px; height: auto; margin-top: 4px; }
+.welcome-ticket:not(.go) :is(.welcome-ticket-lines li, .welcome-ticket-stub > :not(.welcome-ticket-notch)) { opacity: 0; }
+.welcome-ticket.go .welcome-ticket-lines li { animation: rise-in 0.3s ease-out backwards; animation-delay: calc(var(--i) * 300ms + 150ms); }
+.welcome-ticket.go .welcome-ticket-stub > :not(.welcome-ticket-notch) { animation: rise-in 0.3s ease-out backwards; animation-delay: calc(var(--n) * 300ms + 150ms); }
+.welcome-paw { position: absolute; bottom: 14px; inset-inline-end: calc(var(--stub) + 16px); rotate: -10deg; mix-blend-mode: multiply; opacity: 0; }
+.welcome-ticket.go .welcome-paw { animation: paw-down 0.32s cubic-bezier(0.55, 0, 0.85, 0.35) forwards; animation-delay: calc(var(--n) * 300ms + 900ms); }
+.welcome-paw-art { display: block; width: 104px; height: auto; }
+.welcome-paw-word { fill: var(--w-paper); font-family: var(--pixel); font-size: 27px; font-weight: 800; }
+@keyframes paw-down {
+  from { opacity: 0; scale: 2.4; rotate: -4deg; }
+  75% { opacity: 1; scale: 0.95; rotate: -10deg; }
+  to { opacity: 1; scale: 1; rotate: -10deg; }
+}
+/* On a phone the stub goes under the main part, the line to tear along across the ticket, and the paw over the stub's
+   end. */
+@media (max-width: 520px) {
+  .welcome-ticket { flex-direction: column; }
+  .welcome-ticket-main { padding: 14px 16px 16px; }
+  .welcome-ticket-stub { width: auto; flex-direction: row; flex-wrap: wrap; gap: 6px 10px; padding: 10px 16px 12px; border-inline-start: 0; border-top: 3px dashed var(--w-chip-lo); }
+  .welcome-ticket-notch { display: none; }
+  .welcome-paw { bottom: 8px; inset-inline-end: 8px; }
+  .welcome-paw-art { width: 88px; }
+}
+/* A line's picture on its way from the ticket into Pip's bag (toss in welcome.tsx), in its own colours and nothing
+   else, and the glint over the bag as it lands; both over everything, outside the board. */
+.welcome-toss { position: fixed; z-index: 7; pointer-events: none; }
+.welcome-glint { position: fixed; z-index: 7; width: 12px; color: var(--cta); pointer-events: none; animation: pop-out 0.4s steps(3, end) forwards; }
+.welcome-glint svg { display: block; width: 100%; height: auto; }
+/* The forest's birds, flying up out of the trees round the board as the stamp lands (Welcome): over the forest, under
+   the board, in the board's lighter ink, so they show on the morning sky and on the night's. Each comes out of the
+   leaves and flies off out and up (--dx, --dy), faster as it goes and fading at the last, flapping quickly. */
+.welcome-bird { position: fixed; z-index: 1; color: var(--board-ink-2); pointer-events: none; animation: bird-off 1.8s cubic-bezier(0.3, 0, 0.7, 0.5) both; }
+.welcome-bird svg { display: block; width: 100%; height: auto; }
+.welcome-bird .pip-a, .welcome-bird .pip-b { animation-duration: 0.24s; }
+@keyframes bird-off {
+  from { opacity: 0; translate: 0 8px; }
+  12% { opacity: 1; translate: 0 0; }
+  75% { opacity: 1; }
+  to { opacity: 0; translate: var(--dx) var(--dy); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .welcome-ticket.go .welcome-ticket-lines li, .welcome-ticket.go .welcome-ticket-stub > :not(.welcome-ticket-notch), .welcome-ticket.go .welcome-paw { animation: none; }
+  .welcome-paw { opacity: 1; }
+}
 
 /* The words, to the start side as on a page: the title in the pixel font, two rules tall, marked over in yellow as
    with a highlighter; then each sentence of the text on a line of its own, a rule each. The title's negative margin
@@ -2000,12 +2113,74 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .welcome-form .fields { gap: var(--rule) 18px; }
 .welcome-board .welcome-form .field { gap: 0; }
 .welcome-board .welcome-form .field-label { line-height: var(--rule); }
-.welcome-board .welcome-form :is(input[type="text"], input[type="email"], input[type="password"], input[type="time"]):not(.select-find *) {
+.welcome-board .welcome-form :is(input[type="text"], input[type="email"], input[type="password"]):not(.select-find *) {
   height: calc(var(--rule) * 2); min-height: 0; padding-block: 0;
 }
 .welcome-board .welcome-form > :is(.note, .error-line) { margin: 0; line-height: var(--rule); }
 /* A field after the row of fields (the email's run times), a rule left empty above it as between the fields. */
 .welcome-board .welcome-form > .fields + .field { margin-top: var(--rule); }
+/* The email's hours (HourStrip): the day's sky in pixels, three rules tall, an hour to each column with a dark seam
+   between them, its sky over its number on the paper, the number on the last rule. Stars in the night's skies, in two
+   patterns turn about; the moon at midnight and the sun at noon. An hour picked lights up, its number on the button's
+   yellow and an envelope popping into its sky. Under the pointer an hour's sky softens, with a fade. Two rows of
+   twelve on a narrow screen. With more hours picked than are advised, a note on the rule under it says what they
+   cost, fading in. */
+.hour-strip {
+  --ring-c: var(--edge); display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 2px; height: calc(var(--rule) * 3);
+  background: var(--edge); box-shadow: var(--ring);
+}
+.hour-strip.shake { animation: shake 0.45s; }
+/* Its sky and its number fill their rows: a button's own style would keep them to their contents' height. */
+.hour {
+  display: grid; grid-template-rows: minmax(0, 1fr) 26px; row-gap: 2px; align-items: stretch; min-width: 0; padding: 0; border: 0;
+  background: var(--edge); font: inherit; cursor: pointer;
+}
+.hour:focus-visible { outline: 2px solid var(--w-focus); outline-offset: -2px; }
+.hour-sky { position: relative; display: grid; place-items: center; background: var(--sky); transition: background-color 0.2s ease; }
+.hour:hover .hour-sky { background: color-mix(in srgb, var(--sky) 75%, #ffffff); }
+/* Its number in the board's pixel digits, as on the steps' flags: the pixel font's 0 looks like an 8 this small. */
+.hour-n { display: grid; place-items: center; background: var(--w-paper); color: var(--board-ink-2); transition: background-color 0.2s ease, color 0.2s ease; }
+.hour-n .digits { height: 12px; }
+.hour[aria-pressed="true"] .hour-n { background: var(--cta); color: var(--cta-ink); }
+/* More hours picked than are advised (MailStep): a note a rule lower, on the board's light amber in a ring of its dark
+   amber, a line on each rule: Claude's quota as a battery, draining as more are picked, then what isn't advised in the
+   labels' bold pixels and why under it. It pops in as the board's pieces do. */
+.welcome-hours-note {
+  --ring-c: var(--cta-lo); display: flex; align-items: center; gap: 16px; min-height: calc(var(--rule) * 2); margin-top: var(--rule); padding-inline: 16px;
+  background: var(--w-chip-hi); color: var(--board-ink-2); box-shadow: var(--ring); animation: pop 0.36s steps(3, end);
+}
+.welcome-hours-battery { flex: none; width: 51px; height: auto; }
+.welcome-hours-note p { display: flex; flex-direction: column; margin: 0; font-size: 14px; line-height: var(--rule); }
+.welcome-hours-note strong { color: var(--board-ink); font-family: var(--pixel); font-size: 19px; font-weight: 800; }
+/* What it costs, in bold and the board's ink. */
+.welcome-hours-note b { color: var(--board-ink); font-weight: 700; }
+@media (prefers-reduced-motion: reduce) {
+  .welcome-hours-note { animation: none; }
+}
+.hour-mail { width: 18px; height: auto; animation: pop 0.36s steps(3, end); }
+.hour-moon { width: 12px; height: auto; }
+.hour-sun { width: 14px; height: auto; }
+.hour.night:not(:first-child, [aria-pressed="true"]) .hour-sky::before {
+  content: ""; position: absolute; top: 7px; left: 25%; width: 2px; height: 2px; background: #fff3c4;
+  box-shadow: 10px 11px 0 #fff3c4, 2px 24px 0 rgb(255 243 196 / 55%), 12px 36px 0 #fff3c4, 4px 45px 0 rgb(255 243 196 / 55%);
+}
+.hour.night:nth-child(even):not([aria-pressed="true"]) .hour-sky::before {
+  top: 13px; left: 60%;
+  box-shadow: -11px 10px 0 rgb(255 243 196 / 55%), -4px -6px 0 #fff3c4, -13px 28px 0 #fff3c4, -2px 37px 0 rgb(255 243 196 / 55%);
+}
+@media (max-width: 520px) {
+  .hour-strip { grid-template-columns: repeat(12, minmax(0, 1fr)); height: calc(var(--rule) * 6); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hour-mail { animation: none; }
+}
+/* The email once on (MailStep), a rule left empty over it as over the form: the envelope with its green tick, two
+   rules tall, three screen pixels to each of its own, and beside it that it is on, in the labels' bold pixels, and
+   when and where it goes, a line on each rule. */
+.welcome-mail-on { display: flex; align-items: flex-start; gap: 16px; margin-top: calc(var(--rule) - 14px); }
+.welcome-mail-on-art { flex: none; width: 72px; height: auto; }
+.welcome-mail-on p { display: flex; flex-direction: column; margin: 0; line-height: var(--rule); }
+.welcome-mail-on strong { font-family: var(--pixel); font-size: 22px; font-weight: 800; }
 /* How to make an app password, at the other end of its name's line: smaller, bold, in the board's green, underlined
    as the foot's quieter links are. It opens AppPasswordHelp. */
 .welcome-board .field-label:has(.welcome-help) { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
@@ -2016,30 +2191,65 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .welcome-help:hover { color: var(--board-ink); }
 /* That window (AppPasswordHelp): a small board of the frame's planks over the step, its page ruled as the board's
    and everything on it kept to the rules as the board's page is: an empty rule at its head and foot, the title two
-   rules tall, a line of text on each rule, the question in the labels' bold pixels, and the buttons two rules tall
-   with a rule between them, as fields are. For the phone, the code to scan beside the steps, in the board's ink on
-   white, pixel for pixel, in the middle of six rules. */
+   rules tall, a line of text on each rule, the question in the labels' bold pixels, and the buttons two rules tall,
+   as fields are. For the phone, the code to scan beside the steps, in the board's ink on white, pixel for pixel,
+   six rules tall. Both pages are ten rules, and the board one size for both. */
 .welcome-ask {
   --ring-c: var(--edge); width: min(800px, calc(100vw - 32px)); padding: var(--sheet); border: 0; border-radius: 0;
   background: var(--frame) repeating-linear-gradient(to bottom, transparent 0 44px, var(--frame-lo) 44px 48px);
   color: var(--board-ink); box-shadow: var(--ring), var(--board);
 }
-/* A column, so the page fills the board while the board changes height as it goes on to the phone; the page cuts
-   off what slides on it. */
-.welcome-ask[open] { display: flex; flex-direction: column; overflow: hidden; animation: pop 0.36s steps(3, end); }
+/* Both pages on it one over the other, the one not shown hidden but still taking its room, so the board is as tall as
+   the taller and stays so. A page falling off it is not cut off at its edge. */
+.welcome-ask[open] { display: grid; overflow: visible; animation: pop 0.36s steps(3, end); }
 .welcome-ask::backdrop { background: rgb(24 14 6 / 45%); }
-.welcome-ask-content { display: flex; flex-direction: column; }
+/* Closing, however it closes: the pop in reverse, quicker (CLOSE_MS in ui/views/welcome.tsx), its backdrop going
+   with it, and nothing in it takes clicks meanwhile. */
+.welcome-ask.closing { pointer-events: none; animation: pop-out 0.24s steps(3, end) forwards; }
+.welcome-ask.closing::backdrop { animation: backdrop-out 0.24s steps(3, end) forwards; }
+@keyframes pop-out { 30% { opacity: 1; transform: scale(1.06); } to { opacity: 0; transform: scale(0.7); } }
 .welcome-ask-page {
-  --ring-c: var(--edge); flex: 1 1 auto; min-height: 0; overflow: hidden; padding: var(--rule) 28px;
+  --ring-c: var(--edge); position: relative; grid-area: 1 / 1; display: flex; flex-direction: column; padding: var(--rule) 28px;
   background: var(--w-paper) repeating-linear-gradient(to bottom, transparent 0 calc(var(--rule) - 2px), var(--w-rule) calc(var(--rule) - 2px) var(--rule));
   box-shadow: var(--ring), 0 calc(var(--px) * 3) 0 calc(var(--px) * -1) rgb(40 22 10 / 45%);
 }
-.welcome-ask h2 { margin: 0; font-family: var(--pixel); font-size: 32px; font-weight: 800; line-height: calc(var(--rule) * 2); }
+.welcome-ask-page[hidden] { display: flex; visibility: hidden; }
+.welcome-ask h2 { margin: 0; padding-inline-end: 44px; font-family: var(--pixel); font-size: 32px; font-weight: 800; line-height: calc(var(--rule) * 2); }
+/* Each page's × in its top corner at the end, on the empty rule over the title, in the board's ink and in the steps'
+   pixels, deeper under the pointer. */
+.welcome-ask-x {
+  position: absolute; top: 0; inset-inline-end: 0; display: grid; place-items: center;
+  width: 36px; height: 36px; padding: 0; border: 0; background: none; color: var(--board-ink-2); cursor: pointer;
+  transition: color 0.2s ease;
+}
+.welcome-ask-x:hover { color: var(--board-ink); }
+.welcome-ask-x:focus-visible { outline: 2px solid var(--w-focus); outline-offset: 2px; }
+.welcome-ask-x-art { width: 14px; height: auto; }
 .welcome-ask p, .welcome-ask li { margin: 0; font-size: 16px; line-height: var(--rule); }
 .welcome-ask .welcome-ask-q { margin-top: var(--rule); font-family: var(--pixel); font-size: 22px; font-weight: 800; }
 .welcome-ask .welcome-ask-page .btn:not(.welcome-convo *) { min-height: calc(var(--rule) * 2); padding-block: 0; }
-.welcome-ask-choices { display: flex; flex-direction: column; gap: var(--rule); margin-top: var(--rule); }
-.welcome-ask-choices .btn { display: flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; }
+/* The two computers side by side, so this page is as tall as the phone's. */
+.welcome-ask-choices { display: flex; gap: 14px; margin-top: var(--rule); }
+.welcome-ask-choices .btn { flex: 1 1 0; display: flex; align-items: center; justify-content: center; text-align: center; text-decoration: none; }
+/* Going on to the phone, the page falls off the board and the phone's is stuck on in its place. The page lets go at
+   its end corner first and swings down from the start one, then drops as things do, in front of the new one, just far
+   enough to be off the screen from the middle of it, where the board is. That one goes on STICK_AT_MS in
+   ui/views/welcome.tsx, as the page leaves the board, coming down onto it from a little over it and pressed flat, in
+   STICK_MS; the page is off the screen by then. */
+.welcome-ask-page.fall { --tilt: -1; z-index: 1; transform-origin: top right; animation: page-fall 0.45s forwards; }
+.welcome-ask-page.fall:dir(ltr) { --tilt: 1; transform-origin: top left; }
+.welcome-ask-page.stick { animation: page-stick 0.3s; }
+@keyframes page-fall {
+  from { translate: 0 0; rotate: 0deg; animation-timing-function: ease-out; }
+  26% { translate: 0 0; rotate: calc(var(--tilt) * 8deg); animation-timing-function: cubic-bezier(0.11, 0, 0.5, 0); }
+  to { translate: 0 calc(50vh + 100%); rotate: calc(var(--tilt) * 20deg); }
+}
+@keyframes page-stick {
+  from { opacity: 0; scale: 1.12; rotate: 2deg; animation-timing-function: ease-in; }
+  20% { opacity: 1; }
+  60% { scale: 0.98; rotate: 0deg; animation-timing-function: ease-out; }
+  to { opacity: 1; scale: 1; rotate: 0deg; }
+}
 /* The code's edge level with the first step's rule, and the code six rules tall in all, as the steps, the address
    and the button under them are. */
 .welcome-ask-phone { display: flex; align-items: flex-start; gap: 24px; }
@@ -2047,12 +2257,8 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-ask-steps { flex: 1; min-width: 0; }
 .welcome-ask-phone ol { margin: 0; padding: 0; list-style: none; }
 .welcome-ask-phone li { display: flex; align-items: center; gap: 12px; }
-/* Each step's number on a flag like the done steps' under the board: the button's yellow, lit, its digit in pixels. */
-.welcome-ask .welcome-ask-n {
-  width: 18px; height: 18px; flex: none; background: var(--cta); color: var(--cta-ink);
-  box-shadow: var(--ring), inset 0 calc(var(--px) * -1) 0 0 var(--cta-lo);
-}
-.welcome-ask-n .digits { height: 12px; }
+/* Each step's picture, two screen pixels to each of its own, as tall as its line nearly. */
+.welcome-ask-icon { flex: none; width: 26px; height: 26px; }
 .welcome-ask .welcome-ask-or { color: var(--board-ink-2); }
 .welcome-ask-url { font-weight: 700; white-space: nowrap; }
 .welcome-ask-foot { display: flex; justify-content: flex-end; margin-top: var(--rule); }
@@ -2215,7 +2421,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 /* Chips: a block each, green once picked. The gaps leave room for their edges. */
 .welcome-board .chips:not(.welcome-convo *) { gap: 12px; }
 .welcome-board .tag:not(.welcome-convo *) { --ring-c: var(--w-field-ring); gap: 7px; border-radius: 0; padding: 5px 9px; background: var(--w-field); color: var(--board-ink); box-shadow: var(--ring); }
-.welcome-board .tag:not(.welcome-convo *) .tick, .welcome-ok .tick { width: calc(var(--px) * 4); margin: 0; color: var(--w-on); }
+.welcome-board .tag:not(.welcome-convo *) .tick { width: calc(var(--px) * 4); margin: 0; color: var(--w-on); }
 .welcome-board .tag-x:not(.welcome-convo *) { color: var(--board-ink-2); }
 /* A place chosen (MarketsEditor, bare): its name in pixel letters, a gold pin before it and an × of the board's
    pixels after it, red under the pointer; the + to add one, the same pixels. */
@@ -2321,7 +2527,6 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-convo.big :is(.log-column, .composer) { width: min(820px, 100% - 32px); }
 .big-chat-shade { position: fixed; inset: 0; z-index: 69; background: rgb(10 14 20 / 55%); }
 .welcome-wait { display: inline-flex; align-items: center; gap: 8px; color: var(--board-ink-2); font-size: 14px; }
-.welcome-ok { display: flex; align-items: center; gap: 10px; font-weight: 600; }
 
 /* The steps under the board, as the home journey's flags: a tick once done, the one open in white, each with its
    short name under it. They are fixed on the screen, --track-gap under where the tallest board's foot is, so a

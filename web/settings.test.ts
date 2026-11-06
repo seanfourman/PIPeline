@@ -114,11 +114,13 @@ describe("validateSettings", () => {
     expect(bad.automation).toEqual({ enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60 });
   });
 
-  test("the daily run takes up to three run times, in order, each once", () => {
+  test("the daily run takes up to 24 run times, in order, each once", () => {
     const times = (runTimes: unknown) => validateSettings({ automation: { runTimes } }).automation.runTimes;
     expect(times(["18:00", "09:00", "13:00"])).toEqual(["09:00", "13:00", "18:00"]);
     expect(times(["09:00", "09:00", "25:00", "x", "13:30"])).toEqual(["09:00", "13:30"]);
-    expect(times(["06:00", "09:00", "13:00", "18:00"])).toHaveLength(3);
+    const hourly = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
+    expect(times(hourly.toReversed())).toEqual(hourly);
+    expect(times([...hourly, "06:30"])).toHaveLength(24);
     expect(times([])).toEqual(["09:00"]);
   });
 });

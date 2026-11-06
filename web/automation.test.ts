@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { applyPrompt, createAutomation, isDue, pickJobs, readMailAccount, saveMailAccount, slotOf, type Deps } from "./automation";
+import { applyPrompt, createAutomation, isDue, nextRun, pickJobs, readMailAccount, saveMailAccount, slotOf, type Deps } from "./automation";
 import { validateSettings } from "./settings";
 
 const settings = (automation = {}) => validateSettings({ automation: { enabled: true, email: "me@x.co", maxPerDay: 2, ...automation } });
@@ -53,6 +53,15 @@ describe("isDue", () => {
     // A run started by hand before the day's first time stands for it.
     expect(slotOf(twice, at("07:00"))).toBe("2026-11-02 09:00");
     expect(slotOf(twice, at("14:00"))).toBe("2026-11-02 13:00");
+  });
+  test("the next run: now while one goes or is due, else the next time today, else tomorrow's first", () => {
+    const twice = settings({ runTimes: ["09:00", "13:00"] });
+    expect(nextRun(settings({ enabled: false }), "", at("12:00"))).toBeNull();
+    expect(nextRun(twice, "", at("07:00"))).toEqual({ day: "today", time: "09:00" });
+    expect(nextRun(twice, "", at("09:30"))).toEqual({ day: "now", time: "09:30" });
+    expect(nextRun(twice, "2026-11-02 09:00", at("09:30"))).toEqual({ day: "today", time: "13:00" });
+    expect(nextRun(twice, "2026-11-02 09:00", at("09:30"), true)).toEqual({ day: "now", time: "09:30" });
+    expect(nextRun(twice, "2026-11-02 13:00", at("20:00"))).toEqual({ day: "tomorrow", time: "09:00" });
   });
 });
 

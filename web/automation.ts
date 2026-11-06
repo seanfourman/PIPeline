@@ -1,5 +1,5 @@
 // The daily run: find jobs, rank them, draft a CV for the best few, and email them to the candidate, at each of the
-// run times the settings give, up to three a day. It never contacts an employer. The candidate reads each CV and
+// run times the settings give, up to one an hour. It never contacts an employer. The candidate reads each CV and
 // sends it.
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -115,6 +115,16 @@ export function isDue(settings: Settings, last: string, now: Date) {
   return `${localDate(now)} ${come}` > (/^\d{4}-\d{2}-\d{2}$/.test(last) ? `${last} ${times[0]}` : last);
 }
 
+// When the schedule runs next, as the end of the introduction says it: now, while a run goes or one is due (the next
+// tick starts it); else the first run time still to come today, or else tomorrow's first. None while it is off.
+export function nextRun(settings: Settings, last: string, now: Date, running = false): { day: "now" | "today" | "tomorrow"; time: string } | null {
+  if (!settings.automation.enabled) return null;
+  if (running || isDue(settings, last, now)) return { day: "now", time: localTime(now) };
+  const times = [...settings.automation.runTimes].sort();
+  const later = times.find((t) => t > localTime(now));
+  return later ? { day: "today", time: later } : { day: "tomorrow", time: times[0] };
+}
+
 // What the day's scheduled runs have left of its jobs: they share maxPerDay. A run started by hand isn't counted.
 export function leftToday(settings: Settings, runs: Run[], now: Date) {
   const drafted = runs.filter((r) => r.trigger === "schedule" && localDate(new Date(r.started)) === localDate(now)).reduce((n, r) => n + r.drafted.length, 0);
@@ -219,6 +229,10 @@ export function createAutomation(deps: Deps) {
     run,
     isRunning: () => running,
     runs: () => read().runs,
+    next: () => {
+      const state = read();
+      return nextRun(deps.loadSettings(), state.lastSlot ?? state.lastRunDate, now(), running);
+    },
     tick: () => {
       const settings = deps.loadSettings();
       const state = read();

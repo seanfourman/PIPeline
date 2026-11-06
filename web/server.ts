@@ -72,7 +72,7 @@ const automation = createAutomation({
   scanPortals: (title, timeout) => runTask(title, (steps, signal) => scanPortals({ steps, signal, lang: language(), ask: askFor(steps), boards: true, rest: 3 }), timeout),
 });
 // Only the address leaves the server. The password is written once and never read back.
-const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), mailUser: readMailAccount()?.user ?? "" });
+const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), next: automation.next(), mailUser: readMailAccount()?.user ?? "" });
 
 const auth = createAuth();
 // The server's own run on the job list going now, "rank" or "scrape", or "" for none.

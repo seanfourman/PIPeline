@@ -11,15 +11,20 @@ import { IndustryPicker } from "./portals";
 
 const COUNTRY_CODES = "AD AE AF AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BJ BN BO BR BS BT BW BY BZ CA CD CF CG CH CI CL CM CN CO CR CU CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FR GA GB GD GE GH GM GN GQ GR GT GW GY HK HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KG KH KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MK ML MM MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NZ OM PA PE PG PH PK PL PR PS PT PY QA RO RS RU RW SA SC SD SE SG SI SK SL SN SO SR SV SY SZ TD TG TH TJ TM TN TR TT TW TZ UA UG US UY UZ VE VN YE ZA ZM ZW".split(" ");
 const TIERS = ["near", "ok", "edge", "far"];
-// The daily run's times, up to three a day as settings.ts keeps them; one added takes the first of these not taken.
-const RUN_TIMES = 3;
-const nextTime = (times: string[]) => ["13:00", "17:00", "21:00", "09:00"].find((t) => !times.includes(t)) ?? "12:00";
+// The daily run's times, up to one an hour as settings.ts keeps them, though more than RUN_TIMES_ADVISED a day spend
+// Claude's quota on searches that mostly find nothing new, and a note says so; one added takes the first of these
+// not taken, then the first whole hour not taken.
+export const RUN_TIMES = 24;
+export const RUN_TIMES_ADVISED = 3;
+const HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")}:00`);
+const nextTime = (times: string[]) => ["13:00", "17:00", "21:00", "09:00", ...HOURS].find((t) => !times.includes(t)) ?? "12:00";
 
 const regionName = (code: string, lang: Lang) => { try { return new Intl.DisplayNames([lang], { type: "region" }).of(code) ?? code; } catch { return code; } };
 
-// The daily run's times, here and in the introduction's step for the email: a field for each, with a × once there
-// are two, and a button for another while there are fewer than RUN_TIMES.
-export function RunTimes({ times, onChange }: { times: string[]; onChange: (times: string[]) => void }) {
+// The daily run's times on the settings screen (the introduction's step for the email has its strip of hours, HourStrip
+// in welcome.tsx): a field for each, with a × once there are two, and a button for another while there are fewer than
+// RUN_TIMES.
+function RunTimes({ times, onChange }: { times: string[]; onChange: (times: string[]) => void }) {
   const { t } = useApp();
   return (
     <span className="run-times">
@@ -583,8 +588,10 @@ export function Settings() {
           {number(t("settings.perDay"), draft.automation.maxPerDay, (n) => setAuto("maxPerDay", n))}
           {number(t("settings.minScore"), draft.automation.minScore, (n) => setAuto("minScore", n))}
         </div>
-        {/* A row of its own, so the times and the button for another stay on one line. */}
-        <Field label={t("settings.runTimes")} hint={t("settings.runTimesNote")}>
+        {/* A row of its own for the times and the button for another, its note saying what more than
+            RUN_TIMES_ADVISED a day cost once there are more. */}
+        <Field label={t("settings.runTimes")} hint={times.length > RUN_TIMES_ADVISED
+          ? <><b>{t("settings.runTimesManyTitle")}</b>: {t("settings.runTimesManyWhy")} <b>{t("settings.runTimesManyQuota")}</b></> : t("settings.runTimesNote")}>
           <RunTimes times={times} onChange={(next) => setAuto("runTimes", next)} />
         </Field>
         <p className="note">{t("settings.dailyTip")}</p>

@@ -146,6 +146,32 @@ const BACK_LEAP = blocks([
   "..OOOOOOO..",
   "...D...D...",
 ]);
+// The backpack he sets off with (PipSetsOff): green, a lighter flap with a yellow buckle. On his back from behind,
+// with two straps up to the shoulders; held up in front of him, his paws on its top corners; and from the side, on
+// his back as he runs.
+const BAG: Record<string, string> = { L: "#24541f", G: "#367a32", H: "#5fae44", Y: "#ffc94a", D: C.D };
+const bag = (x0: number, y0: number, rows: string[]): Px[] =>
+  rows.flatMap((row, dy) => [...row].flatMap((ch, dx): Px[] => (ch === "." ? [] : [[x0 + dx, y0 + dy, BAG[ch]]])));
+const BACKPACK = bag(6, 6, [".L......L.", ".L......L.", "LLLLLLLLLL", "LHHHHHHHHL", "LHHHHHHHHL", "LGGGYYGGGL", "LGGGGGGGGL", "LGGGGGGGGL", "LLLLLLLLLL"]);
+const HELD_PACK = bag(6, 13, ["LLLLLLLLLL", "LHHHHHHHHL", "LGGGYYGGGL", "LGGGGGGGGL", "LGGGGGGGGL", "LLLLLLLLLL"]);
+const HOLDING_PAWS = bag(4, 12, ["DDD......DDD", "DDD......DDD"]);
+// From the side, upright as he always stands, facing right, running with it on: the near ear and the far one behind
+// it, the eye near the front, the nose at the snout's tip, the cream chest in front, the tail out behind low down;
+// the pack on his back with its strap over the shoulder; two steps on his two legs, apart (a) and passing (b).
+const SIDE = blocks([
+  "......D.D...",
+  "......ODOD..",
+  "....OOOOOOO.",
+  "....OOOOOKO.",
+  "....OOOOOOWK",
+  "....OOOOOWW.",
+  "WW..OOOOOWW.",
+  "OOOOOOOOOOW.",
+]);
+const steps = (near: string, far: string) => blocks([...Array<string>(8).fill(""), near, far]);
+const RUN_A = steps("....D....D..", "...D......D.");
+const RUN_B = steps("......DD....", "......DD....");
+const SIDE_PACK = bag(3, 3, ["...L...", "..L....", "LLLLL..", "LHHHL..", "LHHHL..", "LHYHL..", "LGGGL..", "LGGGL..", "LGGGL..", "LLLLL.."]);
 
 // Stone, wood and earth, for Pip's pickaxe (PipMiner).
 const M: Record<string, string> = { stone: "#a4abb3", stoneDark: "#7f8790", beam: "#a8713f", light: "#ddb07c" };
@@ -252,6 +278,36 @@ export function PipLying({ className = "", scared = false }: { className?: strin
         <Pixels px={eyesOpen} className="pip-open" />
         <Pixels px={eyesShut} className="pip-shut" />
       </>}
+    </svg>
+  );
+}
+
+// Setting off to look for jobs, at the end of the introduction, a scene at a time, where Pip stands: pulling the
+// backpack out over his head and holding it up, happy (pull, its pack pip-pack and his paws pip-paws for the CSS to
+// bring in); from behind, the pack coming down onto his back (on); and from the side running on his two legs with it
+// on, a little wider than he is from the front, the two steps taking turns (run, pip-a and pip-b).
+export function PipSetsOff({ scene }: { scene: "pull" | "on" | "run" }) {
+  const shadow = <rect className="pip-shadow" x={4} y={18.5} width={14} height={0.5} fill="#000" opacity={0.2} />;
+  if (scene === "run") return (
+    <svg className="pip pip-run" viewBox="0 -2 24 21" shapeRendering="crispEdges" aria-hidden="true">
+      <Pixels px={[...SIDE, ...SIDE_PACK]} />
+      <Pixels px={RUN_A} className="pip-a" />
+      <Pixels px={RUN_B} className="pip-b" />
+    </svg>
+  );
+  if (scene === "on") return (
+    <svg className="pip pip-on" viewBox="0 -2 22 21" shapeRendering="crispEdges" aria-hidden="true">
+      {shadow}
+      <Pixels px={BACK} />
+      <Pixels px={BACKPACK} className="pip-pack" />
+    </svg>
+  );
+  return (
+    <svg className="pip pip-pull" viewBox="0 -2 22 21" shapeRendering="crispEdges" aria-hidden="true">
+      {shadow}
+      <Pixels px={[...FRONT, ...blush, ...eyesHappy]} />
+      <Pixels px={HELD_PACK} className="pip-pack" />
+      <Pixels px={HOLDING_PAWS} className="pip-paws" />
     </svg>
   );
 }

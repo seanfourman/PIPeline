@@ -155,7 +155,7 @@ export function validateSettings(input: any): Settings {
   const salary = [wholeNumber(input?.salaryMin, 10_000_000), wholeNumber(input?.salaryMax, 10_000_000)];
   const [salaryMin, salaryMax] = salary[0] && salary[1] ? salary.sort((a, b) => a - b) : salary;
   const email = clean(input?.automation?.email, 120);
-  // Up to three run times a day, in order; a settings file from before keeps its one runAt.
+  // Up to 24 run times a day, in order, each once; a settings file from before keeps its one runAt.
   const times = (Array.isArray(input?.automation?.runTimes) ? input.automation.runTimes : [input?.automation?.runAt])
     .map(String).filter((t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t));
   return {
@@ -178,7 +178,7 @@ export function validateSettings(input: any): Settings {
       enabled: input?.automation?.enabled === true,
       email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "",
       maxPerDay: Math.min(wholeNumber(input?.automation?.maxPerDay, 1000) || 3, 10),
-      runTimes: times.length ? [...new Set<string>(times)].sort().slice(0, 3) : ["09:00"],
+      runTimes: times.length ? [...new Set<string>(times)].sort().slice(0, 24) : ["09:00"],
       minScore: wholeNumber(input?.automation?.minScore, 100) || 60,
     },
     // pick's first option is the one a missing or strange value gets; a market no longer chosen falls back to all.

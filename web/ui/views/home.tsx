@@ -47,10 +47,11 @@ const DIGITS: Record<string, string[]> = {
   7: ["XXXX", "...X", "..X.", "..X.", ".X..", ".X.."],
   8: [".XX.", "X..X", ".XX.", "X..X", "X..X", ".XX."],
   9: [".XX.", "X..X", "X..X", ".XXX", "...X", ".XX."],
+  ":": [".", "X", ".", ".", "X", "."],
 };
-// A number in those digits, a block apart. It is only a picture: the list numbers the stages for screen readers,
-// and a sign's link says its number.
-export function Digits({ n }: { n: number }) {
+// A number in those digits, a block apart, or a time with its colon. It is only a picture: the list numbers the
+// stages for screen readers, and a sign's link says its number.
+export function Digits({ n }: { n: number | string }) {
   const glyphs = [...String(n)].map((d) => DIGITS[d]);
   return <PixelArt className="digits" rows={glyphs[0].map((_, y) => glyphs.map((g) => g[y]).join("."))} />;
 }
@@ -250,7 +251,7 @@ function Hero() {
 // ---------- the shelves ----------
 
 // A drawing in several colours: each letter of the rows is one of `colors`, a dot draws nothing.
-const Sprite = ({ rows, colors, className }: { rows: string[]; colors: Record<string, string>; className: string }) => (
+export const Sprite =({ rows, colors, className }: { rows: string[]; colors: Record<string, string>; className: string }) => (
   <svg className={className} viewBox={`0 0 ${rows[0].length} ${rows.length}`} shapeRendering="crispEdges" aria-hidden="true">
     {Object.entries(colors).map(([ch, fill]) => (
       <path key={ch} d={pixelPath(rows.map((row) => [...row].map((c) => (c === ch ? "X" : ".")).join("")))} fill={fill} />
