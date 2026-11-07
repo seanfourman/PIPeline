@@ -36,6 +36,8 @@ export type AppState = {
 };
 
 type News = { text: string; mood: Mood } | null;
+// Pip updating himself (App): announced and away, back and updated, or neither.
+type Update = "" | "updating" | "updated";
 type Ctx = {
   s: AppState; loaded: boolean; refresh: () => Promise<void>;
   // Whether the page is on screen: the loading screen gone and the state in.
@@ -44,7 +46,7 @@ type Ctx = {
   // theme is "light", "dark", or "" to follow the computer.
   dark: boolean; toggleTheme: () => void; theme: string; setTheme: (mode: string) => void;
   view: string; arg?: string;
-  say: (text: string, mood?: Mood, ms?: number) => void; news: News;
+  say: (text: string, mood?: Mood, ms?: number) => void; news: News; update: Update;
   // access is how much the conversation may do without asking (policy.ts); left out, it asks. files are the ids
   // of uploads attached to the first message (uploads.ts).
   start: (prompt: string, model?: string, access?: string, files?: string[]) => Promise<void>;
@@ -101,7 +103,8 @@ const NAV: [string, string][] = [
   ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"],
 ];
 
-// The sidebar. Language and theme live on the settings page; the foot is the account, with a button to log out.
+// The sidebar. Language and theme live on the settings page; the foot is the account, with a button to log out. Beside
+// the logo, here only, a tag that says Pip is still in beta.
 function Sidebar() {
   const { s, t, view, logout } = useApp();
   const current = view === "cv" || view === "letter" ? "files" : view;
@@ -109,7 +112,10 @@ function Sidebar() {
   const name = String(s.settings.displayName ?? "").trim() || s.account || "";
   return (
     <nav className="side" aria-label={t("nav.main")}>
-      <a className="brand" href="#/dash" aria-label={t("brand.name")}><PipMark /></a>
+      <div className="brand-row">
+        <a className="brand" href="#/dash" aria-label={t("brand.name")}><PipMark /></a>
+        <span className="beta">{t("brand.beta")}</span>
+      </div>
       <div className="nav">
         {NAV.map(([id, icon]) => (
           <a key={id} href={`#/${id}`} aria-current={current === id ? "page" : undefined}>
@@ -140,40 +146,43 @@ export function companionLine(s: AppState, view: string, t: Ctx["t"]): { text: s
   return { text: typeof line === "string" && !line.startsWith("pip.") ? line : "", mood: "idle" };
 }
 
-// What Pip says after something you did (saved, built, a status changed), in a small notice at the bottom of
-// the screen that goes away on its own.
-function Toast() {
-  const { news } = useApp();
-  if (!news) return null;
-  return (
-    <div className="toast" role="status" dir="auto">
-      <Pip mood={news.mood} className="toast-pip" />
-      <span>{news.text}</span>
-    </div>
-  );
-}
-
 // How long Pip takes to slide back behind the sidebar; matches peek-in in styles.css.
 const PEEK_IN_MS = 420;
 
 // The commands that run in the background once started there (run): the smart search.
 const BACKGROUND = ["/job-scraper"];
 
-// When a conversation waits for an answer, Pip waits for you at the bottom of the screen, peeking out from
-// behind the sidebar (up from the screen's bottom on a phone, where the sidebar is a bar on top), quietly, with
-// no "!", saying in a pixel speech bubble that it waits for your answer; a click opens that conversation, whose
-// name is in its label for screen readers only. While a command runs in the background, he peeks out the same
-// way, at work, saying what he is doing, and when it is done he says so in a notice. He slides out, leans out a
-// little further now and then, and slides back in when nothing waits or works or the conversations page is open
-// (kept while he goes). The pages' own Pips stay as they are.
+// What Pip says from behind the sidebar (PeekingPip): its words, his mood, and where a click on him goes, if
+// anywhere, with that said for screen readers. key changes with each new thing he says, which pops the bubble anew.
+type Peek = { key: string; text: string; mood?: Mood; href?: string; label?: string };
+
+// Pip peeking out from behind the sidebar at the bottom of the screen (up from the screen's bottom on a phone, where
+// the sidebar is a bar on top), saying what he has to say in a pixel speech bubble. First what matters most: Pip
+// updating himself, while he is away and once he is back (App's update); then what he says after something you did,
+// for a few seconds (say: saved, built, a status changed); then, but on the conversations page, where they are in
+// sight already, a conversation that waits for your answer, quietly, with no "!" (a click opens it, its name in his
+// label for screen readers only), or a command at work in the background, whose end he says too. He slides out,
+// leans out a little further now and then, pops up a new bubble with each new thing, and slides back in when he has
+// nothing to say (kept while he goes). His words are in the app's language and run its way, a line that starts
+// with a Latin company name too. The pages' own Pips stay as they are.
 function PeekingPip() {
-  const { s, t, view, say } = useApp();
-  // Not on the conversations page, where the conversations and what they wait for are in sight already.
+  const { s, t, view, say, news, update } = useApp();
   const waiting = s.sessions.find((x) => x.status === "waiting");
   const working = s.sessions.find((x) => x.status === "running" && BACKGROUND.includes(x.title));
-  const now = view === "chat" ? undefined : waiting ?? working;
-  const [kept, setKept] = useState<{ id: string; title: string; work: boolean } | null>(null);
-  if (now && (kept?.id !== now.id || kept.title !== now.title || kept.work !== (now === working))) setKept({ id: now.id, title: now.title, work: now === working });
+  const session = view === "chat" ? undefined : waiting ?? working;
+  const work = session === working;
+  const now: Peek | null = update
+    ? { key: update, text: t(update === "updating" ? "pip.updating" : "pip.updated"), mood: update === "updating" ? "work" : "happy" }
+    : news
+      ? { key: `news:${news.text}`, text: news.text, mood: news.mood }
+      : session
+        ? {
+          key: `${session.id}:${work}`, text: t(work ? "pip.peekWork" : "pip.peek"), mood: work ? "work" : undefined, href: `#/chat/${session.id}`,
+          label: `${t(work ? "pip.peekWork" : "pip.peek")} ${t("pip.peekIn")} ${friendlyTitle(session.title, t)}`,
+        }
+        : null;
+  const [kept, setKept] = useState<Peek | null>(null);
+  if (now && (kept?.key !== now.key || kept.text !== now.text || kept.label !== now.label)) setKept(now);
   const leaving = !now && !!kept;
   useEffect(() => {
     if (!leaving) return;
@@ -187,29 +196,31 @@ function PeekingPip() {
       if (!BACKGROUND.includes(x.title)) continue;
       if (x.status === "running") seen.current.add(x.id);
       else if ((x.status === "idle" || x.status === "error") && seen.current.delete(x.id)) {
-        say(t(x.status === "idle" ? "pip.workDone" : "pip.workStopped"), x.status === "idle" ? "happy" : "worried");
+        say(t(x.status === "idle" ? "pip.workDone" : "pip.workStopped"), x.status === "idle" ? "happy" : "confused");
       }
     }
   }, [s.sessions]);
   if (!kept) return null;
-  const says = t(kept.work ? "pip.peekWork" : "pip.peek");
+  // One element throughout, a link only while he leads somewhere, so Pip stays out as what he says changes.
   return (
-    <a className={`peek ${leaving ? "leaving" : ""}`} href={`#/chat/${kept.id}`} aria-label={`${says} ${t("pip.peekIn")} ${friendlyTitle(kept.title, t)}`}>
-      <Pip className="peek-pip" mood={kept.work ? "work" : undefined} />
-      <span className="peek-say">
-        <span className="peek-edge"><span className="peek-words">{says}</span></span>
+    <a className={`peek ${leaving ? "leaving" : ""}`} href={kept.href} aria-label={kept.label} role={kept.href ? undefined : "status"}>
+      <Pip className="peek-pip" mood={kept.mood} />
+      <span className="peek-say" key={kept.key}>
+        <span className="peek-edge"><span className="peek-words">{kept.text}</span></span>
         <SpeechTail />
       </span>
     </a>
   );
 }
 
-// The speech bubble's tail, in the bubble's pixels: its outline (k) and fill (w) on a grid of 3-pixel cells,
-// its top row over the bubble's bottom edge so the edge opens into it, the tip down at the start side, by Pip.
-const TAIL = ["kwwwwk", ".kwwwk", "..kwwk", "...kwk", "....kk"];
-function SpeechTail() {
+// The speech bubble's tail, in the bubble's pixels: its outline (k) and fill (w) on a grid of 3-pixel cells, the tip
+// down at the start side, by Pip. Its second row lies over the bubble's bottom edge, so the edge opens into it, and
+// its first, fill alone, over the bubble's white above that, so that wherever the edge falls between pixels, no line
+// of it shows across the opening.
+const TAIL = [".wwww.", "kwwwwk", ".kwwwk", "..kwwk", "...kwk", "....kk"];
+export function SpeechTail() {
   return (
-    <svg className="peek-tail" viewBox="0 0 6 5" shapeRendering="crispEdges" aria-hidden="true">
+    <svg className="peek-tail" viewBox="0 0 6 6" shapeRendering="crispEdges" aria-hidden="true">
       {TAIL.flatMap((row, y) => [...row].map((c, x) => (c === "." ? null : <rect key={`${x},${y}`} x={x} y={y} width={1} height={1} className={c === "k" ? "tail-edge" : "tail-fill"} />)))}
     </svg>
   );
@@ -255,6 +266,11 @@ const BOOT_MIN_MS = 1000;
 // loading screen has had its time (ready, the page's booted) and its Pip is on the ground between two hops, he stays
 // there, worried, the paw prints fade under him, and the words rise in (from-boot in styles.css).
 const OFFLINE_RETRY_MS = 2500;
+// An update's moment away, waited out with the page as it is (App); how long Pip says he is updated, once he is; and
+// how lately the page was used to count as in use.
+const UPDATE_QUIET_MS = 90_000;
+const UPDATED_MS = 5000;
+const ACTIVE_MS = 60_000;
 // The loading screen's hop (boot-hop in styles.css): how long one takes, and when in it Pip is up in the air.
 const HOP_MS = 720;
 const HOP_AIR = [0.12 * HOP_MS, 0.64 * HOP_MS];
@@ -269,6 +285,10 @@ const SPARK = ["X...X", ".X.X.", "..X..", ".X.X.", "X...X"];
 const PLUG_INK = "#3a2414";
 const PLUG_AMBER = "#ffc94a";
 
+// The download's arrow into its tray, as on the introduction's first step.
+const GET = ["..OOO..", "..OYO..", "OOOYOOO", ".OYYYO.", "O.OYO.O", "O..O..O", "OOOOOOO"];
+const GetIcon = () => <Sprite className="offline-get-icon" rows={GET} colors={{ O: PLUG_INK, Y: PLUG_AMBER }} />;
+
 function Plugging() {
   return (
     <span className="offline-plug" aria-hidden="true">
@@ -279,12 +299,14 @@ function Plugging() {
   );
 }
 
-function Offline({ fromBoot, ready }: { fromBoot: boolean; ready: boolean }) {
+// Pip away because it is updating itself (updating, which the program said just before it went): Pip at work rather
+// than worried, words that say so, and no download, Pip being on the computer.
+function Offline({ fromBoot, ready, updating }: { fromBoot: boolean; ready: boolean; updating: boolean }) {
   const { t } = useApp();
   const [phase, setPhase] = useState<"waiting" | "showing" | "settled">(fromBoot ? "waiting" : "settled");
-  // On the site from a computer, in case Pip isn't on it at all: where to get it, for what it runs (the site's
-  // installer beside this page there, or on a Mac the command for Terminal, copied). On the computer's own address Pip
-  // is on it already.
+  // On the site from a computer, in case Pip isn't on it at all: along the foot of the screen, apart from the words,
+  // where to get it for what it runs (the site's installer beside this page there, or on a Mac the command for
+  // Terminal, copied). On the computer's own address Pip is on it already.
   const [system] = useState(() => (!["127.0.0.1", "localhost"].includes(location.hostname) && isComputer() ? desktopSystem() : ""));
   const [copied, setCopied] = useState<"" | "yes" | "no">("");
   useEffect(() => {
@@ -314,25 +336,25 @@ function Offline({ fromBoot, ready }: { fromBoot: boolean; ready: boolean }) {
   return (
     <div className={`offline ${fromBoot ? "from-boot" : ""} ${phase}`} role="alertdialog" aria-modal="true" aria-labelledby="offline-title" aria-describedby="offline-text">
       <div className="offline-stage">
-        <Pip mood="worried" className="offline-pip" />
+        <Pip mood={updating ? "work" : "worried"} className="offline-pip" />
         <div className="offline-words">
-          <h1 id="offline-title">{t("offline.title")}</h1>
+          <h1 id="offline-title">{t(updating ? "offline.updating.title" : "offline.title")}</h1>
           <div id="offline-text" className="offline-text">
-            <p>{t("offline.text")}</p>
+            <p>{t(updating ? "offline.updating.text" : "offline.text")}</p>
             <p>{t("offline.then")}</p>
           </div>
           <p className="offline-wait" role="status">{t("offline.wait")}<Plugging /></p>
-          {system && (
-            <p className="offline-get">
-              {t("offline.none")}{" "}
-              {system === "mac"
-                ? <button type="button" onClick={() => copyText(macCommand()).then((ok) => setCopied(ok ? "yes" : "no"))}>{t(copied === "yes" ? "offline.macCopied" : "offline.macCopy")}</button>
-                : <a href="/PipSetup.exe" download>{t("offline.get")}</a>}
-              {copied === "no" && <code dir="ltr">{macCommand()}</code>}
-            </p>
-          )}
         </div>
       </div>
+      {system && !updating && (
+        <div className="offline-get">
+          <span>{t(copied === "yes" ? "offline.macCopied" : "offline.none")}</span>
+          {system === "mac"
+            ? <button type="button" className="offline-get-go" onClick={() => copyText(macCommand()).then((ok) => setCopied(ok ? "yes" : "no"))}><GetIcon />{t("offline.macCopy")}</button>
+            : <a className="offline-get-go" href="/PipSetup.exe" download><GetIcon />{t("offline.get")}</a>}
+          {copied === "no" && <code dir="ltr">{macCommand()}</code>}
+        </div>
+      )}
       {/* As tall as the loading screen's paw prints, so Pip stands where he does there. */}
       <span className="offline-floor" aria-hidden="true" />
     </div>
@@ -364,11 +386,48 @@ export function App() {
   // call to it fails (kit.tsx's api says so); while it has, Offline covers everything. "boot" when it was so while the
   // loading screen still showed, which Offline then grows out of.
   const [offline, setOffline] = useState<false | "boot" | "later">(false);
+  // Said by the program a few seconds before it goes to update itself (web/server.ts's /update): then its moment away
+  // doesn't cover the page. Pip peeks out from behind the sidebar to say he is updating (PeekingPip), the page waits
+  // and, once the new one answers, carries on as it was, logged in still (auth.ts keeps logins), with what was typed
+  // and where it was, and Pip says he is updated before he goes back in. Only an update that takes longer than
+  // UPDATE_QUIET_MS covers the page, Offline saying Pip is updating. As it asks, the page also says whether someone
+  // used it lately (ACTIVE_MS), and an update waits till no one has for a while.
+  const [update, setUpdate] = useState<Update>("");
+  const updatingAt = useRef(0);
+  const updatedTimer = useRef<ReturnType<typeof setTimeout>>();
+  const usedAt = useRef(0);
+  const authNow = useRef(auth);
+  authNow.current = auth;
   useEffect(() => {
-    const down = () => setOffline((was) => was || (document.querySelector("#boot:not(.done)") ? "boot" : "later"));
+    const used = () => { usedAt.current = Date.now(); };
+    const kinds = ["pointerdown", "keydown", "wheel", "touchstart"];
+    for (const kind of kinds) addEventListener(kind, used, { capture: true, passive: true });
+    const down = () => {
+      if (updatingAt.current && Date.now() - updatingAt.current < UPDATE_QUIET_MS) return;
+      setOffline((was) => was || (document.querySelector("#boot:not(.done)") ? "boot" : "later"));
+    };
     addEventListener("pip-offline", down);
-    const timer = setInterval(() => { api("me").catch(() => {}); }, 5000);
-    return () => { removeEventListener("pip-offline", down); clearInterval(timer); };
+    const timer = setInterval(() => {
+      api<{ updating?: boolean }>(Date.now() - usedAt.current < ACTIVE_MS ? "me?active=1" : "me").then((me) => {
+        if (me.updating) {
+          updatingAt.current ||= Date.now();
+          clearTimeout(updatedTimer.current);
+          setUpdate("updating");
+        } else if (updatingAt.current) {
+          // Back, updated: the state as it is now, and Pip says so for a moment.
+          updatingAt.current = 0;
+          setUpdate("updated");
+          updatedTimer.current = setTimeout(() => setUpdate(""), UPDATED_MS);
+          if (authNow.current === "in") refresh().catch(() => {});
+        }
+      }, () => {});
+    }, 5000);
+    return () => {
+      for (const kind of kinds) removeEventListener(kind, used, { capture: true });
+      removeEventListener("pip-offline", down);
+      clearInterval(timer);
+      clearTimeout(updatedTimer.current);
+    };
   }, []);
 
   const refresh = useCallback(async () => {
@@ -454,7 +513,7 @@ export function App() {
     return session;
   };
   const ctx: Ctx = {
-    s, loaded, refresh, shown: booted && loaded, lang, t, view, arg, news, draft, dark, theme,
+    s, loaded, refresh, shown: booted && loaded, lang, t, view, arg, news, update, draft, dark, theme,
     err: (e) => errorText(e as ApiError, lang),
     setTheme: (mode) => {
       setTheme(mode);
@@ -497,10 +556,9 @@ export function App() {
           <Sidebar />
           <main id="main" tabIndex={-1}><Screen /></main>
           <PeekingPip />
-          <Toast />
         </div>
       )}
-      {offline && <Offline fromBoot={offline === "boot"} ready={booted} />}
+      {offline && <Offline fromBoot={offline === "boot"} ready={booted} updating={update === "updating"} />}
     </AppContext.Provider>
   );
 }

@@ -6,7 +6,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { buildInterface } from "./build";
 import { DICTS, translate } from "./ui/i18n";
-import { MARK_PATH, Pip } from "./ui/pip";
+import { tabIcon } from "./icon";
+import { foxPixels, ICON, ICON_COLORS, Pip } from "./ui/pip";
 
 const paths = (value: unknown, prefix = ""): string[] =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -85,6 +86,20 @@ describe("the two languages", () => {
     expect(codes.length).toBeGreaterThan(10);
     for (const code of codes) expect(translate("en", `errors.${code}`)).not.toBe(`errors.${code}`);
   });
+
+  // What Pip says from behind the sidebar breaks only where its words do (\n), each line short enough for one line of
+  // his bubble, a long company name too, so no sentence is cut in the middle and its end carried over.
+  test("give Pip's status lines lines short enough for his bubble", () => {
+    const groups = translate("he", "pip.status") as Record<string, string[]>;
+    expect(Object.keys(groups).length).toBeGreaterThan(5);
+    for (const [key, lines] of Object.entries(groups)) {
+      expect(lines.length).toBeGreaterThan(1);
+      lines.forEach((_, i) => {
+        const said = translate("he", `pip.status.${key}.${i}`, { company: "Company1" }) as string;
+        for (const line of said.split("\n")) expect(line.length).toBeLessThanOrEqual(32);
+      });
+    }
+  });
 });
 
 describe("the interface", () => {
@@ -101,8 +116,15 @@ describe("the interface", () => {
     expect(html).toContain(renderToStaticMarkup(createElement(Pip, { mood: "happy", className: "boot-pip" })));
   });
 
-  test("has the logo's head as the tab icon", () => {
-    expect(readFileSync(path.join(import.meta.dir, "public", "icon.svg"), "utf8")).toContain(`d="${MARK_PATH}"`);
+  test("has the fox the page shows as its icon, in the tab too", () => {
+    // Every pixel of the fox as the page shows him (a later one drawn over an earlier) in the colour of its block in
+    // the icon, so no detail of his falls between blocks.
+    const shown = new Map(foxPixels("front").map(([x, y, color]) => [`${x},${y}`, color]));
+    const at = [...shown.keys()].map((key) => key.split(",").map(Number));
+    const left = Math.min(...at.map(([x]) => x));
+    const top = Math.min(...at.map(([, y]) => y));
+    for (const [x, y] of at) expect(ICON_COLORS[ICON[(y - top) >> 1][(x - left) >> 1]]).toBe(shown.get(`${x},${y}`));
+    expect(readFileSync(path.join(import.meta.dir, "public", "icon.ico")).equals(tabIcon())).toBe(true);
   });
 
   test("takes the stylesheet's images from the site's own files, which the page's security policy allows", () => {

@@ -1,11 +1,13 @@
-// Pip, the companion: an original fox, drawn abstract in big blocks, with a few moods.
+// Pip, the companion: an original fox, drawn abstract in big blocks, with his moods.
 import React from "react";
 
-export type Mood = "idle" | "wave" | "work" | "ask" | "happy" | "worried" | "scared";
+export type Mood = "idle" | "wave" | "work" | "ask" | "happy" | "worried" | "scared"
+  | "angry" | "sad" | "tired" | "party" | "love" | "surprised" | "cool" | "confused";
 type Px = [number, number, string];
 
 const C: Record<string, string> = {
   O: "#F2892E", D: "#CF6620", W: "#FFF2DF", K: "#2A2236", P: "#FF9C8A", A: "#FF5D5D", Y: "#FFF1A8", U: "#7CC8FF", G: "#8A84A0",
+  R: "#E8443A", S: "#FFFFFF", J: "#FFC94A",
 };
 
 // Pip is drawn on a coarse grid, 11 blocks by 10, each block two pixels square, so the sprite stays 22 pixels
@@ -59,15 +61,22 @@ const sweat = at([[10, 2, "U"], [10, 3, "U"]]);
 const into = (rows: number[], x: number): Px[] => rows.map((y) => [x, y, C.O]);
 const pawHigh = [...at([[1, 7, "O"], [0, 6, "O"], [0, 5, "O"]]), ...into([9, 10, 11, 12], 2), ...into([13, 14], 4)];
 const pawLow = [...at([[1, 7, "O"], [0, 7, "O"], [0, 6, "O"]]), ...into([11, 12], 2), ...into([13, 14], 4)];
-// An exclamation mark between the ears, in single pixels, since a block is too big for its gap.
-const alert: Px[] = [[10, -2, C.A], [11, -2, C.A], [10, -1, C.A], [11, -1, C.A], [10, 0, C.A], [11, 0, C.A], [10, 2, C.A], [11, 2, C.A]];
-// Two twinkles that swap corners.
-const sparkA = at([[0, 1, "Y"], [10, 4, "Y"]]);
-const sparkB = at([[10, 1, "Y"], [0, 4, "Y"]]);
-const dots = (n: number) => at(([[3, 1, "G"], [5, 1, "G"], [7, 1, "G"]] as [number, number, string][]).slice(0, n));
 // Single pixels from rows of palette letters, from (x, y); a dot draws nothing.
 const art = (x: number, y: number, rows: string[]): Px[] =>
   rows.flatMap((row, dy) => [...row].flatMap((ch, dx): Px[] => (ch === "." ? [] : [[x + dx, y + dy, C[ch]]])));
+// Marks over his head, in single pixels, clear of it: an exclamation mark, frightened, two pixels over his ear tips
+// as the dots at work are; and a question mark, waiting for your answer, lower, between the ears and two pixels over
+// his head, which hovers a pixel up and down (a and b).
+const alert = art(10, -9, ["AA", "AA", "AA", "AA", "..", "AA"]);
+const QUESTION = [".AAAA.", "AA..AA", "....AA", "...AA.", "..AA..", "......", "..AA.."];
+const askA = art(8, -6, QUESTION);
+const askB = art(8, -7, QUESTION);
+// Happy: two gold four-pointed stars twinkling in the air out past his head's sides, one at a time flaring big
+// while the other is small (a and b). They stay where they are, so they never read as paws.
+const twinkle = (x: number, y: number, big: boolean) =>
+  big ? art(x - 2, y - 2, ["..J..", "..J..", "JJJJJ", "..J..", "..J.."]) : art(x - 1, y - 1, [".J.", "JJJ", ".J."]);
+const sparkA = [...twinkle(-2, 3, true), ...twinkle(23, 5, false)];
+const sparkB = [...twinkle(-2, 3, false), ...twinkle(23, 5, true)];
 // Frightened: each eye wide open, a round white with a small pupil, in single pixels where the eyes usually are.
 const eyesWide = [...art(5, 7, [".WW.", "WKKW", "WKKW", ".WW."]), ...art(13, 7, [".WW.", "WKKW", "WKKW", ".WW."])];
 // Lying down and frightened, a drop of sweat by the head and an exclamation mark above it.
@@ -84,8 +93,74 @@ function frontPaws(step: number): Px[] {
   return step === 3 ? [...paws, ...art(3, 11, ["P", "P"]), ...art(18, 11, ["P", "P"])] : paws;
 }
 
-// Joins neighbouring pixels of one colour into a single rectangle, so a sprite stays a few dozen nodes.
-function Pixels({ px: list, className, transform }: { px: Px[]; className?: string; transform?: string }) {
+// His faces, each drawn whole, eyes and all, with its moving part in two frames (FACES' a and b). A mouth sits a row
+// below the nose, as the worried one does, so the two never join into one long nose.
+// Brows: angry ones slant down to the middle, sad ones up to it.
+const browsAngry = [...art(5, 5, ["KK..", "..KK"]), ...art(13, 5, ["..KK", "KK.."])];
+const browsSad = [...art(5, 5, ["..KK", "KK.."]), ...art(13, 5, ["KK..", "..KK"])];
+const frown = art(9, 14, [".KK.", "K..K"]);
+const HEART = [".A.A.", "AAAAA", ".AAA.", "..A.."];
+const HEART_BIG = ["AA.AA", "AAAAA", "AAAAA", ".AAA.", "..A.."];
+const ROUND = [".SS.", "SKKS", "SKKS", ".SS."];
+const FACES: Partial<Record<Mood, { still: Px[]; a: Px[]; b: Px[] }>> = {
+  // Glaring under brows down to the middle, a frown, red cheeks, and the angry mark by his ear, pulsing: the ear on
+  // the picture's left, the side he shows when he peeks from behind the sidebar.
+  angry: {
+    still: [...art(6, 8, ["KK", "KK"]), ...art(14, 8, ["KK", "KK"]), ...browsAngry, ...frown, ...art(4, 11, ["RR"]), ...art(16, 11, ["RR"])],
+    a: art(4, 1, ["R.R", "...", "R.R"]),
+    b: art(3, 0, ["RR.RR", "R...R", ".....", "R...R", "RR.RR"]),
+  },
+  // Eyes cast down under brows up to the middle, a frown, and a tear running down his cheek.
+  sad: {
+    still: [...art(6, 9, ["KK", "KK"]), ...art(14, 9, ["KK", "KK"]), ...browsSad, ...frown],
+    a: art(6, 11, ["U", "U"]),
+    b: art(6, 13, ["U", "U"]),
+  },
+  // Heavy lids, dark under the eyes, and now and then a yawn.
+  tired: {
+    still: [...art(6, 9, ["KK"]), ...art(14, 9, ["KK"]), ...art(6, 11, ["DD"]), ...art(14, 11, ["DD"])],
+    a: art(10, 14, ["KK"]),
+    b: art(10, 14, ["KK", "KK", "KK"]),
+  },
+  // Eyes shut with joy and blushing as when he is happy, a big open smile, a paw up, and confetti over his head,
+  // twinkling.
+  party: {
+    still: [...eyesHappy, ...blush, ...art(9, 14, ["KKKK", ".PP."]), ...pawHigh],
+    a: art(0, -2, ["A......Y....U........", "...............P....."]),
+    b: art(0, -2, [".....P.......A.....Y.", "U..........Y........."]),
+  },
+  // Heart eyes, beating, and a blush.
+  love: {
+    still: [...art(4, 11, ["PP"]), ...art(16, 11, ["PP"])],
+    a: [...art(4, 6, HEART), ...art(13, 6, HEART)],
+    b: [...art(4, 5, HEART_BIG), ...art(13, 5, HEART_BIG)],
+  },
+  // Round eyes, a small round mouth, and his brows jumping up.
+  surprised: {
+    still: [...art(5, 6, ROUND), ...art(13, 6, ROUND), ...art(10, 14, ["KK", "KK"])],
+    a: [...art(5, 3, ["KKKK"]), ...art(13, 3, ["KKKK"])],
+    b: [...art(5, 4, ["KKKK"]), ...art(13, 4, ["KKKK"])],
+  },
+  // One eye big and one small, a brow up over the small one, a wavy mouth; the two eyes swap.
+  confused: {
+    still: art(9, 14, [".K.K", "K.K."]),
+    a: [...art(6, 7, ["KK", "KK", "KK", "KK"]), ...art(14, 8, ["KK", "KK"]), ...art(13, 5, ["KKK"])],
+    b: [...art(6, 8, ["KK", "KK"]), ...art(14, 7, ["KK", "KK", "KK", "KK"]), ...art(5, 5, ["KKK"])],
+  },
+};
+const face = (mood: Mood) => ({ ...FACES[mood]!, eyes: "none" as const });
+// At work: three grey dots over his head, two pixels clear of his ears, that rise a pixel in turn like a wave (each
+// its own pip-dot), and him looking up at them, a small "hmm" of a mouth to one side.
+const workLook = [...art(6, 6, ["KK", "KK", "KK"]), ...art(14, 6, ["KK", "KK", "KK"]), ...art(11, 14, ["KK"])];
+const workDots = [6, 10, 14].map((x) => art(x, -5, ["GG", "GG"]));
+// Cool: sunglasses and a smirk, and now and then a glint sweeping across the glasses from left to right, a pixel at a
+// time (pip-glint): two thin white streaks slanting like light off glass, seen only where the glasses are. They start
+// clear of the glasses' left end, and pip-glint's 17 pixels in styles.css take them past the right one.
+const GLASSES = art(4, 7, ["KKKKKKKKKKKKKK", ".KKKK....KKKK.", "..KK......KK.."]);
+const GLINT = art(-1, 7, ["..S.S", ".S.S.", "S.S.."]);
+
+// Joins neighbouring pixels of one colour into rectangles, so a sprite stays a few dozen nodes.
+function pixelRects(list: Px[]) {
   const cells = new Map<string, string>();
   for (const [x, y, color] of list) cells.set(`${x},${y}`, color);
   const rows = new Map<number, number[]>();
@@ -104,21 +179,49 @@ function Pixels({ px: list, className, transform }: { px: Px[]; className?: stri
       start = xs[i];
     }
   }
-  return <g className={className} transform={transform}>{rects}</g>;
+  return rects;
+}
+
+function Pixels({ px: list, className, transform }: { px: Px[]; className?: string; transform?: string }) {
+  return <g className={className} transform={transform}>{pixelRects(list)}</g>;
+}
+
+// Something drawn only where another shape is, as a glint is only on the glass: its own clip, named for this Pip so
+// two on a page don't share one.
+function Clipped({ to, children }: { to: Px[]; children: React.ReactNode }) {
+  const id = `pip-clip${React.useId().replace(/:/g, "")}`;
+  return (
+    <>
+      <clipPath id={id}>{pixelRects(to)}</clipPath>
+      <g clipPath={`url(#${id})`}>{children}</g>
+    </>
+  );
 }
 
 // still is drawn all the time, a and b take turns, and mark is drawn on its own (pip-alert), so the page can take
-// it away mid-animation, like the frightened Pip's exclamation mark as he falls.
-const MOODS: Record<Mood, { still: Px[]; a?: Px[]; b?: Px[]; mark?: Px[]; eyes: "blink" | "happy" | "wide" }> = {
+// it away mid-animation, like the frightened Pip's exclamation mark as he falls. dots each move on their own; glint
+// sweeps over the shape it is on (pip-glint).
+const MOODS: Record<Mood, {
+  still: Px[]; a?: Px[]; b?: Px[]; mark?: Px[]; dots?: Px[][]; glint?: { on: Px[]; streak: Px[] }; eyes: "blink" | "happy" | "wide" | "none";
+}> = {
   idle: { still: [], eyes: "blink" },
   wave: { still: [], a: pawHigh, b: pawLow, eyes: "blink" },
-  work: { still: [], a: dots(2), b: dots(3), eyes: "blink" },
-  ask: { still: [], a: alert, b: [], eyes: "blink" },
+  work: { still: workLook, dots: workDots, eyes: "none" },
+  ask: { still: [], a: askA, b: askB, eyes: "blink" },
   happy: { still: blush, a: sparkA, b: sparkB, eyes: "happy" },
   worried: { still: [...mouth, ...sweat], eyes: "blink" },
   scared: { still: [...mouth, ...sweat], mark: alert, eyes: "wide" },
+  angry: face("angry"),
+  sad: face("sad"),
+  tired: face("tired"),
+  party: face("party"),
+  love: face("love"),
+  surprised: face("surprised"),
+  cool: { still: [...GLASSES, ...art(10, 14, ["KKK"]), ...art(13, 13, ["K"])], glint: { on: GLASSES, streak: GLINT }, eyes: "none" },
+  confused: face("confused"),
 };
-const steadyEyes = { happy: eyesHappy, wide: eyesWide } as const;
+// The faces above draw their own eyes ("none").
+const steadyEyes = { happy: eyesHappy, wide: eyesWide, none: [] as Px[] } as const;
 
 // From behind, for hopping away from the camera: the tail out to the left, as it is on the right from the front.
 const BACK = blocks([
@@ -287,7 +390,6 @@ export function PipLying({ className = "", scared = false }: { className?: strin
 // bring in); from behind, the pack coming down onto his back (on); and from the side running on his two legs with it
 // on, a little wider than he is from the front, the two steps taking turns (run, pip-a and pip-b).
 export function PipSetsOff({ scene }: { scene: "pull" | "on" | "run" }) {
-  const shadow = <rect className="pip-shadow" x={4} y={18.5} width={14} height={0.5} fill="#000" opacity={0.2} />;
   if (scene === "run") return (
     <svg className="pip pip-run" viewBox="0 -2 24 21" shapeRendering="crispEdges" aria-hidden="true">
       <Pixels px={[...SIDE, ...SIDE_PACK]} />
@@ -297,14 +399,12 @@ export function PipSetsOff({ scene }: { scene: "pull" | "on" | "run" }) {
   );
   if (scene === "on") return (
     <svg className="pip pip-on" viewBox="0 -2 22 21" shapeRendering="crispEdges" aria-hidden="true">
-      {shadow}
       <Pixels px={BACK} />
       <Pixels px={BACKPACK} className="pip-pack" />
     </svg>
   );
   return (
     <svg className="pip pip-pull" viewBox="0 -2 22 21" shapeRendering="crispEdges" aria-hidden="true">
-      {shadow}
       <Pixels px={[...FRONT, ...blush, ...eyesHappy]} />
       <Pixels px={HELD_PACK} className="pip-pack" />
       <Pixels px={HOLDING_PAWS} className="pip-paws" />
@@ -322,27 +422,38 @@ export function foxPixels(view: "front" | "frontLeap" | "back" | "leap", mood: M
   if (view === "leap") return BACK_LEAP;
   const m = MOODS[mood];
   const eyes = paws === 3 ? [] : m.eyes !== "blink" ? steadyEyes[m.eyes] : blink ? eyesShut : eyesOpen;
-  return [...(view === "frontLeap" ? FRONT_LEAP : FRONT), ...m.still, ...(m.mark ?? []), ...eyes, ...((frame === "a" ? m.a : m.b) ?? []), ...(paws ? frontPaws(paws) : [])];
+  return [...(view === "frontLeap" ? FRONT_LEAP : FRONT), ...m.still, ...(m.mark ?? []), ...(m.dots ?? []).flat(), ...eyes, ...((frame === "a" ? m.a : m.b) ?? []), ...(paws ? frontPaws(paws) : [])];
 }
 
-// The logo: Pip's head in one colour, the text colour around it. Big pointed ears, happy ^ ^ eyes cut out,
-// cheek fluff out to the sides, and a short snout. The tab icon, public/icon.svg, is the same head in orange, and
-// so is the installer's (installer/art.ts).
-export const MARK = [
-  "X.............X",
-  "XX...........XX",
-  "XXX.........XXX",
-  "XXXX.......XXXX",
-  ".XXXXXXXXXXXXX.",
-  ".XXXXXXXXXXXXX.",
-  ".XXX.XXXXX.XXX.",
-  "XXX.X.XXX.X.XXX",
-  "XXXXXXXXXXXXXXX",
-  ".XXXXXXXXXXXXX.",
-  "...XXXXXXXXX...",
-  ".....XXXXX.....",
-  "......XXX......",
-];
+// Pip's icon: the fox standing as the page shows him, his eyes open, in rows of his blocks, a letter of ICON_COLORS
+// for each and a dot for none. The tab's icon, the program's and the installer's are drawn from it (web/icon.ts), and
+// the login's computer has it on its desktop.
+export const ICON = (() => {
+  const px = foxPixels("front");
+  const left = Math.min(...px.map(([x]) => x));
+  const top = Math.min(...px.map(([, y]) => y));
+  const letter = new Map(Object.entries(C).map(([key, color]) => [color, key]));
+  const rows = Array.from({ length: (Math.max(...px.map(([, y]) => y)) - top + 1) / 2 }, () => Array<string>((Math.max(...px.map(([x]) => x)) - left + 1) / 2).fill("."));
+  for (const [x, y, color] of px) rows[(y - top) >> 1][(x - left) >> 1] = letter.get(color)!;
+  return rows.map((row) => row.join(""));
+})();
+export const ICON_COLORS = Object.fromEntries(Object.entries(C).filter(([key]) => ICON.some((row) => row.includes(key))));
+
+// The logo: Pip's face alone, from his icon's blocks, from the ear tips down to the nose and across his head (not the
+// tail), in rows of X (filled) and dot (empty), a pixel each, half a block: in one colour, the text's, with the eyes
+// and the nose cut out, the face's two bottom corners cut by a pixel and a row under it narrower again, for a jaw.
+const FACE_ROWS = 7;
+const FACE_COLUMNS = 9;
+export const MARK = (() => {
+  const blocks = ICON.slice(0, FACE_ROWS).map((row) => [...row.slice(0, FACE_COLUMNS)].flatMap((key) => [key, key]).join(""));
+  const pixels = blocks.flatMap((row) => [row, row]);
+  const width = pixels[0].length;
+  const face = pixels.map((row, y) => [...row].map((key, x) => {
+    const corner = y === pixels.length - 1 && (x === 0 || x === width - 1);
+    return key === "." || key === "K" || corner ? "." : "X";
+  }).join(""));
+  return [...face, `..${"X".repeat(width - 4)}..`];
+})();
 // One SVG path for a one-colour drawing in rows of X (filled) and dot (empty), one unit per cell.
 export const pixelPath = (rows: string[]) =>
   rows.map((row, y) => [...row.matchAll(/X+/g)].map((m) => `M${m.index} ${y}h${m[0].length}v1h-${m[0].length}z`).join("")).join("");
@@ -350,7 +461,7 @@ export const MARK_PATH = pixelPath(MARK);
 
 export function PipMark({ className = "" }: { className?: string }) {
   return (
-    <svg className={`pip-mark ${className}`} viewBox="0 0 15 13" shapeRendering="crispEdges" aria-hidden="true">
+    <svg className={`pip-mark ${className}`} viewBox={`0 0 ${MARK[0].length} ${MARK.length}`} shapeRendering="crispEdges" aria-hidden="true">
       <path d={MARK_PATH} fill="currentColor" />
     </svg>
   );
@@ -362,7 +473,6 @@ export function Pip({ mood = "idle", className = "", label, leaps = false }: { m
   const m = MOODS[mood];
   return (
     <svg className={`pip pip-${mood} ${className}`} viewBox="0 -2 22 21" shapeRendering="crispEdges" role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true}>
-      <rect className="pip-shadow" x={4} y={18.5} width={14} height={0.5} fill="#000" opacity={0.2} />
       <g className="pip-bob">
         <Pixels px={FRONT} className={leaps ? "pip-stand" : undefined} />
         {leaps && <Pixels px={FRONT_LEAP} className="pip-leap" />}
@@ -374,6 +484,8 @@ export function Pip({ mood = "idle", className = "", label, leaps = false }: { m
         </>}
         {m.a && <Pixels px={m.a} className="pip-a" />}
         {m.b && <Pixels px={m.b} className="pip-b" />}
+        {m.dots?.map((px, i) => <Pixels key={i} px={px} className={`pip-dot pip-dot-${i}`} />)}
+        {m.glint && <Clipped to={m.glint.on}><Pixels px={m.glint.streak} className="pip-glint" /></Clipped>}
       </g>
     </svg>
   );

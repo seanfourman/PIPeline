@@ -1,6 +1,6 @@
 // Every word the interface shows, in Hebrew and English. Both must have the same keys; ui.test.ts checks.
 const he = {
-  brand: { name: "פיפ", tagline: "המלווה שלך לעבודה הבאה" },
+  brand: { name: "פיפ", tagline: "המלווה שלך לעבודה הבאה", beta: "BETA" },
   login: {
     title: "כיף שחזרת!", sub: "פיפ רץ את כל הדרך ביער כדי לפגוש אותך.", user: "שם משתמש", password: "סיסמה", submit: "כניסה",
     siteSub: "נכנסים עם שם המשתמש והסיסמה של פיפ במחשב שלך. המחשב צריך להיות דלוק, ופיפ פתוח בו.",
@@ -12,6 +12,11 @@ const he = {
     wrong: "שם המשתמש או הסיסמה לא נכונים.", logout: "יציאה",
     createTitle: "נעים להכיר!", createSub: "בוחרים שם משתמש וסיסמה לכניסה במחשב הזה.", repeat: "שוב את הסיסמה", create: "יצירת חשבון",
     mismatch: "הסיסמאות לא זהות.", short: "הסיסמה צריכה לפחות {n} תווים.",
+    say: {
+      least: "לפחות {n} תווים.\nואני לא מציץ!", more: "עוד {n} תווים!", one: "עוד תו אחד!", name: "בלי שם המשתמש בתוך הסיסמה.",
+      common: "סיסמה נפוצה מדי.\nבוחרים אחרת?", good: "סיסמה מעולה!\nולא הצצתי.", differs: "זו לא אותה סיסמה.", ready: "מושלם!\nאפשר ליצור חשבון.",
+    },
+    name: { taken: "השם הזה כבר תפוס.", long: "עד {n} תווים בשם.", start: "שם מתחיל באות או בספרה.", char: "בלי הסימן {char} בשם." },
   },
   common: {
     close: "סגירה", add: "הוספה", remove: "הסרה", loading: "טוען…", edit: "עריכה", editDirect: "עריכה ישירה",
@@ -28,7 +33,8 @@ const he = {
     name: "פיפ",
     waiting: "צריך ממך תשובה כדי להמשיך.", toChat: "לשיחה",
     peek: "מחכה לתשובה שלך…", peekIn: "בשיחה:", peekWork: "מחפש משרות…",
-    workDone: "סיימתי את החיפוש החכם. מה שמצאתי מחכה בשמורות, תחת \"פיפ מצא\".", workStopped: "החיפוש החכם נעצר. בשיחות אפשר לראות מה קרה.",
+    updating: "מתעדכן לגרסה חדשה…", updated: "התעדכנתי!",
+    workDone: "סיימתי את החיפוש החכם.\nמה שמצאתי מחכה בשמורות, תחת \"פיפ מצא\".", workStopped: "החיפוש החכם נעצר.\nבשיחות אפשר לראות מה קרה.",
     running: "אני על זה. אפשר להמשיך בינתיים, ואגיד כשאסיים.", watch: "לראות מה קורה",
     views: {
       jobs: "כאן מוצאים משרות. החיפוש המהיר חינם, בלי מכסת AI.",
@@ -44,12 +50,56 @@ const he = {
       letter: "משנים טקסט ובונים. את המכתב כדאי לקרוא שוב, כי כאן אני לא בודק כללים.",
     },
     hello: ["היי! אני כאן.", "מתקדמים יפה.", "עוד צעד ועוד צעד, וזה קורה.", "משהו לא ברור? פשוט שואלים אותי בשיחה."],
-    applied: "נשלח! עכשיו מחכים, ואני אזכיר אם יעבור הרבה זמן.",
-    interview: "איזה יופי! {company} בפנים.",
-    rejected: "זה חלק מהדרך. ממשיכים ביחד.",
-    built: "יצא טוב. הקובץ מוכן.",
-    buildFailed: "משהו עצר את הבנייה. הסיבה כתובה למטה.",
-    saveFailed: "זה לא נשמר. הסיבה כתובה ליד הכפתור.",
+    // An application's status changed (views/apps.tsx): one of these said, each group with its face.
+    status: {
+      applied: [
+        "נשלח! עכשיו נשאר רק לחכות.\nאם יעבור הרבה זמן, אני אזכיר.",
+        "עוד הגשה יצאה לדרך!\nמחזיקים אצבעות.",
+        "ההגשה אצל {company}!\nעכשיו הכדור אצלם.",
+        "יצא! עוד צעד קדימה.\nאני עוקב אחרי זה.",
+      ],
+      interview: [
+        "ראיון אצל {company}!\nזה גדול!",
+        "{company} רוצים להכיר!\nמתחילים להתכונן?",
+        "וואו, ראיון!\nידעתי שזה יגיע.",
+        "קיבלנו ראיון!\nאני כבר מתרגש.",
+      ],
+      offer: [
+        "{company} שלחו הצעה!\nמגיע לך.",
+        "יש הצעת עבודה!\nאני לא מפסיק לחייך.",
+        "{company} רוצים אותך!\nזה רגע גדול.",
+      ],
+      hired: [
+        "התקבלת!\nחוגגים!",
+        "יש! עבודה חדשה אצל {company}!\nאיזה כיף.",
+        "עבודה חדשה!\nאני כל כך שמח בשבילך.",
+      ],
+      rejected: [
+        "לא הפעם.\nממשיכים ביחד.",
+        "זה חלק מהדרך.\nהבאה תהיה טובה יותר.",
+        "אוף.\nאבל אני פה, וממשיכים.",
+      ],
+      theirLoss: [
+        "הפסד של {company}!\nממשיכים הלאה.",
+        "הם לא יודעים מה הפסידו.\nבאמת.",
+      ],
+      noResponse: [
+        "עדיין שקט אצל {company}…\nממשיכים הלאה.",
+        "הם לא ענו.\nלא נורא, יש עוד הרבה משרות.",
+        "שקט מדי שם.\nאולי שווה לשלוח תזכורת?",
+      ],
+      declined: [
+        "ויתרת על ההצעה.\nיודעים מה רוצים!",
+        "החלטה טובה.\nהדבר הנכון עוד יגיע.",
+      ],
+      withdrawn: [
+        "משכת את המועמדות.\nבסדר גמור, ממשיכים.",
+        "משחררים את זה.\nיש עוד הרבה משרות.",
+      ],
+    },
+    built: "יצא טוב.\nהקובץ מוכן.",
+    buildFailed: "משהו עצר את הבנייה.\nהסיבה כתובה למטה.",
+    saveFailed: "זה לא נשמר.\nהסיבה כתובה ליד הכפתור.",
     noted: "רשמתי. מעכשיו אעבוד לפי זה.",
   },
   home: {
@@ -157,8 +207,9 @@ const he = {
     text: "כדי להמשיך, פותחים את התוכנה של פיפ.",
     then: "הדף ימשיך מכאן לבד ברגע שפיפ חוזר.",
     wait: "מחכה לפיפ",
+    updating: { title: "פיפ מתעדכן", text: "גרסה חדשה של פיפ נכנסת עכשיו למחשב, וזה לוקח רק כמה רגעים." },
     none: "אין עדיין את פיפ במחשב?", get: "הורדה ל-Windows",
-    macCopy: "העתקת פקודת ההתקנה ל-Mac", macCopied: "הועתק. מדביקים ב-Terminal ולוחצים Enter.",
+    macCopy: "העתקת פקודת ההתקנה ל-Mac", macCopied: "הועתק. מדביקים ב-Terminal ולוחצים Enter",
   },
   next: {
     waitingTitle: "צריך ממך תשובה", waitingText: "עצרתי באמצע, כי ההחלטה הזו שלך. מיד אחרי התשובה אמשיך.", waitingLabel: "לשיחה",
@@ -426,12 +477,13 @@ const he = {
     mail_account_needed: "צריך כתובת Gmail וסיסמת אפליקציה.", mail_account_missing: "צריך קודם לשמור חשבון Gmail.",
     no_market: "צריך לבחור לפחות מדינה אחת.", bad_query: "צריך לכתוב תפקיד או מילת מפתח.", generic: "שגיאה {status}",
     login_required: "צריך להתחבר שוב.", bad_login: "שם המשתמש או הסיסמה לא נכונים.",
-    account_exists: "כבר יש חשבון במחשב הזה. אפשר להיכנס איתו.", account_name: "צריך שם משתמש, עד 40 תווים.", account_password: "הסיסמה צריכה לפחות 6 תווים.",
+    account_exists: "כבר יש חשבון במחשב הזה. אפשר להיכנס איתו.", account_name: "צריך שם משתמש עד 40 תווים, שמתחיל באות או בספרה, בלי סימנים מיוחדים.",
+    account_password: "הסיסמה צריכה לפחות 8 תווים.", account_password_common: "זו סיסמה נפוצה מדי. כדאי לבחור אחרת.", account_password_name: "הסיסמה לא יכולה להכיל את שם המשתמש.",
     name_invalid: "צריך שם, עד 60 תווים.", name_english: "השם צריך להיות באותיות באנגלית בלבד.", document_kind: "סוג מסמך לא מוכר.", document_type: "אפשר להעלות PDF, Word או קובץ טקסט.",
     document_empty: "הקובץ ריק.", document_size: "הקובץ גדול מדי, אפשר עד 20 MB.",
     transcript_type: "גיליון הציונים צריך להיות קובץ PDF.", transcript_empty: "הקובץ ריק.", transcript_size: "הקובץ גדול מדי, אפשר עד 20 MB.",
     remote_address: "צריך כתובת אתר מלאה, שמתחילה ב-https.", remote_unreachable: "לא הצלחתי להגיע לאתר. כדאי לבדוק את הכתובת ואת החיבור לאינטרנט.",
-    remote_name_taken: "שם המשתמש שלך כבר תפוס באתר.", remote_name: "כדי לשמש באתר, שם המשתמש צריך להתחיל באות או בספרה, בלי סימנים מיוחדים.",
+    remote_name_taken: "שם המשתמש הזה כבר תפוס באתר.", remote_name: "כדי לשמש באתר, שם המשתמש צריך להתחיל באות או בספרה, בלי סימנים מיוחדים.",
     remote_no_account: "צריך קודם חשבון במחשב הזה.", remote_unlinked: "הגישה מהטלפון בוטלה באתר.", remote_busy: "יותר מדי ניסיונות. אפשר לנסות שוב בעוד רבע שעה.",
     pc_offline: "המחשב לא מחובר עכשיו.", pc_no_answer: "המחשב לא ענה. כדאי לנסות שוב.",
     login_no_pc: "המחשב לא ענה. כדאי לבדוק שהוא דלוק ושפיפ פתוח בו, ולנסות שוב.", too_large: "זה גדול מדי לשליחה דרך האתר. אפשר עד 40 MB.",
@@ -441,7 +493,7 @@ const he = {
 export type Dict = typeof he;
 
 const en: Dict = {
-  brand: { name: "Pip", tagline: "Your companion to the next job" },
+  brand: { name: "Pip", tagline: "Your companion to the next job", beta: "BETA" },
   login: {
     title: "Welcome back!", sub: "Pip ran all the way through the forest to meet you.", user: "Username", password: "Password", submit: "Log in",
     siteSub: "Log in with the username and password of Pip on your computer. The computer has to be on, with Pip open on it.",
@@ -453,6 +505,11 @@ const en: Dict = {
     wrong: "That username or password isn't right.", logout: "Log out",
     createTitle: "Nice to meet you!", createSub: "Pick a username and a password for logging in on this computer.", repeat: "Password again", create: "Create account",
     mismatch: "The passwords don't match.", short: "The password needs at least {n} characters.",
+    say: {
+      least: "At least {n} characters.\nAnd I'm not peeking!", more: "{n} more characters!", one: "1 more character!", name: "No username in the password.",
+      common: "That one's too common.\nPick another?", good: "Great password!\nAnd I didn't peek.", differs: "That's not the same password.", ready: "Perfect!\nReady to create the account.",
+    },
+    name: { taken: "That name is already taken.", long: "Up to {n} characters in the name.", start: "A name starts with a letter or a digit.", char: "No {char} in the name." },
   },
   common: {
     close: "Close", add: "Add", remove: "Remove", loading: "Loading…", edit: "Edit", editDirect: "Edit directly",
@@ -469,7 +526,8 @@ const en: Dict = {
     name: "Pip",
     waiting: "I need an answer from you to keep going.", toChat: "Open the conversation",
     peek: "Waiting for your answer…", peekIn: "In:", peekWork: "Looking for jobs…",
-    workDone: "The smart search is done. What I found is in saved jobs, under \"Pip found\".", workStopped: "The smart search stopped. The conversations show what happened.",
+    updating: "Updating to a new version…", updated: "All up to date!",
+    workDone: "The smart search is done.\nWhat I found is in saved jobs, under \"Pip found\".", workStopped: "The smart search stopped.\nThe conversations show what happened.",
     running: "I'm on it. Carry on, and I'll tell you when I'm done.", watch: "See what's happening",
     views: {
       jobs: "This is where we find jobs. Quick search is free, with no AI usage.",
@@ -485,12 +543,56 @@ const en: Dict = {
       letter: "Change the text and build. Read the letter again, because I don't check rules here.",
     },
     hello: ["Hi! I'm here.", "We're making good progress.", "One step at a time, and it happens.", "Something unclear? Just ask me in a conversation."],
-    applied: "Sent! Now we wait, and I'll remind you if it takes long.",
-    interview: "Great news! {company} wants to talk.",
-    rejected: "That's part of the road. We keep going together.",
-    built: "That came out well. The file is ready.",
-    buildFailed: "Something stopped the build. The reason is below.",
-    saveFailed: "That wasn't saved. The reason is next to the button.",
+    // An application's status changed (views/apps.tsx): one of these said, each group with its face.
+    status: {
+      applied: [
+        "Sent! Now all that's left is to wait.\nIf it takes a long time, I'll remind you.",
+        "Another application is on its way!\nFingers crossed.",
+        "It's with {company} now!\nThe ball's in their court.",
+        "Sent! One more step forward.\nI'm keeping an eye on it.",
+      ],
+      interview: [
+        "An interview at {company}!\nThat's big!",
+        "{company} want to meet you!\nShall we start preparing?",
+        "Wow, an interview!\nI knew it would come.",
+        "We got an interview!\nI'm excited already.",
+      ],
+      offer: [
+        "{company} made an offer!\nYou deserve it.",
+        "A job offer!\nI can't stop smiling.",
+        "{company} want you!\nThis is a big moment.",
+      ],
+      hired: [
+        "You're hired!\nLet's celebrate!",
+        "Yes! A new job at {company}!\nSo happy.",
+        "A new job!\nI'm so happy for you.",
+      ],
+      rejected: [
+        "Not this time.\nWe keep going together.",
+        "It's part of the road.\nThe next one will be better.",
+        "Ugh.\nBut I'm here, and we keep going.",
+      ],
+      theirLoss: [
+        "{company}'s loss!\nOnward.",
+        "They don't know what they missed.\nReally.",
+      ],
+      noResponse: [
+        "Still quiet at {company}…\nLet's keep going.",
+        "They didn't answer.\nNo worries, there are plenty more jobs.",
+        "Too quiet over there.\nMaybe a reminder is worth sending?",
+      ],
+      declined: [
+        "You turned down the offer.\nKnowing what you want!",
+        "Good call.\nThe right one is still coming.",
+      ],
+      withdrawn: [
+        "You withdrew the application.\nTotally fine, onward.",
+        "Letting this one go.\nThere are plenty more jobs.",
+      ],
+    },
+    built: "That came out well.\nThe file is ready.",
+    buildFailed: "Something stopped the build.\nThe reason is below.",
+    saveFailed: "That wasn't saved.\nThe reason is next to the button.",
     noted: "Noted. I'll work this way from now on.",
   },
   home: {
@@ -594,8 +696,9 @@ const en: Dict = {
     text: "To carry on, open the Pip program.",
     then: "This page picks up from here by itself as soon as Pip is back.",
     wait: "Waiting for Pip",
+    updating: { title: "Pip is updating", text: "A new version of Pip is going in on the computer, which takes only a few moments." },
     none: "Don't have Pip on the computer yet?", get: "Download for Windows",
-    macCopy: "Copy the command that installs it on a Mac", macCopied: "Copied. Paste it into Terminal and press Enter.",
+    macCopy: "Copy the command that installs it on a Mac", macCopied: "Copied. Paste it into Terminal and press Enter",
   },
   next: {
     waitingTitle: "I need your answer", waitingText: "I stopped because only you can decide this. As soon as you answer, I'll carry on.", waitingLabel: "Open the conversation",
@@ -862,12 +965,13 @@ const en: Dict = {
     mail_account_needed: "A Gmail address and an app password are needed.", mail_account_missing: "Save a Gmail account first.",
     no_market: "Choose at least one country.", bad_query: "Type a role or a keyword.", generic: "Error {status}",
     login_required: "Please log in again.", bad_login: "That username or password isn't right.",
-    account_exists: "This computer already has an account. You can log in with it.", account_name: "A username is needed, up to 40 characters.", account_password: "The password needs at least 6 characters.",
+    account_exists: "This computer already has an account. You can log in with it.", account_name: "A username is needed: up to 40 characters, starting with a letter or a digit, with no special characters.",
+    account_password: "The password needs at least 8 characters.", account_password_common: "That password is too common. Pick another.", account_password_name: "The password can't contain the username.",
     name_invalid: "A name is needed, up to 60 characters.", name_english: "The name has to be in English letters only.", document_kind: "Unknown kind of document.", document_type: "You can upload a PDF, a Word file or a text file.",
     document_empty: "The file is empty.", document_size: "The file is too big; up to 20 MB.",
     transcript_type: "The transcript has to be a PDF.", transcript_empty: "The file is empty.", transcript_size: "The file is too big; up to 20 MB.",
     remote_address: "A full site address is needed, starting with https.", remote_unreachable: "I couldn't reach the site. Check the address and the internet connection.",
-    remote_name_taken: "Your username is already taken on the site.", remote_name: "To work on the site, the username has to start with a letter or a digit, with no special characters.",
+    remote_name_taken: "That username is already taken on the site.", remote_name: "To work on the site, the username has to start with a letter or a digit, with no special characters.",
     remote_no_account: "This computer needs an account first.", remote_unlinked: "Phone access was turned off on the site.", remote_busy: "Too many tries. Try again in a quarter of an hour.",
     pc_offline: "The computer isn't connected right now.", pc_no_answer: "The computer didn't answer. Try again.",
     login_no_pc: "The computer didn't answer. Check that it's on with Pip open on it, and try again.", too_large: "That's too big to send through the site; up to 40 MB.",

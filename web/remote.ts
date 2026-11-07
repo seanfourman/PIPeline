@@ -41,6 +41,8 @@ export function siteAddress(input: unknown) {
 
 // How long opening Pip waits for its site before it opens here instead.
 const OPEN_WAIT_MS = 4000;
+// How long the board making the account waits to hear whether a name is free.
+const FREE_WAIT_MS = 5000;
 
 export function createRemote({ handle, port, localToken, file = FILE, defaultSite = "", pairWith = "", accountName = () => "" }: {
   handle: (req: Request) => Promise<Response>; port: number; localToken: string; file?: string; defaultSite?: string;
@@ -86,10 +88,11 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
     save({ site: origin, name: "", key: data.key });
     connect();
   })().finally(() => { pairing = null; }));
-  // Takes the account's name on the site, for a paired computer that hasn't one there yet.
+  // Takes the account's name on the site, for a paired computer that hasn't it there yet: none, or another one (an
+  // account made again, after its password was forgotten).
   async function claim(name: string) {
     const link = read();
-    if (!link || link.name || !name) return;
+    if (!link || !name || link.name === name) return;
     const res = await fetch(`${link.site}/api/site/name`, {
       method: "POST", headers: { Authorization: `Bearer ${link.key}`, "Content-Type": "application/json" }, body: JSON.stringify({ name }),
     }).catch(() => null);
@@ -182,8 +185,10 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
       error = "";
       retry = 1000;
       ping = setInterval(() => send({ t: "ping" }), 25_000);
-      // An account made while the site was out of reach takes its name there now.
-      if (!link.name) claim(accountName()).catch(() => {});
+      // An account made while the site was out of reach takes its name there now; a name taken by then is said in
+      // the settings, since signing in on the site doesn't work without it.
+      const name = accountName();
+      if (name && link.name !== name) claim(name).catch((err) => { error = err instanceof RemoteError ? err.message : "remote_unreachable"; });
     };
     socket.onmessage = (e) => receive(e.data);
     socket.onclose = (e) => {
@@ -207,6 +212,18 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
     start,
     stop: close,
     claim,
+    // Whether a name is free on the site for this computer's account (its own name is), or null when that can't be
+    // told: not linked, or the site out of reach.
+    async free(name: string): Promise<boolean | null> {
+      const link = read();
+      if (!link) return null;
+      const res = await fetch(`${link.site}/api/site/free`, {
+        method: "POST", headers: { Authorization: `Bearer ${link.key}`, "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+        signal: AbortSignal.timeout(FREE_WAIT_MS),
+      }).catch(() => null);
+      const data = await res?.json().catch(() => ({})) as { free?: unknown } | undefined;
+      return res?.ok && typeof data?.free === "boolean" ? data.free : null;
+    },
     // Where to open Pip in the browser: its site, by a one-time code that ties the browser to this computer, once it is
     // connected there, and whether a page of it that Pip opened here is open there still (open); or null, when it
     // isn't linked or the site doesn't answer in time, and Pip opens here.

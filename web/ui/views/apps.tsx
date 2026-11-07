@@ -1,10 +1,41 @@
 import React, { useState } from "react";
 import { useApp } from "../app";
 import { api, Btn, Card, Page } from "../kit";
+import type { Mood } from "../pip";
 import { TRANSCRIPT_FILE } from "./settings";
 
 const STATUSES = ["drafted", "applied", "interview", "offer", "hired", "rejected", "no_response", "offer_declined", "withdrawn"];
 const normal = (status: unknown) => String(status ?? "").toLowerCase().replace(" ", "_");
+
+// What Pip says when an application's status changes (pip.status in i18n.ts), each group of lines with his face for
+// it: sent, cool; an interview, surprised; an offer, in love; hired, celebrating; rejected, sad, or angry at their
+// loss; no answer, tired; an offer turned down, cool; withdrawn, waving. A draft says nothing.
+const SAYS: Record<string, [string, Mood][]> = {
+  applied: [["applied", "cool"]],
+  interview: [["interview", "surprised"]],
+  offer: [["offer", "love"]],
+  hired: [["hired", "party"]],
+  rejected: [["rejected", "sad"], ["theirLoss", "angry"]],
+  no_response: [["noResponse", "tired"]],
+  offer_declined: [["declined", "cool"]],
+  withdrawn: [["withdrawn", "wave"]],
+};
+// The line he said last, which he doesn't say twice running.
+let lastSaid = "";
+// A company's name set apart in his line (Unicode's first-strong isolate), so a Latin name in a Hebrew line keeps
+// its own "." or "!" by it, and the line's own go where the line's direction puts them.
+const apart = (name: string) => String.fromCodePoint(0x2068) + name + String.fromCodePoint(0x2069);
+// A line for the status, picked at random from all its groups, with its face; none for a status he has nothing for.
+function statusLine(status: string, company: string, t: (key: string, params?: Record<string, string | number>) => any): [string, Mood] | null {
+  const lines = (SAYS[status] ?? []).flatMap(([key, mood]) =>
+    (t(`pip.status.${key}`) as string[]).map((_, i): [string, Mood] => [t(`pip.status.${key}.${i}`, { company: apart(company) }), mood]));
+  const fresh = lines.filter(([line]) => line !== lastSaid);
+  const pool = fresh.length ? fresh : lines;
+  if (!pool.length) return null;
+  const picked = pool[Math.floor(Math.random() * pool.length)];
+  lastSaid = picked[0];
+  return picked;
+}
 
 function Ats({ ats }: { ats: { score: number | null; missing: string[]; problems: string[] } | null }) {
   const { t } = useApp();
@@ -92,9 +123,8 @@ export function Apps() {
     try {
       await api("applications/status", { date: a.date, company: a.company, role: a.role, status });
       await refresh();
-      if (["interview", "offer", "hired"].includes(status)) say(t("pip.interview", { company: a.company }), "happy");
-      else if (status === "applied") say(t("pip.applied"), "happy");
-      else if (status === "rejected" || status === "no_response") say(t("pip.rejected"), "worried");
+      const said = statusLine(status, String(a.company ?? ""), t);
+      if (said) say(said[0], said[1]);
     } catch (e) {
       setError(err(e));
     }

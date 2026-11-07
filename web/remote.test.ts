@@ -80,7 +80,7 @@ describe("an installed Pip, used on its site", () => {
     expect(tied.headers.get("location")).toBe("/");
     const browser = cookies(tied);
     expect(browser).toMatch(/^pip_pc=[0-9a-f]{32}; pip_here=1$/);
-    expect(await (await phone("/", { headers: { Cookie: browser } })).text()).toBe("<html>app</html>");
+    expect(await (await phone("/api/echo", { headers: { Cookie: browser } })).json()).toMatchObject({ length: 0 });
     expect(cookies(await fetch(open!.url, { redirect: "manual" }))).toBe("");
     // That browser's page asking, as it does every few seconds: Pip opening again knows it is open.
     await phone("/api/me", { headers: { Cookie: browser } });
@@ -148,13 +148,22 @@ describe("phone access", () => {
     expect(signedIn).toContain(`pip_pc=${dana()}`);
   });
 
-  test("then the phone gets the computer's interface, as a request made there", async () => {
-    const res = await phone("/", { headers: { Cookie: `${signedIn}; job_token=guessed; other=1` } });
-    expect(await res.text()).toBe("<html>app</html>");
+  test("then the phone gets the account from the computer, as a request made there, and the interface from the site", async () => {
+    const res = await phone("/api/echo", { headers: { Cookie: `${signedIn}; job_token=guessed; other=1` } });
+    expect(await res.json()).toMatchObject({ length: 0 });
     const req = seen[seen.length - 1];
     expect(req.headers.get("host")).toBe("127.0.0.1:4174");
     // The computer's own token, never one the phone sent, and only its session cookie.
     expect(req.headers.get("cookie")).toBe("job_token=tok; job_session=abc123");
+    // The page and its styles: the site's own copy, the newest, whatever the computer has; nothing of it asked there.
+    const asked = seen.length;
+    const page = await phone("/", { headers: { Cookie: signedIn } });
+    expect(await page.text()).toContain('id="root"');
+    expect((await phone("/styles.css", { headers: { Cookie: signedIn } })).headers.get("content-type")).toContain("text/css");
+    expect(seen.length).toBe(asked);
+    // A file the site hasn't is still the computer's to answer.
+    expect(await (await phone("/only-on-the-computer", { headers: { Cookie: signedIn } })).text()).toBe("not found");
+    expect(seen.length).toBe(asked + 1);
   });
 
   test("a stream arrives as it is written, and a phone that leaves stops it", async () => {
@@ -180,6 +189,24 @@ describe("phone access", () => {
     const other = createRemote({ handle, port: 4174, localToken: "x", file: path.join(dir, "other.json") });
     await expect(other.link(origin, "DANA")).rejects.toThrow("remote_name_taken");
     await expect(other.link(origin, "<script>")).rejects.toThrow("remote_name");
+  });
+
+  test("a computer asks whether a name is free, its own counting as free, before taking it", async () => {
+    const eli = createRemote({ handle, port: 4174, localToken: "x", file: path.join(dir, "eli.json") });
+    await eli.link(origin, "eli");
+    expect(await remote.free("ELI")).toBe(false);
+    expect(await eli.free("eli")).toBe(true);
+    expect(await remote.free("Dana")).toBe(true);
+    expect(await remote.free("nobody-yet")).toBe(true);
+    expect(await remote.free("<script>")).toBeNull();
+    expect(await createRemote({ handle, port: 4174, localToken: "x", file: path.join(dir, "none.json") }).free("eli")).toBeNull();
+    // An account made again, under another name, takes that one, and gives the old one back.
+    await eli.claim("eli2");
+    expect(site.store.named("eli2")?.id).toBe(site.store.named("ELI2")!.id);
+    expect(site.store.named("eli")).toBeNull();
+    expect(eli.status().name).toBe("eli2");
+    await expect(eli.claim("dana")).rejects.toThrow("remote_name_taken");
+    await eli.unlink();
   });
 
   test("with the computer off, the phone gets the app's page, which says so, and a sign-in is told so", async () => {

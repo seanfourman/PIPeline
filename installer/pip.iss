@@ -5,14 +5,22 @@
 ; and checks against the checksum it has for it before using it; no script runs anything, it runs the programs
 ; themselves. Running it again over an install mends whatever failed and leaves the user's folder (user\) as it is;
 ; so does removing it, which takes away only what the installer and the program put in beside it. The wizard speaks
-; Hebrew or English with Windows, its Hebrew addressing no one as a man or a woman.
-; Build: bun installer/build.ts (it needs Inno Setup 6).
+; Hebrew or English with Windows, its Hebrew addressing no one as a man or a woman. Pip runs it itself, unseen, to
+; update (launcher.cs, with /UPDATE=1): then the steps only a first install needs are left out, and Pip starts again in
+; the background, as it was.
+; Build: bun installer/build.ts (it needs Inno Setup 6). AppName and AppId can be given to ISCC (/D) to build a copy
+; that installs beside Pip under another name, to try an update without touching Pip.
 
-#define AppName "Pip"
+#ifndef AppName
+  #define AppName "Pip"
+#endif
+#ifndef AppId
+  #define AppId "{{6C3B2E8A-4F1D-4B9E-A7C2-9D5E1F0A3B64}"
+#endif
 #define AppVersion "1.0.0"
 
 [Setup]
-AppId={{6C3B2E8A-4F1D-4B9E-A7C2-9D5E1F0A3B64}
+AppId={#AppId}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName}
@@ -43,6 +51,9 @@ SolidCompression=yes
 ShowLanguageDialog=auto
 LanguageDetectionMethod=uilanguage
 CloseApplications=no
+; Tells Explorer at the end to draw its icons afresh, so an install over an older one shows Pip's icon as it is now,
+; not the one it kept from before.
+ChangesAssociations=yes
 
 [Languages]
 Name: "he"; MessagesFile: "compiler:Languages\Hebrew.isl"
@@ -130,6 +141,9 @@ Name: "{userstartup}\{#AppName}"; Filename: "{app}\Pip.exe"; Parameters: "--back
 
 [Run]
 Filename: "{app}\Pip.exe"; Description: "{cm:Launch}"; Flags: postinstall nowait skipifsilent
+; An update: Pip back in the background, with no page opened; one open already carries on by itself. postinstall, which
+; an unseen setup runs too, so that it starts after the steps ([Code]), on the packages as they are now.
+Filename: "{app}\Pip.exe"; Parameters: "--background"; Flags: postinstall nowait; Check: IsUpdate
 
 [UninstallRun]
 Filename: "{app}\Pip.exe"; Parameters: "--stop"; Flags: waituntilterminated; RunOnceId: "StopPip"
@@ -156,6 +170,12 @@ function SetEnvironmentVariable(lpName, lpValue: String): BOOL;
   external 'SetEnvironmentVariableW@kernel32.dll stdcall';
 function ExpandEnvironmentStrings(lpSrc, lpDst: String; nSize: DWORD): DWORD;
   external 'ExpandEnvironmentStringsW@kernel32.dll stdcall';
+
+// Run by Pip itself to update (launcher.cs): no wizard, and only what an update needs.
+function IsUpdate: Boolean;
+begin
+  Result := ExpandConstant('{param:update|0}') = '1';
+end;
 
 // What each step does goes in install.log, beside the program.
 procedure Note(const Text: String);
@@ -374,7 +394,8 @@ begin
 end;
 
 // A Pip already running here stops before its files are replaced; once they are in, the steps run in turn, the
-// progress bar going all along, since how long each takes can't be known.
+// progress bar going all along, since how long each takes can't be known. An update leaves out LaTeX's warm-up: the
+// packages are in from the first install, and MiKTeX fetches any a new template lacks by itself.
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if (CurStep = ssInstall) and FileExists(ExpandConstant('{app}\Pip.exe')) then
@@ -387,7 +408,7 @@ begin
         if Showing('StepPython') and Outcome('StepPython', StepPython) then
           if Showing('StepLatex') and Outcome('StepLatex', StepLatex) then
             if Showing('StepPackages') and Outcome('StepPackages', StepPackages) then
-              if Showing('StepWarmup') then Outcome('StepWarmup', StepWarmup);
+              if not IsUpdate and Showing('StepWarmup') then Outcome('StepWarmup', StepWarmup);
     finally
       WizardForm.ProgressGauge.Style := npbstNormal;
     end;

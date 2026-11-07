@@ -22,6 +22,7 @@ import { readSaved, setSaved } from "./saved";
 import { loadSettings, REGION_PRESETS, saveSettings } from "./settings";
 import { joinWithTranscript, removeTranscript, saveTranscript, TRANSCRIPT, TranscriptError, transcriptInfo } from "./transcript";
 import { getUpload, saveUpload, UploadError } from "./uploads";
+import { nameProblem } from "./ui/account-rules";
 import { APP_DIR, cvFileName, listUserDocuments, profileReady, saveUserDocument, saveUserName, UserFileError, userProfile } from "./user";
 
 const PORT = Number(process.env.JOB_WEB_PORT ?? 4174);
@@ -65,6 +66,17 @@ const openBrowser = async () => {
   if (!plan.already) openInBrowser(plan.url);
 };
 
+// Updates, asked about with the server's key by what updates an installed Pip from its site (installer/launcher.cs, a
+// Mac's update.sh) before it does: whether Pip is in the middle of something an update would cut short (a conversation
+// running or waiting for an answer, the daily run, a search or a ranking) or someone used a page of it lately (a page
+// says so as it asks, /api/me?active=1), so that an update comes while no one is looking; and, posted, that it is
+// about to update, which the page asks about (/api/me), to wait quietly while Pip is away.
+const UPDATING_MS = 5 * 60_000;
+const IDLE_MS = 5 * 60_000;
+let updatingSince = 0;
+let usedAt = 0;
+const busyNow = () => Date.now() - usedAt < IDLE_MS || listBusy !== "" || automation.isRunning() || listSessions().some((x) => x.status === "running" || x.status === "waiting");
+
 const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
   "X-Content-Type-Options": "nosniff",
@@ -103,17 +115,27 @@ const loggedIn = (id: string) => new Response(JSON.stringify({ ok: true }), { he
 // The login form, and whether this browser is logged in; on the first visit, making the account instead. Everything
 // else in the API needs a login.
 async function loginRoutes(req: Request, url: URL): Promise<Response | null> {
-  if (url.pathname === "/api/me") return json({ loggedIn: auth.check(req.headers.get("cookie")), needsAccount: auth.needsAccount() });
+  if (url.pathname === "/api/me") {
+    if (url.searchParams.get("active") === "1") usedAt = Date.now();
+    return json({ loggedIn: auth.check(req.headers.get("cookie")), needsAccount: auth.needsAccount(), updating: Date.now() - updatingSince < UPDATING_MS });
+  }
+  // While there is no account yet, whether a name typed for it is free on the site, asked by the board as it is typed:
+  // free true or false, or null when that can't be told (not paired, or the site out of reach).
+  if (url.pathname === "/api/account/name" && req.method === "POST") {
+    if (!auth.needsAccount()) return json({ error: "account_exists" }, 409);
+    const name = String((await req.json().catch(() => ({})) as Record<string, unknown>).user ?? "").trim();
+    return json({ free: nameProblem(name).problem ? null : await remote.free(name) });
+  }
   if (url.pathname === "/api/account" && req.method === "POST") {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     try {
-      // Paired with its site before there was an account: the name is taken there first, for signing in there. With
-      // the site out of reach the account is made anyway, and takes the name once connected.
-      if (auth.needsAccount()) {
-        await remote.claim(String(body.user ?? "").trim()).catch((err) => {
-          if (err instanceof RemoteError && err.message !== "remote_unreachable") throw new AccountError(err.message);
-        });
-      }
+      // Paired with its site before there was an account: the name is taken there first, for signing in there, once
+      // the name and the password are good. With the site out of reach the account is made anyway, and takes the name
+      // once connected.
+      auth.validate(body.user, body.password);
+      await remote.claim(String(body.user ?? "").trim()).catch((err) => {
+        if (err instanceof RemoteError && err.message !== "remote_unreachable") throw new AccountError(err.message);
+      });
       return loggedIn(await auth.create(body.user, body.password));
     } catch (err) {
       if (err instanceof AccountError) return json({ error: err.message }, ["account_exists", "remote_name_taken"].includes(err.message) ? 409 : 400);
@@ -402,7 +424,8 @@ const attached = (ids: unknown) => (Array.isArray(ids) ? ids.slice(0, 5).map((id
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8", ".woff2": "font/woff2", ".svg": "image/svg+xml",
+  ".js": "text/javascript; charset=utf-8", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+  ".txt": "text/plain; charset=utf-8",
 };
 
 async function document(url: URL) {
@@ -451,6 +474,10 @@ async function handle(req: Request): Promise<Response> {
   // page open already, bring that one up.
   if (url.pathname === "/open" && url.searchParams.get("t") === TOKEN && HOSTS.has(req.headers.get("host") ?? "")) {
     return json(await openPlan());
+  }
+  if (url.pathname === "/update" && url.searchParams.get("t") === TOKEN && HOSTS.has(req.headers.get("host") ?? "")) {
+    if (req.method === "POST") updatingSince = Date.now();
+    return json({ busy: busyNow() });
   }
   // The start link: on its site, when linked to one that answers in time (remote.ts), or else here.
   if (url.pathname === "/" && url.searchParams.get("t") === TOKEN && HOSTS.has(req.headers.get("host") ?? "")) {

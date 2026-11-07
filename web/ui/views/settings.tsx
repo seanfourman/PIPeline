@@ -353,7 +353,9 @@ function Remote() {
     }
     setBusy(false);
   };
-  const problem = error || (r.linked && r.state !== "on" && r.error ? err(Object.assign(new Error(r.error), { code: r.error })) : "");
+  // The connection's trouble while it is down, and a name the site wouldn't take at any time: signing in there needs it.
+  const shown = r.linked && r.error && (r.state !== "on" || r.error.startsWith("remote_name"));
+  const problem = error || (shown ? err(Object.assign(new Error(r.error), { code: r.error })) : "");
   return (
     <Card className="stack">
       <h2>{t("settings.remote.title")}</h2>
@@ -364,7 +366,7 @@ function Remote() {
             <strong dir="ltr">{host}</strong>
             <span className={`ai-state ${r.state === "on" ? "on" : ""}`}>{t(`settings.remote.${r.state}`)}</span>
           </div>
-          <p className="note">{t("settings.remote.how", { site: host, name: r.name })}</p>
+          {r.name && <p className="note">{t("settings.remote.how", { site: host, name: r.name })}</p>}
           <div className="row">
             <Btn kind="ghost" disabled={busy} onClick={() => { if (confirm(t("settings.remote.confirm"))) run("remote/unlink", {}); }}>{t("settings.remote.unlink")}</Btn>
           </div>

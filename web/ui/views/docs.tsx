@@ -248,14 +248,14 @@ export function Editor({ kind, name }: { kind: string; name: string }) {
       if (result.ok) {
         setStamp(Date.now());
         setStatus([`${t("editor.built")} ${result.ats ? t("editor.ats", { score: result.ats.score ?? "–" }) : ""}`, false]);
-        say(t("pip.built"), "happy");
+        say(t("pip.built"), "cool");
       } else {
         setStatus([t("editor.stopped"), true]);
-        say(t("pip.buildFailed"), "worried");
+        say(t("pip.buildFailed"), "confused");
       }
     } catch (e) {
       setStatus([err(e), true]);
-      say(t("pip.saveFailed"), "worried");
+      say(t("pip.saveFailed"), "confused");
     }
     setBusy(false);
   };

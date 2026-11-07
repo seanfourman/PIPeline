@@ -656,6 +656,10 @@ export function paintStill(c: HTMLCanvasElement, night: boolean, sunAt = 0.3, fa
 type Fly = { x: number; y: number; z: number; ph: number; color: number };
 type Spark = { a: number; r: number; speed: number; color: string };
 
+// How many screen pixels the login's forest gives each of its pixels, by the window's height; Pip on the board is
+// drawn at that size too, so what is placed by him (login.tsx's PipSays) takes it from here.
+export const forestScale = () => Math.max(2, Math.round(innerHeight / 225));
+
 export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: IntroOptions) {
   seed = 41;
   const flies: Fly[] = Array.from({ length: 70 }, () => ({
@@ -701,7 +705,7 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
   const foxPixel = (s: number) => clamp(Math.round((scale * s * (FOX_Z - CAM_END.z)) / (H * 0.82)), scale, scale * 6);
 
   const resize = () => {
-    scale = Math.max(2, Math.round(innerHeight / 225));
+    scale = forestScale();
     const w = Math.ceil(innerWidth / scale);
     const h = Math.ceil(innerHeight / scale);
     const changed = h !== H;

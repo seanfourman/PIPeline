@@ -113,9 +113,16 @@ legend { padding: 0; }
    highlight, a round main button, and the account at the foot, on the page's own colour. */
 .shell { display: grid; grid-template-columns: 275px minmax(0, 1fr); height: 100%; }
 .side { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; padding: 8px 12px 14px; background: var(--bg); color: var(--ink); border-inline-end: 1px solid var(--line); }
-.brand { display: grid; place-items: center; width: 52px; height: 52px; margin-bottom: 2px; border-radius: 999px; color: var(--ink); }
+.brand-row { display: flex; align-items: center; gap: 2px; margin-bottom: 2px; }
+.brand { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 999px; color: var(--ink); }
 .brand:hover { background: var(--hover); }
-.pip-mark { display: block; width: 30px; height: auto; }
+.pip-mark { display: block; width: 36px; height: auto; }
+/* Beside the logo, in the sidebar only: a small round tag, BETA, in the forest colour on a tint of it, like the
+   settings' "soon" tag. */
+.beta {
+  padding: 1px 8px; border-radius: 999px; background: color-mix(in srgb, var(--primary) 14%, var(--surface)); color: var(--primary);
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.08em; line-height: 1.6; white-space: nowrap;
+}
 .nav { display: flex; flex-direction: column; gap: 2px; }
 .nav a { align-self: flex-start; display: flex; align-items: center; gap: 18px; padding-block: 11px; padding-inline: 12px 22px; border-radius: 999px; color: var(--ink); text-decoration: none; font-size: 20px; font-weight: 400; line-height: 1.2; transition: background-color 0.2s ease; }
 .nav a:hover { background: var(--hover); }
@@ -381,8 +388,35 @@ textarea { resize: vertical; width: 100%; }
 .pip-wave .pip-b { animation: pip-wave-b 3s steps(1) infinite; }
 .pip-happy .pip-bob { animation: pip-hop 0.5s steps(1) infinite; }
 .pip-happy .pip-a, .pip-happy .pip-b { animation-duration: 0.5s; }
-.pip-ask .pip-a { animation-duration: 0.8s; }
-.pip-work .pip-a, .pip-work .pip-b { animation-duration: 0.9s; }
+/* The question mark over his head hovers slowly while he waits. */
+.pip-ask .pip-a, .pip-ask .pip-b { animation-duration: 1.6s; }
+/* At work the dots over his head rise a pixel in turn, like a wave, and rest a beat before the next. */
+.pip-dot { animation: pip-dot 1.6s steps(1) infinite; }
+.pip-dot-1 { animation-delay: 0.4s; }
+.pip-dot-2 { animation-delay: 0.8s; }
+@keyframes pip-dot { 0% { transform: translateY(-1px); } 25% { transform: translateY(0); } }
+/* His faces' movements (FACES in ui/pip.tsx): angry, he shakes and the mark pulses; sad, he sways slowly and the tear
+   runs; tired, slower still, with a yawn now and then; celebrating, he hops in the twinkling confetti; in love, the
+   hearts beat; surprised, his brows jump; cool, a glint crosses the glasses; confused, his eyes swap. */
+.pip-angry .pip-bob { animation: pip-shake 0.2s steps(1) infinite; }
+.pip-angry .pip-a, .pip-angry .pip-b { animation-duration: 0.6s; }
+.pip-sad .pip-bob { animation-duration: 2.8s; }
+.pip-sad .pip-a, .pip-sad .pip-b { animation-duration: 1.6s; }
+.pip-tired .pip-bob { animation-duration: 3.2s; }
+.pip-tired .pip-a { animation: pip-yawn-a 4s steps(1) infinite; }
+.pip-tired .pip-b { animation: pip-yawn-b 4s steps(1) infinite; }
+@keyframes pip-yawn-a { 0%, 69% { opacity: 1; } 70%, 100% { opacity: 0; } }
+@keyframes pip-yawn-b { 0%, 69% { opacity: 0; } 70%, 100% { opacity: 1; } }
+.pip-party .pip-bob { animation: pip-hop 0.5s steps(1) infinite; }
+.pip-party .pip-a, .pip-party .pip-b { animation-duration: 0.4s; }
+.pip-love .pip-a, .pip-love .pip-b { animation-duration: 0.8s; }
+.pip-surprised .pip-bob { animation: pip-hop 0.9s steps(1) infinite; }
+.pip-surprised .pip-a, .pip-surprised .pip-b { animation-duration: 0.9s; }
+/* Cool: now and then a glint sweeps across his glasses, a pixel at a time from left to right, and is gone a while
+   (GLINT in ui/pip.tsx starts clear of their left end; 17 pixels take it past the right one). */
+.pip-glint { animation: pip-glint 2.6s steps(17, end) infinite; }
+@keyframes pip-glint { 0% { transform: translateX(0); } 30%, 100% { transform: translateX(17px); } }
+.pip-confused .pip-a, .pip-confused .pip-b { animation-duration: 1.6s; }
 .pip-worried .pip-bob { animation-duration: 2.4s; }
 @keyframes pip-bob { 0% { transform: translateY(0); } 50% { transform: translateY(1px); } }
 @keyframes pip-hop { 0% { transform: translateY(0); } 50% { transform: translateY(-1px); } }
@@ -399,21 +433,12 @@ textarea { resize: vertical; width: 100%; }
 @keyframes pip-shake { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(1px); } }
 @keyframes pip-shiver { 0%, 100% { translate: 0 0; } 50% { translate: 3px 0; } }
 
-/* Pip's notices after something you did, at the bottom of the screen, gone after a few seconds. */
-.toast {
-  position: fixed; z-index: 20; bottom: 24px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px;
-  max-width: min(520px, calc(100vw - 32px)); padding: 10px 18px 10px 12px; border-radius: 12px; background: var(--ink); color: var(--bg);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 25%); font-size: 15px; animation: toast-in 0.2s ease-out;
-}
-.toast-pip { width: 34px; flex: none; }
-@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
-
-/* Pip waiting for an answer (PeekingPip in app.tsx), in the bottom corner by the sidebar. Its frame starts right
-   at the sidebar's edge and hides whatever is past it, so Pip, standing partly past that edge and leaning out,
+/* Pip saying something from behind the sidebar (PeekingPip in app.tsx): that he is updating, what he says after
+   something you did, a conversation that waits for an answer. In the bottom corner by the sidebar: its frame starts
+   right at the sidebar's edge and hides whatever is past it, so Pip, standing partly past that edge and leaning out,
    seems to peek from behind the sidebar. --away is the way to the sidebar. Pip slides out and leans out a little
-   further every few seconds; its speech
-   bubble pops up a moment later; both go back when nothing waits. The frame lets clicks through but on Pip and
-   the bubble. */
+   further every few seconds; his speech bubble pops up a moment later, and anew with each new thing he says; both go
+   back when he has nothing to say. The frame lets clicks through but on Pip and the bubble. */
 .peek {
   --away: -1;
   position: fixed; z-index: 15; bottom: 0; inset-inline-start: 275px; display: flex; align-items: flex-end;
@@ -425,8 +450,6 @@ textarea { resize: vertical; width: 100%; }
   flex: none; width: 88px; margin-inline-start: -24px; transform-origin: 50% 100%; rotate: calc(var(--away) * -8deg);
   animation: peek-out 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.25) both, peek-lean 5s ease-in-out 1.6s infinite;
 }
-/* No shadow under its feet here, where it stands on the screen's edge rather than on the ground. */
-.peek-pip .pip-shadow { display: none; }
 @keyframes peek-out { from { translate: calc(var(--away) * 100%) 0; rotate: 0deg; } }
 @keyframes peek-lean {
   0%, 74%, 100% { translate: 0 0; rotate: calc(var(--away) * -8deg); }
@@ -439,15 +462,17 @@ textarea { resize: vertical; width: 100%; }
 @keyframes peek-bob { 0%, 74%, 100% { translate: 0 0; } 80%, 88% { translate: 0 -8px; } }
 @keyframes peek-down { to { translate: 0 100%; } }
 /* The speech bubble, drawn in pixels like Pip: a white bubble in Pip's dark outline, three pixels thick, its
-   corners in steps, what it says in the pixel font on one line, and a stepped tail down to Pip's head. It pops up from the tail
-   with a bounce, rises a little under the pointer, and shrinks back into the tail as it goes. */
+   corners in steps, what it says in the pixel font, a line to each sentence (the words break them) and a long one
+   in even lines, and a stepped tail down to Pip's head. It pops up from the tail with a bounce and shrinks back into
+   the tail as it goes. While he is at work it stands higher, clear of the dots over his head. */
 .peek-say {
   --say-ink: #2a2236;
-  position: relative; flex: none; max-width: 250px; margin-bottom: 92px; margin-inline-start: -22px; transform-origin: calc(100% - 24px) 100%;
+  position: relative; flex: none; max-width: min(330px, calc(100vw - 150px)); margin-bottom: 92px; margin-inline-start: -22px; transform-origin: calc(100% - 24px) 100%;
   filter: drop-shadow(0 4px 0 rgb(42 34 54 / 14%)); transition: translate 0.2s ease;
   animation: say-in 0.4s cubic-bezier(0.3, 1.6, 0.5, 1) 0.45s both;
 }
 [dir="ltr"] .peek-say { transform-origin: 24px 100%; }
+.pip-work + .peek-say { margin-bottom: 112px; }
 .peek-edge {
   display: block; padding: 3px; background: var(--say-ink);
   clip-path: polygon(0 6px, 3px 6px, 3px 3px, 6px 3px, 6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, calc(100% - 3px) 3px, calc(100% - 3px) 6px, 100% 6px,
@@ -455,15 +480,17 @@ textarea { resize: vertical; width: 100%; }
     6px 100%, 6px calc(100% - 3px), 3px calc(100% - 3px), 3px calc(100% - 6px), 0 calc(100% - 6px));
 }
 .peek-words {
-  display: block; padding: 10px 16px 11px; background: #fff; color: var(--say-ink); font-family: var(--pixel); font-size: 23px; font-weight: 700; line-height: 1; white-space: nowrap;
+  display: block; padding: 10px 16px 11px; background: #fff; color: var(--say-ink); font-family: var(--pixel); font-size: 23px; font-weight: 700; line-height: 1.1;
+  white-space: pre-line; text-wrap: balance;
   clip-path: polygon(0 3px, 3px 3px, 3px 0, calc(100% - 3px) 0, calc(100% - 3px) 3px, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) calc(100% - 3px),
     calc(100% - 3px) 100%, 3px 100%, 3px calc(100% - 3px), 0 calc(100% - 3px));
 }
-.peek-tail { position: absolute; top: calc(100% - 3px); inset-inline-start: 18px; width: 18px; height: 15px; }
+.peek-tail { position: absolute; top: calc(100% - 6px); inset-inline-start: 18px; width: 18px; height: 18px; }
 [dir="ltr"] .peek-tail { scale: -1 1; }
 .tail-edge { fill: var(--say-ink); }
 .tail-fill { fill: #fff; }
-.peek:hover .peek-say { translate: 0 -3px; }
+/* Only where a click on him leads somewhere (a conversation waiting for an answer) does the bubble rise to the pointer. */
+.peek[href]:hover .peek-say { translate: 0 -3px; }
 @keyframes say-in { from { opacity: 0; scale: 0.4; } }
 .peek.leaving .peek-say { animation: say-out 0.22s ease-in forwards; }
 @keyframes say-out { to { opacity: 0; scale: 0.4; } }
@@ -1014,7 +1041,7 @@ textarea { resize: vertical; width: 100%; }
 }
 @keyframes loading-in { from { opacity: 0; scale: 0.9; } }
 .seek-ring { position: absolute; inset: 0; border: 2.5px solid color-mix(in srgb, var(--ink-3) 18%, transparent); border-top-color: var(--ink-3); border-radius: 50%; animation: spin 0.9s linear infinite; }
-.seek-loading-mark { width: 28px; animation: mark-breathe 1.8s ease-in-out infinite; }
+.seek-loading-mark { width: 36px; animation: mark-breathe 1.8s ease-in-out infinite; }
 @keyframes mark-breathe { 50% { scale: 0.9; opacity: 0.65; } }
 /* The results rise in once they come: the count, the list, and then its rows one after another (--i, the row's
    place, from jobs.tsx). Each search's results do it afresh. */
@@ -1428,7 +1455,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
   position: fixed; inset: 0; overflow: hidden; background: #0b0a22;
   --px: 4px;
   /* Night. These sit on the board's colours in ui/intro.ts. */
-  --board-line: #0b0a22; --board-ink: #f2f3ff; --board-ink-2: #a3acea; --board-label: #c9d0ff; --board-bad: #ff8a7a;
+  --board-line: #0b0a22; --board-ink: #f2f3ff; --board-ink-2: #a3acea; --board-label: #c9d0ff; --board-bad: #ff8a7a; --board-good: #7ee38a;
   --field: #0d0f2e; --field-ink: #f2f3ff; --field-ring: #3a4594; --field-shade: #080a22; --field-focus: #5ff2ff;
   --go: #3fd0e0; --go-hi: #a6f6ff; --go-lo: #1f7f95; --go-ink: #0b1230;
   --chip: #1b1e48; --chip-on: #313c8f; --chip-ink: #c9d0ff;
@@ -1436,7 +1463,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 /* The light theme's forest is a morning one, and the board is wood and parchment. */
 .login.morning {
   background: #dfedcf;
-  --board-line: #3a2414; --board-ink: #4a2f1c; --board-ink-2: #7a5a3e; --board-label: #5a3a24; --board-bad: #b3261e;
+  --board-line: #3a2414; --board-ink: #4a2f1c; --board-ink-2: #7a5a3e; --board-label: #5a3a24; --board-bad: #b3261e; --board-good: #2f7a2b;
   --field: #fffaf0; --field-ink: #3a2414; --field-ring: #b48a5a; --field-shade: #ead8b2; --field-focus: #367a32;
   --go: #367a32; --go-hi: #5fae44; --go-lo: #24541f; --go-ink: #ffffff;
   --chip: #6e4426; --chip-on: #9a6438; --chip-ink: #fbeed2;
@@ -1474,8 +1501,23 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 @keyframes pop { 0% { opacity: 0; transform: scale(0.7); } 70% { opacity: 1; transform: scale(1.06); } 100% { transform: none; } }
 .login-card h1 { font-size: 30px; text-align: center; color: var(--board-ink); }
 .login-card .sub { text-align: center; margin-top: -4px; margin-bottom: 4px; color: var(--board-ink-2); }
-.login-card .field-label { color: var(--board-label); }
+.login-card .field-label { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; color: var(--board-label); }
 .login-card .error-line { color: var(--board-bad); }
+/* Making the account (ui/login.tsx's PipSays): what the name and the password still need, said by Pip over the board
+   in the speech bubble he has behind the sidebar (.peek-edge, .peek-words), beside his face. Its tail is the same,
+   turned a quarter round so it comes out of the bubble's left side, low, its tip at his mouth (TAIL_X and TAIL_Y in
+   login.tsx), its two inner rows over the bubble's edge so no line shows across the opening, in either direction.
+   It pops up with each new kind of thing he says, from that tip. */
+.login-say {
+  --say-ink: #2a2236;
+  position: absolute; z-index: 2; width: max-content; max-width: 320px; transform-origin: -10.5px calc(100% - 9px);
+  filter: drop-shadow(0 4px 0 rgb(42 34 54 / 14%)); animation: say-in 0.3s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+}
+.login-say .peek-words { font-size: 22px; }
+.login-say .peek-tail { top: auto; bottom: 6px; inset-inline-start: auto; left: -12px; scale: none; rotate: 90deg; }
+/* The board that makes the account is as tall as the site's board for a computer (.login-card.pc), which a computer
+   goes on to it from: its five gaps make up the difference. */
+.login-card.create { gap: 19.37px; }
 /* Fields: square, a stepped edge that turns bright while typing, and a shadow under the top edge. */
 .login-card input, .login-card input:hover, .login-card input:focus {
   width: 100%; border: 0; border-radius: 0; background: var(--field); color: var(--field-ink);
@@ -1483,6 +1525,8 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
     inset 0 var(--px) 0 0 var(--field-shade);
 }
 .login-card input:focus { --field-ring: var(--field-focus); }
+/* No eye of Edge's own to show a password, which isn't drawn like the board. */
+.login-card input::-ms-reveal { display: none; }
 /* The button: lit along the top, with a thick edge below that presses in. */
 .login-card .login-submit {
   width: 100%; min-height: 52px; margin-top: 8px; border: 0; border-radius: 0; background: var(--go); color: var(--go-ink);
@@ -1534,8 +1578,8 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
    desktop's own finer pixels. A pointer comes to it in hard steps and clicks it twice, then the screen turns to the
    morning sky with Pip rising into it, waving, and the computer's light green, until he sinks and it all starts again.
    The board is as tall as the one that makes the account, which the site goes on to: the words a little smaller, so
-   they keep to two lines at any block size, and the gaps a little tighter, for the computer's size. */
-.login-card.pc { gap: 11.4px; }
+   they keep to two lines at any block size, and the gaps make up the rest. */
+.login-card.pc { gap: 18.115px; }
 .login-card.pc .sub { font-size: 20px; }
 .login-pc { --cell: 9px; display: flex; justify-content: center; }
 .login-pc .welcome-monitor { width: calc(var(--cell) * 24); height: calc(var(--cell) * 21); }
@@ -1549,9 +1593,9 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
   animation: login-pc-light 5.6s steps(1, end) infinite;
 }
 .login-pc-icon { position: absolute; left: 16px; top: 10px; display: flex; flex-direction: column; align-items: center; gap: 3px; animation: login-pc-icon 5.6s steps(1, end) infinite; }
-.login-pc-mark { display: block; width: 38px; height: auto; }
+.login-pc-mark { display: block; width: 40px; height: auto; }
 .login-pc-icon b { color: #fff; font-size: 14px; line-height: 1; }
-.login-pc-select { position: absolute; left: 12px; top: 6px; width: 46px; height: 58px; background: rgb(255 255 255 / 0.3); opacity: 0; animation: login-pc-select 5.6s steps(1, end) infinite; }
+.login-pc-select { position: absolute; left: 12px; top: 6px; width: 48px; height: 64px; background: rgb(255 255 255 / 0.3); opacity: 0; animation: login-pc-select 5.6s steps(1, end) infinite; }
 .login-pc-pointer { position: absolute; left: 124px; top: 58px; width: 18px; height: auto; animation: login-pc-pointer 5.6s infinite; }
 .login-pc-pip { position: absolute; left: 22px; top: 8px; width: 117px; translate: 0 92px; animation: login-pc-pip 5.6s infinite; }
 .login-pc-pip svg { display: block; width: 100%; height: auto; }
@@ -1584,17 +1628,16 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .boot { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; justify-items: center; gap: 30px; background: var(--bg); transition: opacity 0.35s ease; }
 /* The program stopped with its page open (Offline in app.tsx): over everything, the introduction and its big
    conversation too, the loading screen's page in its very layout, Pip worried where he hops there and at his size
-   there, standing still and so without his shadow. Under him, where the paw prints are, what happened in the pixel
+   there, standing still. Under him, where the paw prints are, what happened in the pixel
    font, how to bring it back and what then, a line each, and "waiting" with its plug. Each line rises a little into
    place as it fades in, softly, one after another. The screen fades in, unless it grows out of the loading screen. */
 .offline {
-  position: fixed; inset: 0; z-index: 90; display: grid; place-content: center; justify-items: center; gap: 30px;
+  position: fixed; inset: 0; z-index: 90; display: grid; place-content: center; justify-items: center; gap: 30px; overflow: hidden;
   background: var(--bg); color: var(--ink); text-align: center; animation: offline-in 0.3s ease;
 }
 @keyframes offline-in { from { opacity: 0; } }
 .offline-stage { position: relative; width: 132px; }
 .offline-pip { width: 132px; }
-.offline-pip .pip-shadow { display: none; }
 .offline-floor { height: 32px; }
 .offline-words {
   position: absolute; top: calc(100% + 26px); left: 50%; translate: -50% 0; width: min(560px, calc(100vw - 48px));
@@ -1604,22 +1647,33 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .offline h1 { margin: 0; font-family: var(--pixel); font-size: 34px; font-weight: 800; line-height: 1.1; }
 .offline p { margin: 0; color: var(--ink-2); font-size: 16px; line-height: 1.6; }
 .offline .offline-wait { display: flex; align-items: center; gap: 10px; margin-top: 6px; color: var(--ink-2); font-family: var(--pixel); font-size: 19px; font-weight: 700; }
-/* On the site from a computer, under the rest and quieter, in case Pip isn't on it at all: where to get it. */
-.offline .offline-get { margin-top: 4px; color: var(--ink-3); font-size: 14px; }
-.offline-get a, .offline-get button {
-  padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; font-weight: 600; cursor: pointer;
-  text-decoration: underline; text-underline-offset: 3px; transition: color 0.2s ease;
+/* On the site from a computer, in case Pip isn't on it at all: where to get it, along the foot of the screen apart
+   from the words, on a slim strip of parchment under a dark edge, the question and a small yellow button in the
+   boards' pixel style, its colour deepening on hover. The strip comes up from below the screen's edge, after the
+   words are in. */
+.offline-get {
+  position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 14px;
+  min-height: 46px; padding: 6px 16px; background: #f4e9cf; box-shadow: 0 -3px 0 0 #3a2414, inset 0 3px 0 0 #fbf1d8;
+  color: #4a2f1c; font: 700 17px/1.1 "Handjet", var(--head); font-variation-settings: "ELSH" 2;
 }
-.offline-get a:hover, .offline-get button:hover { color: var(--ink); }
+.offline-get-go {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; border: 0; background: #ffc94a; color: #3a2414;
+  font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; transition: background-color 0.2s ease;
+  box-shadow: 0 -2px 0 0 #3a2414, 0 2px 0 0 #3a2414, -2px 0 0 0 #3a2414, 2px 0 0 0 #3a2414, inset 0 2px 0 0 #ffe38a, inset 0 -3px 0 0 #c98a1a;
+}
+.offline-get-go:hover { background: #ffbc1f; }
+.offline-get-go:active { translate: 0 1px; }
+.offline-get-icon { width: 14px; height: auto; }
+@keyframes offline-get-up { from { transform: translateY(calc(100% + 3px)); } }
 /* The Mac's command, for copying by hand where the browser wouldn't copy it: whole, picked out in one click. */
 .offline-get code, .login-card .login-command { display: block; direction: ltr; text-align: left; overflow-wrap: anywhere; user-select: all; font: 13px/1.5 Menlo, Consolas, monospace; }
-.offline-get code { margin-top: 8px; color: var(--ink); }
+.offline-get code { flex-basis: 100%; text-align: center; color: #3a2414; }
 .login-card .login-command { padding: 10px 12px; background: var(--field); color: var(--field-ink); box-shadow: inset 0 0 0 var(--px) var(--field-ring); }
-.offline h1, .offline-text > p, .offline .offline-wait, .offline .offline-get { animation: offline-rise 0.5s ease-out backwards; }
+.offline h1, .offline-text > p, .offline .offline-wait { animation: offline-rise 0.5s ease-out backwards; }
 .offline-text > p:first-child { animation-delay: 0.35s; }
 .offline-text > p:last-child { animation-delay: 0.7s; }
 .offline .offline-wait { animation-delay: 1.05s; }
-.offline .offline-get { animation-delay: 1.4s; }
+.offline .offline-get { animation: offline-get-up 0.45s ease-out 1.5s backwards; }
 @keyframes offline-rise { from { opacity: 0; transform: translateY(8px); } }
 /* Waiting for Pip (Plugging in app.tsx): after the words, the socket next to them, and the plug inching toward it in
    hard steps from the far side, its prongs first; a spark flashes twice where they meet, and it backs off again. */
@@ -1649,7 +1703,6 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .boot-stage { position: relative; width: 132px; }
 .boot-pip { width: 132px; }
 .boot-pip .pip-bob { animation: boot-hop 0.72s steps(1) infinite; }
-.boot-pip .pip-shadow { transform-box: fill-box; transform-origin: center; animation: boot-shadow 0.72s steps(1) infinite; }
 .boot-dust i { position: absolute; bottom: 0; width: 6px; height: 6px; background: var(--ink-3); opacity: 0; animation: boot-dust 0.72s steps(1) infinite; }
 .boot-dust i:first-child { left: 16px; --dir: -1; }
 .boot-dust i:last-child { left: 110px; --dir: 1; }
@@ -1661,7 +1714,6 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .boot-paws svg:nth-child(3) { animation-delay: 0.36s; }
 .boot-paws svg:nth-child(4) { animation-delay: 0.54s; }
 @keyframes boot-hop { 0% { transform: translateY(0); } 12% { transform: translateY(-2px); } 22% { transform: translateY(-5px); } 34% { transform: translateY(-7px); } 46% { transform: translateY(-5px); } 56% { transform: translateY(-2px); } 64% { transform: translateY(0); } }
-@keyframes boot-shadow { 0% { transform: none; } 12% { transform: scaleX(0.85); } 22% { transform: scaleX(0.7); } 34% { transform: scaleX(0.55); } 46% { transform: scaleX(0.7); } 56% { transform: scaleX(0.85); } 64% { transform: none; } }
 @keyframes boot-dust {
   0% { opacity: 0; transform: none; } 64% { opacity: 0.9; transform: none; } 74% { opacity: 0.7; transform: translate(calc(var(--dir) * 6px), -6px); }
   84% { opacity: 0.4; transform: translate(calc(var(--dir) * 12px), -6px); } 94% { opacity: 0; }
@@ -1679,7 +1731,7 @@ html.lite .smart-glow { animation: ai-glow-in 0.5s ease-out 0.35s backwards, ai-
 html.lite :is(.seek-pill, .role-fan-item) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
 html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0 / 45%); }
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .login-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
   .pip-a { opacity: 1; }
 }
@@ -1689,6 +1741,9 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
   .shell { grid-template-columns: 88px minmax(0, 1fr); }
   .peek { inset-inline-start: 88px; }
   .side { align-items: center; padding-inline: 8px; }
+  /* No room beside the logo: the tag sits on the foot of its circle, as on an app's icon. */
+  .brand-row { flex-direction: column; gap: 0; }
+  .beta { margin-top: -10px; padding: 0 6px; font-size: 10px; box-shadow: 0 0 0 2px var(--bg); }
   .nav a { align-self: center; padding: 12px; }
   .nav-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .btn.post { align-self: center; width: 52px; margin-inline: 0; padding: 0; }
@@ -1702,7 +1757,8 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 @media (max-width: 860px) {
   .shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .side { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 6px 12px; overflow: visible; border-inline-end: 0; border-bottom: 1px solid var(--line); }
-  .brand { width: 42px; height: 42px; margin: 0; }
+  .brand-row { margin: 0; }
+  .brand { width: 42px; height: 42px; }
   .nav { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; margin: 0; padding-bottom: 2px; }
   .nav a { gap: 8px; padding: 7px 12px; font-size: 15px; white-space: nowrap; }
   .nav .icon { width: 20px; height: 20px; }
@@ -1710,13 +1766,13 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
   .account { grid-row: 1; grid-column: 2; margin: 0; padding: 0; gap: 6px; }
   .account-name { display: none; }
   .avatar { width: 34px; height: 34px; font-size: 15px; }
-  .toast { bottom: 16px; }
   /* No sidebar at the side here, so Pip peeks up from under the screen's bottom edge, in the same corner. */
   .peek { inset-inline-start: 0; padding: 40px 16px 0; }
   [dir="rtl"] .peek { padding: 40px 16px 0; }
   .peek-pip { width: 70px; margin: 0 0 -22px; rotate: 0deg; animation: peek-up 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.25) both, peek-bob 5s ease-in-out 1.6s infinite; }
   .peek.leaving .peek-pip { animation: peek-down 0.42s ease-in forwards; }
   .peek-say { margin-bottom: 52px; margin-inline-start: -14px; }
+  .pip-work + .peek-say { margin-bottom: 68px; }
   .page { padding: 20px 16px 100px; }
   .jobs-page .seek { padding-inline: 16px; }
   .mine { margin-bottom: -100px; }
@@ -1915,11 +1971,11 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-pip-fly { position: fixed; z-index: 6; pointer-events: none; transform-origin: 50% 100%; }
 .welcome-pip svg, .welcome-pip-fly svg { display: block; width: 100%; height: auto; }
 /* The jumping copy squashes and stretches from its feet, without the bob; in the air (air, from welcome.tsx) it takes
-   its leaping pose and leaves its shadow behind. */
+   its leaping pose. */
 .welcome-pip-fly .pip-bob { animation: none; }
 /* With no ground beside the board it jumps down behind it: over the forest, under the stage. */
 .welcome-pip-fly.behind { z-index: 1; }
-.welcome-pip-fly .pip-leap, .welcome-pip-fly.air .pip-stand, .welcome-pip-fly.air .pip-shadow { visibility: hidden; }
+.welcome-pip-fly .pip-leap, .welcome-pip-fly.air .pip-stand { visibility: hidden; }
 .welcome-pip-fly.air .pip-leap { visibility: visible; }
 /* Pip setting off at the end, beside the board (useStepChange's scene, on his jumping copy). The backpack flies up out
    of him over his head and comes down into his paws, which take hold of it as it lands (pull); from behind, it comes

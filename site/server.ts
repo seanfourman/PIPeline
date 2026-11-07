@@ -1,7 +1,8 @@
 // The site: where Pip is used, from the computer it runs on and from anywhere else. Each computer keeps a connection
-// open to here (web/remote.ts), so nothing at home is opened to the internet, and the site passes every request of a
-// browser tied to that computer along it (relay.ts): the whole interface comes from the computer, its login guarding
-// it as it does there. An installed Pip pairs as soon as it starts, before it has an account, and opens itself here
+// open to here (web/remote.ts), so nothing at home is opened to the internet, and the site passes the requests of a
+// browser tied to that computer along it (relay.ts): all the account holds comes from the computer, its login guarding
+// it as it does there, and only the interface's own files come from here, the newest the site has. An installed Pip
+// pairs as soon as it starts, before it has an account, and opens itself here
 // by a one-time code that ties the browser it opens to it; once its owner makes the account (here), the computer takes
 // the account's name, and any other browser, a phone's, signs in with that name and password, which the computer
 // checks. The site keeps no password and none of the owner's files: only each computer's id and name and a hash of
@@ -23,11 +24,13 @@ const HERE_COOKIE = "pip_here";
 const PAGE_SEEN_MS = 75_000;
 const BODY_MAX = 40 * 1024 * 1024;
 // Sign-ins that failed, per name and per address, within WINDOW_MS; past the limit the site stops passing them on.
-// Links and pairings from one address are limited the same way.
+// Links and pairings from one address are limited the same way, and the names one computer asks about.
 const WINDOW_MS = 15 * 60 * 1000;
 const NAME_TRIES = 10;
 const ADDRESS_TRIES = 30;
 const LINKS = 10;
+// Whether a name is free, asked by a computer as its owner types one for the account, a few times a name.
+const NAME_CHECKS = 200;
 // How long a computer's one-time code ties a browser to it, unused.
 const CODE_MS = 2 * 60 * 1000;
 // What a browser's request takes along to the computer: its type, and the computer's own session cookie, nothing else.
@@ -39,7 +42,8 @@ const APP_DIRS = [path.join(import.meta.dir, "app"), path.join(import.meta.dir, 
 // The Mac's install script as text, so a browser shows what it does and curl takes it as it is.
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
-  ".svg": "image/svg+xml", ".woff2": "font/woff2", ".png": "image/png", ".sh": "text/plain; charset=utf-8", ".gz": "application/gzip",
+  ".svg": "image/svg+xml", ".woff2": "font/woff2", ".png": "image/png", ".ico": "image/x-icon", ".sh": "text/plain; charset=utf-8", ".gz": "application/gzip",
+  ".txt": "text/plain; charset=utf-8", ".json": "application/json",
 };
 
 // same-origin, not no-referrer: with no referrer at all, a browser sends a write's Origin as "null" (sameSite below).
@@ -176,6 +180,17 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
         if (done === "unknown") return json({ error: "remote_unlinked" }, 401);
         return done === "ok" ? json({ name }) : json({ error: done }, done === "remote_name_taken" ? 409 : 400);
       }
+      // Whether a name is free for the asking computer's account: no other computer has it, in any case.
+      if (url.pathname === "/api/site/free" && req.method === "POST") {
+        const machine = store.byKey(bearer(req));
+        if (!machine) return json({ error: "remote_unlinked" }, 401);
+        if (tries(`free:${machine.id}`).length >= NAME_CHECKS) return json({ error: "remote_busy" }, 429);
+        failed(`free:${machine.id}`);
+        const name = String((await req.json().catch(() => ({})) as any)?.name ?? "").trim();
+        if (!NAME_RULE.test(name)) return json({ error: "remote_name" }, 400);
+        const other = store.named(name);
+        return json({ free: !other || other.id === machine.id });
+      }
       if (url.pathname === "/api/site/code" && req.method === "POST") {
         const machine = store.byKey(bearer(req));
         if (!machine) return json({ error: "remote_unlinked" }, 401);
@@ -212,8 +227,15 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
         if (api) return json({ error: "login_required" }, 401);
         return (reading && appFile(url.pathname)) || new Response("Not found", { status: 404, headers: SECURITY });
       }
-      // Its computer off: the interface from here again, which finds the computer off and says so until it is back.
-      const away = (status: number, error: string) => (!api && reading && appFile(url.pathname)) || json({ error }, status);
+      // Tied to a computer: the interface's own files (the page, its code, styles and fonts) still from here, the newest
+      // the site has, whatever the computer's copy is, so a change to them shows as soon as the site has it, without
+      // Pip on the computer installed again; what the account holds (its API, its documents) from the computer.
+      if (!api && reading) {
+        const own = appFile(url.pathname);
+        if (own) return own;
+      }
+      // Its computer off: its API says so, and the interface shows that until the computer is back.
+      const away = (status: number, error: string) => json({ error }, status);
       if (!relay.online(machine.id)) return away(503, "pc_offline");
       if (!reading && !sameSite(req)) return new Response("Forbidden", { status: 403 });
       if (Number(req.headers.get("content-length") ?? 0) > BODY_MAX) return json({ error: "too_large" }, 413);
