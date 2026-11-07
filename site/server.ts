@@ -1,58 +1,103 @@
-// The site: where a phone reaches its owner's computer. A computer links once under its account's name and then
-// keeps a connection open to here (web/remote.ts), so nothing at home is opened to the internet. On a phone the
-// owner signs in with that account's name and password; the site passes the sign-in to the computer, which checks
-// it, and from then on passes every request of that phone to it (relay.ts). The site keeps no password and none of
-// the owner's files: only each computer's name and a hash of the key it connects with (store.ts).
+// The site: where Pip is used, from the computer it runs on and from anywhere else. Each computer keeps a connection
+// open to here (web/remote.ts), so nothing at home is opened to the internet, and the site passes every request of a
+// browser tied to that computer along it (relay.ts): the whole interface comes from the computer, its login guarding
+// it as it does there. An installed Pip pairs as soon as it starts, before it has an account, and opens itself here
+// by a one-time code that ties the browser it opens to it; once its owner makes the account (here), the computer takes
+// the account's name, and any other browser, a phone's, signs in with that name and password, which the computer
+// checks. The site keeps no password and none of the owner's files: only each computer's id and name and a hash of
+// the key it connects with (store.ts).
 //
 // Run: bun site/server.ts. PORT (4180) and DATA_DIR (site/data) set where it listens and keeps its records. Behind
 // HTTPS, as it must be when on the internet, the cookies are marked Secure.
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Server } from "bun";
-import { offlinePage, signInPage } from "./pages";
 import { createRelay, Offline, type Link } from "./relay";
 import { NAME_RULE, openStore } from "./store";
 
-const USER_COOKIE = "pip_user";
+// The computer a browser is tied to, by its id; and that it was tied by Pip there, opening it on that very computer.
+const COMPUTER_COOKIE = "pip_pc";
+const HERE_COOKIE = "pip_here";
+// How long a page of Pip on its own computer counts as open after it last asked anything: it asks every few seconds,
+// but a tab out of sight for a while is let ask only once a minute.
+const PAGE_SEEN_MS = 75_000;
 const BODY_MAX = 40 * 1024 * 1024;
 // Sign-ins that failed, per name and per address, within WINDOW_MS; past the limit the site stops passing them on.
-// Links from one address are limited the same way.
+// Links and pairings from one address are limited the same way.
 const WINDOW_MS = 15 * 60 * 1000;
 const NAME_TRIES = 10;
 const ADDRESS_TRIES = 30;
 const LINKS = 10;
-// What a phone's request takes along to the computer: its type, and the computer's own session cookie, nothing else.
+// How long a computer's one-time code ties a browser to it, unused.
+const CODE_MS = 2 * 60 * 1000;
+// What a browser's request takes along to the computer: its type, and the computer's own session cookie, nothing else.
 const PASSED_HEADERS = ["content-type", "accept", "range"];
+// The app's interface, which a browser gets from here until it reaches a computer: its sign-in, its page for a
+// computer, and its screen for a computer that is off. Deployed, it is a copy beside this file (deploy.ts); run from
+// the repository, the app's own.
+const APP_DIRS = [path.join(import.meta.dir, "app"), path.join(import.meta.dir, "..", "web", "public")];
+// The Mac's install script as text, so a browser shows what it does and curl takes it as it is.
+const MIME: Record<string, string> = {
+  ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml", ".woff2": "font/woff2", ".png": "image/png", ".sh": "text/plain; charset=utf-8", ".gz": "application/gzip",
+};
 
-// same-origin, not no-referrer: with no referrer at all, a browser sends a form's Origin as "null" (sameSite below).
+// same-origin, not no-referrer: with no referrer at all, a browser sends a write's Origin as "null" (sameSite below).
 const SECURITY = { "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "Cache-Control": "no-store", "X-Frame-Options": "DENY" };
-const html = (body: string, status = 200, headers: Record<string, string> = {}) =>
-  new Response(body, { status, headers: { ...SECURITY, "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'", ...headers } });
+// The interface's files under the same policy as on the computer (web/server.ts).
+const PAGE_POLICY = "default-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'";
 const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { ...SECURITY, "Content-Type": "application/json" } });
 
 const cookieOf = (req: Request, name: string) =>
   (req.headers.get("cookie") ?? "").split(/;\s*/).find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1) ?? "";
+const bearer = (req: Request) => (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
 
-export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "data", "site.db") }: { port?: number; dataFile?: string } = {}) {
+// download is the installer's address, for the interface's download button on a computer: the one deploy.ts put beside
+// the interface, if not given. Without either, the button says it is coming.
+export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "data", "site.db"), appDir = APP_DIRS.find((d) => existsSync(d)) ?? APP_DIRS[0], download = "" }:
+  { port?: number; dataFile?: string; appDir?: string; download?: string } = {}) {
   const store = openStore(dataFile);
   const relay = createRelay();
   const failures = new Map<string, number[]>();
   const tries = (key: string) => (failures.get(key) ?? []).filter((t) => Date.now() - t < WINDOW_MS);
   const failed = (...keys: string[]) => { for (const k of keys) failures.set(k, [...tries(k), Date.now()]); };
+  // The computers' one-time codes, kept in memory only: one lost to a restart is just asked for again.
+  const codes = new Map<string, { computer: string; until: number }>();
+  // When a page that Pip opened on its own computer last asked anything, by computer, so Pip opening there again
+  // knows that one is open still (its offline screen too, which goes on by itself once Pip is back).
+  const seenHere = new Map<string, number>();
+  const appRoot = path.resolve(appDir);
+  download ||= existsSync(path.join(appRoot, "PipSetup.exe")) ? "/PipSetup.exe" : "";
+  // A Mac's install, by the command that runs install.sh, once deploy.ts has put it beside the interface.
+  const mac = existsSync(path.join(appRoot, "install.sh"));
 
   const secure = (req: Request) => req.headers.get("x-forwarded-proto") === "https" || new URL(req.url).protocol === "https:";
-  const userCookie = (req: Request, name: string, age = 365 * 86400) =>
-    `${USER_COOKIE}=${encodeURIComponent(name)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}${secure(req) ? "; Secure" : ""}`;
+  const cookie = (req: Request, name: string, value: string, age = 365 * 86400) =>
+    `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}${secure(req) ? "; Secure" : ""}`;
   const address = (req: Request, server: Server) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() || server.requestIP(req)?.address || "";
-  // A write from a phone must come from this site's own pages: its Origin is this site, or, where a page's referrer
+  // A write from a browser must come from this site's own pages: its Origin is this site, or, where a page's referrer
   // policy left the Origin out, the browser says the request is from this site.
   const sameSite = (req: Request) => {
     const origin = req.headers.get("origin");
     if (!origin || origin === "null") return req.headers.get("sec-fetch-site") === "same-origin";
     try { return new URL(origin).host === req.headers.get("host"); } catch { return false; }
   };
+  // One of the interface's files, the page itself at /, or null.
+  const appFile = (pathname: string) => {
+    let rel: string;
+    try { rel = pathname === "/" ? "index.html" : decodeURIComponent(pathname.slice(1)); } catch { return null; }
+    const abs = path.join(appRoot, rel);
+    if (!abs.startsWith(appRoot + path.sep) || !existsSync(abs) || !statSync(abs).isFile()) return null;
+    return new Response(Bun.file(abs), { headers: { ...SECURITY, "Content-Type": MIME[path.extname(abs)] ?? "application/octet-stream", "Content-Security-Policy": PAGE_POLICY } });
+  };
+  const goHome = (cookies: string[] = []) => {
+    const headers = new Headers({ ...SECURITY, Location: "/" });
+    for (const c of cookies) headers.append("Set-Cookie", c);
+    return new Response(null, { status: 303, headers });
+  };
 
-  // The computer's answer for the phone: its cookies kept to this site, and Secure behind HTTPS.
-  const toPhone = (req: Request, res: Response) => {
+  // The computer's answer for the browser: its cookies kept to this site, and Secure behind HTTPS.
+  const toBrowser = (req: Request, res: Response) => {
     const headers = new Headers(res.headers);
     if (secure(req)) {
       headers.delete("set-cookie");
@@ -61,40 +106,43 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
     return new Response(res.body, { status: res.status, headers });
   };
 
+  // The app's sign-in, from a browser that isn't tied to a computer: the name finds the computer, which checks the
+  // password; its session cookie comes back to the browser with the computer's id, and from then on the browser is
+  // passed along to it.
   async function signIn(req: Request, server: Server) {
-    const form = await req.formData().catch(() => null);
-    const typed = String(form?.get("name") ?? "").trim();
-    const password = String(form?.get("password") ?? "");
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const typed = String(body.user ?? "").trim();
+    const password = String(body.password ?? "");
     const ip = address(req, server);
-    const name = store.named(typed);
-    if (tries(`ip:${ip}`).length >= ADDRESS_TRIES || (name && tries(`name:${name.toLowerCase()}`).length >= NAME_TRIES)) {
-      return html(signInPage({ name: typed, error: "יותר מדי ניסיונות. אפשר לנסות שוב בעוד רבע שעה." }), 429);
-    }
-    if (!name) {
+    const machine = store.named(typed);
+    const named = machine?.name ?? "";
+    if (tries(`ip:${ip}`).length >= ADDRESS_TRIES || (machine && tries(`name:${named.toLowerCase()}`).length >= NAME_TRIES)) return json({ error: "remote_busy" }, 429);
+    if (!machine) {
       failed(`ip:${ip}`);
-      return html(signInPage({ name: typed, error: "שם המשתמש או הסיסמה לא נכונים." }), 401);
+      return json({ error: "bad_login" }, 401);
     }
-    if (!relay.online(name)) return html(offlinePage(name), 503);
-    const res = await relay.forward(name, {
+    if (!relay.online(machine.id)) return json({ error: "login_no_pc" }, 503);
+    const res = await relay.forward(machine.id, {
       method: "POST", path: "/api/login", headers: { "content-type": "application/json" },
-      body: new TextEncoder().encode(JSON.stringify({ user: name, password })),
+      body: new TextEncoder().encode(JSON.stringify({ user: named, password })),
     }).catch(() => null);
-    if (!res?.ok) {
-      failed(`ip:${ip}`, `name:${name.toLowerCase()}`);
-      return html(signInPage({ name: typed, error: res ? "שם המשתמש או הסיסמה לא נכונים." : "המחשב לא ענה. כדאי לנסות שוב." }), res ? 401 : 503);
+    await res?.body?.cancel().catch(() => {});
+    if (!res || (!res.ok && res.status !== 401)) return json({ error: "login_no_pc" }, 503);
+    if (!res.ok) {
+      failed(`ip:${ip}`, `name:${named.toLowerCase()}`);
+      return json({ error: "bad_login" }, 401);
     }
-    await res.body?.cancel().catch(() => {});
-    const headers = new Headers({ ...SECURITY, Location: "/" });
+    const headers = new Headers({ ...SECURITY, "Content-Type": "application/json" });
     for (const c of res.headers.getSetCookie()) headers.append("set-cookie", secure(req) && !/;\s*secure/i.test(c) ? `${c}; Secure` : c);
-    headers.append("set-cookie", userCookie(req, name));
-    return new Response(null, { status: 303, headers });
+    headers.append("set-cookie", cookie(req, COMPUTER_COOKIE, machine.id));
+    return new Response(JSON.stringify({ ok: true }), { headers });
   }
 
   const server = Bun.serve<Link, {}>({
     port,
     idleTimeout: 0,
     websocket: {
-      open: (ws) => { relay.attach(ws); store.seen(ws.data.name); },
+      open: (ws) => { relay.attach(ws); store.seen(ws.data.id); },
       message: (ws, msg) => relay.message(ws, msg),
       close: (ws) => relay.detach(ws),
       maxPayloadLength: 4 * 1024 * 1024,
@@ -105,52 +153,80 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
       const url = new URL(req.url);
       if (url.pathname === "/health") return new Response("ok");
 
-      // A computer: linking takes its account's name, and the key that comes back opens its connection.
+      // A computer. Pairing (an installed Pip, before its account) or linking (from the settings, by the account's
+      // name) gives the key that opens its connection; with the key it asks for one-time codes, and takes its name.
       if (url.pathname === "/connect") {
-        const name = store.byKey((req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, ""));
-        if (!name) return new Response("Unauthorized", { status: 401 });
-        return server.upgrade(req, { data: { name } }) ? undefined : new Response("Upgrade needed", { status: 426 });
+        const machine = store.byKey(bearer(req));
+        if (!machine) return new Response("Unauthorized", { status: 401 });
+        return server.upgrade(req, { data: { id: machine.id } }) ? undefined : new Response("Upgrade needed", { status: 426 });
       }
-      if (url.pathname === "/api/site/link" && req.method === "POST") {
+      if ((url.pathname === "/api/site/link" || url.pathname === "/api/site/pair") && req.method === "POST") {
         const ip = address(req, server);
         if (tries(`link:${ip}`).length >= LINKS) return json({ error: "remote_busy" }, 429);
         failed(`link:${ip}`);
+        if (url.pathname === "/api/site/pair") return json({ key: store.pair().key });
         const name = String((await req.json().catch(() => ({})) as any)?.name ?? "").trim();
         if (!NAME_RULE.test(name)) return json({ error: "remote_name" }, 400);
-        const key = store.link(name);
-        return key ? json({ name, key }) : json({ error: "remote_name_taken" }, 409);
+        const made = store.link(name);
+        return made ? json({ name, key: made.key }) : json({ error: "remote_name_taken" }, 409);
+      }
+      if (url.pathname === "/api/site/name" && req.method === "POST") {
+        const name = String((await req.json().catch(() => ({})) as any)?.name ?? "").trim();
+        const done = store.name(bearer(req), name);
+        if (done === "unknown") return json({ error: "remote_unlinked" }, 401);
+        return done === "ok" ? json({ name }) : json({ error: done }, done === "remote_name_taken" ? 409 : 400);
+      }
+      if (url.pathname === "/api/site/code" && req.method === "POST") {
+        const machine = store.byKey(bearer(req));
+        if (!machine) return json({ error: "remote_unlinked" }, 401);
+        for (const [code, c] of codes) if (c.until < Date.now()) codes.delete(code);
+        const code = crypto.randomUUID().replaceAll("-", "");
+        codes.set(code, { computer: machine.id, until: Date.now() + CODE_MS });
+        return json({ code, open: Date.now() - (seenHere.get(machine.id) ?? 0) < PAGE_SEEN_MS });
       }
       if (url.pathname === "/api/site/unlink" && req.method === "POST") {
-        const name = store.unlink((req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, ""));
-        if (name) relay.drop(name);
-        return json({ ok: Boolean(name) });
+        const machine = store.unlink(bearer(req));
+        if (machine) relay.drop(machine.id);
+        return json({ ok: Boolean(machine) });
       }
 
-      // A phone.
-      if (url.pathname === "/login") {
-        if (req.method === "POST") return sameSite(req) ? signIn(req, server) : new Response("Forbidden", { status: 403 });
-        return html(signInPage());
+      // A browser. /pair/<code> ties it to the computer that asked for the code, once, as that computer's own; /login
+      // was the sign-in's address before it was the app's own; /logout unties it.
+      if (url.pathname.startsWith("/pair/")) {
+        const code = url.pathname.slice("/pair/".length);
+        const found = codes.get(code);
+        codes.delete(code);
+        const machine = found && found.until > Date.now() ? store.byId(found.computer) : null;
+        return goHome(machine ? [cookie(req, COMPUTER_COOKIE, machine.id), cookie(req, HERE_COOKIE, "1")] : []);
       }
-      if (url.pathname === "/logout") {
-        return new Response(null, { status: 303, headers: { ...SECURITY, Location: "/login", "Set-Cookie": userCookie(req, "", 0) } });
-      }
-      const name = store.named(decodeURIComponent(cookieOf(req, USER_COOKIE)));
+      if (url.pathname === "/login") return goHome();
+      if (url.pathname === "/logout") return goHome([cookie(req, COMPUTER_COOKIE, "", 0), cookie(req, HERE_COOKIE, "", 0)]);
+      const machine = store.byId(cookieOf(req, COMPUTER_COOKIE));
       const api = url.pathname.startsWith("/api/") || url.pathname === "/file";
-      if (!name) return api ? json({ error: "login_required" }, 401) : new Response(null, { status: 303, headers: { ...SECURITY, Location: "/login" } });
-      if (!relay.online(name)) return api ? json({ error: "pc_offline" }, 503) : html(offlinePage(name), 503);
-      if (req.method !== "GET" && req.method !== "HEAD" && !sameSite(req)) return new Response("Forbidden", { status: 403 });
+      const reading = req.method === "GET" || req.method === "HEAD";
+      if (machine && cookieOf(req, HERE_COOKIE) === "1" && (url.pathname === "/api/me" || url.pathname === "/api/state")) seenHere.set(machine.id, Date.now());
+      // Not tied to a computer: the app's interface from here, which asks whether it is in and signs in through signIn.
+      if (!machine) {
+        if (url.pathname === "/api/me") return json({ loggedIn: false, needsAccount: false, site: true, download, mac });
+        if (url.pathname === "/api/login" && req.method === "POST") return sameSite(req) ? signIn(req, server) : new Response("Forbidden", { status: 403 });
+        if (api) return json({ error: "login_required" }, 401);
+        return (reading && appFile(url.pathname)) || new Response("Not found", { status: 404, headers: SECURITY });
+      }
+      // Its computer off: the interface from here again, which finds the computer off and says so until it is back.
+      const away = (status: number, error: string) => (!api && reading && appFile(url.pathname)) || json({ error }, status);
+      if (!relay.online(machine.id)) return away(503, "pc_offline");
+      if (!reading && !sameSite(req)) return new Response("Forbidden", { status: 403 });
       if (Number(req.headers.get("content-length") ?? 0) > BODY_MAX) return json({ error: "too_large" }, 413);
 
       const headers: Record<string, string> = {};
       for (const h of PASSED_HEADERS) { const v = req.headers.get(h); if (v) headers[h] = v; }
       const session = cookieOf(req, "job_session");
       if (session) headers.cookie = `job_session=${session}`;
-      const body = req.method === "GET" || req.method === "HEAD" ? undefined : new Uint8Array(await req.arrayBuffer());
+      const body = reading ? undefined : new Uint8Array(await req.arrayBuffer());
       try {
-        return toPhone(req, await relay.forward(name, { method: req.method, path: url.pathname + url.search, headers, body }, req.signal));
+        return toBrowser(req, await relay.forward(machine.id, { method: req.method, path: url.pathname + url.search, headers, body }, req.signal));
       } catch (err) {
-        if (err instanceof Offline) return api ? json({ error: "pc_offline" }, 503) : html(offlinePage(name), 503);
-        return api ? json({ error: "pc_no_answer" }, 504) : html(offlinePage(name), 504);
+        return err instanceof Offline ? away(503, "pc_offline") : away(504, "pc_no_answer");
       }
     },
   });
@@ -158,6 +234,8 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
 }
 
 if (import.meta.main) {
-  const site = startSite({ port: Number(process.env.PORT ?? 4180), dataFile: process.env.DATA_DIR ? path.join(process.env.DATA_DIR, "site.db") : undefined });
+  const site = startSite({
+    port: Number(process.env.PORT ?? 4180), dataFile: process.env.DATA_DIR ? path.join(process.env.DATA_DIR, "site.db") : undefined, download: process.env.PIP_DOWNLOAD,
+  });
   console.log(`Pip site: http://127.0.0.1:${site.server.port}`);
 }

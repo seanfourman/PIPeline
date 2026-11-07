@@ -1509,7 +1509,7 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
    shapes come out dashed or dotted. It is narrow, so it runs larger than the rest of the site.
    Last in the block, so it wins over the fonts set above. */
 .login-card h1, .login-card .sub, .login-card .field-label, .login-card .error-line, .login-card .login-submit,
-.login-top .lang button {
+.login-card .login-switch, .login-pc-icon b, .login-top .lang button {
   font-family: "Handjet", var(--head); font-variation-settings: "ELSH" 2; font-weight: 700; line-height: 1.15;
 }
 .login-card h1 { font-size: 46px; font-weight: 800; }
@@ -1518,6 +1518,62 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .login-card .error-line { font-size: 20px; }
 .login-card .login-submit { font-size: 27px; font-weight: 800; }
 .login-top .lang button { font-size: 20px; }
+/* On the site from a computer, the way between Pip on it and signing in to another: a line of the board's words,
+   its colour deepening on hover. */
+.login-card .login-switch {
+  align-self: center; padding: 2px 6px; border: 0; border-radius: 0; background: none; color: var(--board-ink-2); font-size: 21px;
+  text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 5px; cursor: pointer; transition: color 0.2s ease;
+}
+.login-card .login-switch:hover { color: var(--board-ink); }
+.login-card .login-switch:focus-visible { outline: var(--px) solid var(--field-focus); outline-offset: 2px; }
+.login-card a.login-submit { display: flex; align-items: center; justify-content: center; text-decoration: none; }
+/* The download says it is coming, until the installer is up: a small tag in the button's own colours, turned round. */
+.login-card .login-soon { margin-inline-start: 12px; padding: 1px 8px; background: var(--go-ink); color: var(--go); font-size: 17px; }
+/* The way to Pip on a computer, over the words (ShortcutPicture in ui/login.tsx): the introduction's computer, each of
+   its pixels --cell wide, its screen a desktop of the blue of the steps' pages, with Pip's shortcut on it in the
+   desktop's own finer pixels. A pointer comes to it in hard steps and clicks it twice, then the screen turns to the
+   morning sky with Pip rising into it, waving, and the computer's light green, until he sinks and it all starts again.
+   The board is as tall as the one that makes the account, which the site goes on to: the words a little smaller, so
+   they keep to two lines at any block size, and the gaps a little tighter, for the computer's size. */
+.login-card.pc { gap: 11.4px; }
+.login-card.pc .sub { font-size: 20px; }
+.login-pc { --cell: 9px; display: flex; justify-content: center; }
+.login-pc .welcome-monitor { width: calc(var(--cell) * 24); height: calc(var(--cell) * 21); }
+.login-pc .welcome-monitor-art { width: calc(var(--cell) * 24); }
+.login-pc .welcome-monitor-screen {
+  left: calc(var(--cell) * 3); top: calc(var(--cell) * 3); width: calc(var(--cell) * 18); height: calc(var(--cell) * 10);
+  background: #2f6fb0; animation: login-pc-screen 5.6s steps(1, end) infinite;
+}
+.login-pc .welcome-monitor-light {
+  left: calc(var(--cell) * 19); top: calc(var(--cell) * 14); width: calc(var(--cell) * 2); height: var(--cell);
+  animation: login-pc-light 5.6s steps(1, end) infinite;
+}
+.login-pc-icon { position: absolute; left: 16px; top: 10px; display: flex; flex-direction: column; align-items: center; gap: 3px; animation: login-pc-icon 5.6s steps(1, end) infinite; }
+.login-pc-mark { display: block; width: 38px; height: auto; }
+.login-pc-icon b { color: #fff; font-size: 14px; line-height: 1; }
+.login-pc-select { position: absolute; left: 12px; top: 6px; width: 46px; height: 58px; background: rgb(255 255 255 / 0.3); opacity: 0; animation: login-pc-select 5.6s steps(1, end) infinite; }
+.login-pc-pointer { position: absolute; left: 124px; top: 58px; width: 18px; height: auto; animation: login-pc-pointer 5.6s infinite; }
+.login-pc-pip { position: absolute; left: 22px; top: 8px; width: 117px; translate: 0 92px; animation: login-pc-pip 5.6s infinite; }
+.login-pc-pip svg { display: block; width: 100%; height: auto; }
+@keyframes login-pc-screen { 54% { background-color: #86c7e6; } 96% { background-color: #2f6fb0; } }
+@keyframes login-pc-light { 54% { background-color: #5fae44; } 96% { background-color: #7a5a3e; } }
+@keyframes login-pc-icon { 54% { opacity: 0; } 96% { opacity: 1; } }
+@keyframes login-pc-select { 37% { opacity: 1; } 41% { opacity: 0; } 44% { opacity: 1; } 53% { opacity: 0; } }
+@keyframes login-pc-pointer {
+  0%, 10% { translate: 0 0; opacity: 1; animation-timing-function: steps(8, end); }
+  34%, 52% { translate: -82px -28px; opacity: 1; }
+  53%, 100% { translate: -82px -28px; opacity: 0; }
+}
+@keyframes login-pc-pip {
+  0%, 54% { translate: 0 92px; animation-timing-function: steps(4, end); }
+  60%, 90% { translate: 0 0; animation-timing-function: steps(4, end); }
+  96%, 100% { translate: 0 92px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-pc .welcome-monitor-screen, .login-pc .welcome-monitor-light, .login-pc-icon, .login-pc-select, .login-pc-pointer, .login-pc-pip { animation: none; }
+  .login-pc-pointer { translate: -82px -28px; }
+  .login-pc-select { opacity: 1; }
+}
 .shell.waiting { visibility: hidden; }
 .shell.entering { animation: enter 0.45s ease-out; }
 @keyframes enter { from { opacity: 0; transform: scale(0.985); } }
@@ -1526,6 +1582,69 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
    prints lighting up one after another, toes the way you read. It fades out as the page fades in. Pip's moves
    are in its own pixels, since inside its SVG a CSS pixel is one of Pip's. */
 .boot { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; justify-items: center; gap: 30px; background: var(--bg); transition: opacity 0.35s ease; }
+/* The program stopped with its page open (Offline in app.tsx): over everything, the introduction and its big
+   conversation too, the loading screen's page in its very layout, Pip worried where he hops there and at his size
+   there, standing still and so without his shadow. Under him, where the paw prints are, what happened in the pixel
+   font, how to bring it back and what then, a line each, and "waiting" with its plug. Each line rises a little into
+   place as it fades in, softly, one after another. The screen fades in, unless it grows out of the loading screen. */
+.offline {
+  position: fixed; inset: 0; z-index: 90; display: grid; place-content: center; justify-items: center; gap: 30px;
+  background: var(--bg); color: var(--ink); text-align: center; animation: offline-in 0.3s ease;
+}
+@keyframes offline-in { from { opacity: 0; } }
+.offline-stage { position: relative; width: 132px; }
+.offline-pip { width: 132px; }
+.offline-pip .pip-shadow { display: none; }
+.offline-floor { height: 32px; }
+.offline-words {
+  position: absolute; top: calc(100% + 26px); left: 50%; translate: -50% 0; width: min(560px, calc(100vw - 48px));
+  display: grid; justify-items: center; gap: 12px;
+}
+.offline-text { display: grid; justify-items: center; }
+.offline h1 { margin: 0; font-family: var(--pixel); font-size: 34px; font-weight: 800; line-height: 1.1; }
+.offline p { margin: 0; color: var(--ink-2); font-size: 16px; line-height: 1.6; }
+.offline .offline-wait { display: flex; align-items: center; gap: 10px; margin-top: 6px; color: var(--ink-2); font-family: var(--pixel); font-size: 19px; font-weight: 700; }
+/* On the site from a computer, under the rest and quieter, in case Pip isn't on it at all: where to get it. */
+.offline .offline-get { margin-top: 4px; color: var(--ink-3); font-size: 14px; }
+.offline-get a, .offline-get button {
+  padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; font-weight: 600; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 3px; transition: color 0.2s ease;
+}
+.offline-get a:hover, .offline-get button:hover { color: var(--ink); }
+/* The Mac's command, for copying by hand where the browser wouldn't copy it: whole, picked out in one click. */
+.offline-get code, .login-card .login-command { display: block; direction: ltr; text-align: left; overflow-wrap: anywhere; user-select: all; font: 13px/1.5 Menlo, Consolas, monospace; }
+.offline-get code { margin-top: 8px; color: var(--ink); }
+.login-card .login-command { padding: 10px 12px; background: var(--field); color: var(--field-ink); box-shadow: inset 0 0 0 var(--px) var(--field-ring); }
+.offline h1, .offline-text > p, .offline .offline-wait, .offline .offline-get { animation: offline-rise 0.5s ease-out backwards; }
+.offline-text > p:first-child { animation-delay: 0.35s; }
+.offline-text > p:last-child { animation-delay: 0.7s; }
+.offline .offline-wait { animation-delay: 1.05s; }
+.offline .offline-get { animation-delay: 1.4s; }
+@keyframes offline-rise { from { opacity: 0; transform: translateY(8px); } }
+/* Waiting for Pip (Plugging in app.tsx): after the words, the socket next to them, and the plug inching toward it in
+   hard steps from the far side, its prongs first; a spark flashes twice where they meet, and it backs off again. */
+.offline-plug { --away: -9px; position: relative; display: flex; align-items: center; width: 82px; }
+:root[dir="ltr"] .offline-plug { --away: 9px; }
+:root[dir="ltr"] .offline-plugged { scale: -1 1; }
+.offline-socket { width: 27px; height: auto; }
+.offline-plugged { width: 39px; height: auto; animation: offline-plug 1.6s steps(1, end) infinite; }
+.offline-spark { position: absolute; inset-inline-start: 24px; width: 10px; height: auto; opacity: 0; animation: offline-spark 1.6s steps(1, end) infinite; }
+@keyframes offline-plug {
+  0% { translate: var(--away) 0; } 15% { translate: calc(var(--away) * 2 / 3) 0; } 30% { translate: calc(var(--away) / 3) 0; } 45% { translate: 0 0; }
+  70% { translate: calc(var(--away) / 3) 0; } 85% { translate: calc(var(--away) * 2 / 3) 0; }
+}
+@keyframes offline-spark { 45% { opacity: 1; } 55% { opacity: 0; } 60% { opacity: 1; } 68% { opacity: 0; } }
+/* Grown out of the loading screen (fromBoot in app.tsx): the loading screen's page shows under it, nothing of this one
+   till its Pip is on the ground; then its Pip goes and its paw prints and dust fade the moment this one shows where it
+   stood, the words rise in, and the page is this one's own again once they are in. */
+.offline.from-boot { background: transparent; animation: none; }
+.offline.from-boot.waiting * { visibility: hidden; animation: none; }
+.offline.from-boot.settled { background: var(--bg); }
+.boot.to-offline .boot-pip { visibility: hidden; }
+.boot.to-offline .boot-paws, .boot.to-offline .boot-dust { opacity: 0; transition: opacity 0.3s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .offline, .offline * { animation: none; }
+}
 .boot.done { opacity: 0; pointer-events: none; }
 .boot-stage { position: relative; width: 132px; }
 .boot-pip { width: 132px; }
@@ -1937,6 +2056,52 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-points [data-point="send"] { --c: var(--board-ink-2); color: var(--board-ink-2); }
 /* The way in under the list, one rule left empty above it: the page's gap and this margin make a rule. */
 .welcome-start { margin-top: calc(var(--rule) - 14px); }
+/* The first step (DownloadStep in welcome.tsx), a rule left empty over it as over a form: the computer, four screen
+   pixels to each of its own, and beside it the three little steps to the program, a line each on the rules with their
+   pictures in their own colours, three screen pixels to each of theirs, and never ticked: they can't be seen done,
+   only the program on. Under them,
+   a rule lower, whether it is, on a note as the email's hours have: a light, and a line on each rule, what in the
+   labels' bold pixels and why under it; amber in a ring of dark amber with the light blinking while it waits, and the
+   board's light green in a ring of its dark green with the light steady once it is on. The computer's screen is the
+   night's navy with three dots lit in turn, and on, the morning sky with Pip himself rising into it from its foot and
+   waving there, cut off where the screen ends, and its light green, both colours fading in. The screen and the light
+   are boxes of their own under and over the drawing, where it is open. */
+.welcome-download { display: flex; align-items: center; gap: 28px; margin-top: calc(var(--rule) - 14px); }
+.welcome-monitor { position: relative; flex: none; width: 96px; height: 84px; }
+.welcome-monitor-art { position: relative; display: block; width: 96px; height: auto; }
+.welcome-monitor-screen {
+  position: absolute; left: 12px; top: 12px; width: 72px; height: 40px; overflow: hidden;
+  background: #1f2463; transition: background-color 0.4s ease;
+}
+.welcome-monitor.on .welcome-monitor-screen { background: #86c7e6; }
+.welcome-monitor-screen i { position: absolute; top: 16px; width: 8px; height: 8px; background: #8fa0e8; opacity: 0.25; animation: monitor-wait 1.2s steps(1, end) infinite; }
+.welcome-monitor-screen i:nth-child(1) { left: 16px; }
+.welcome-monitor-screen i:nth-child(2) { left: 32px; animation-delay: 0.4s; }
+.welcome-monitor-screen i:nth-child(3) { left: 48px; animation-delay: 0.8s; }
+@keyframes monitor-wait { 0% { opacity: 1; } 33.3% { opacity: 0.25; } }
+.welcome-monitor-pip { position: absolute; left: 10px; top: 4px; width: 52px; animation: monitor-pip-in 0.5s ease-out 0.15s backwards; }
+.welcome-monitor-pip svg { display: block; width: 100%; height: auto; }
+@keyframes monitor-pip-in { from { translate: 0 40px; } }
+.welcome-monitor-light { position: absolute; left: 76px; top: 56px; width: 8px; height: 4px; background: #7a5a3e; transition: background-color 0.3s ease; }
+.welcome-monitor.on .welcome-monitor-light { background: var(--w-on-hi); }
+.welcome-download-steps { flex: 1; display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.welcome-download-steps li { display: flex; align-items: flex-start; gap: 10px; min-height: var(--rule); color: var(--board-ink); font-size: 16px; line-height: var(--rule); }
+.welcome-download-icon { flex: none; width: auto; height: 21px; margin-top: 3px; }
+.welcome-download-note {
+  --ring-c: var(--cta-lo); display: flex; align-items: center; gap: 16px; min-height: calc(var(--rule) * 2); margin-top: var(--rule); padding-inline: 16px;
+  background: var(--w-chip-hi); color: var(--board-ink-2); box-shadow: var(--ring); animation: pop 0.36s steps(3, end);
+}
+.welcome-download-note.on { --ring-c: var(--w-on-lo); background: #dcefd3; }
+.welcome-download-led { flex: none; width: 28px; height: auto; }
+.welcome-download-note:not(.on) .welcome-download-led { animation: led-blink 1.2s steps(1, end) infinite; }
+@keyframes led-blink { 50% { opacity: 0.35; } }
+.welcome-download-note p { display: flex; flex-direction: column; margin: 0; font-size: 14px; line-height: var(--rule); }
+.welcome-download-note strong { color: var(--board-ink); font-family: var(--pixel); font-size: 19px; font-weight: 800; }
+.welcome-download-note.on strong { color: var(--w-on-lo); }
+@media (prefers-reduced-motion: reduce) {
+  .welcome-monitor-screen i, .welcome-monitor-pip, .welcome-download-note, .welcome-download-note:not(.on) .welcome-download-led { animation: none; }
+  .welcome-monitor-screen i { opacity: 1; }
+}
 /* The board's look for its own parts, below, stops at a conversation on it (welcome-convo), which keeps the site's
    chat look inside its frame: each of these rules is :not(.welcome-convo *). */
 .welcome-board .field:not(.welcome-convo *) { gap: 9px; }
@@ -2535,7 +2700,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-track {
   --track-gap: 26px;
   position: fixed; top: calc(50dvh + var(--w-max) / 2 + var(--track-gap)); left: 50%; translate: -50% 0;
-  display: grid; grid-template-columns: repeat(7, 64px); gap: 10px; margin: 0; padding: 0; list-style: none;
+  display: grid; grid-template-columns: repeat(8, 64px); gap: 10px; margin: 0; padding: 0; list-style: none;
 }
 .welcome-track li { display: flex; justify-content: center; }
 .welcome-track button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; border: 0; background: none; color: #fff; cursor: pointer; }
@@ -2569,7 +2734,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
   .welcome-foot { padding: 16px var(--sheet) 20px; }
   .welcome-board h1 { font-size: 32px; }
   .welcome-pip { width: 62px; inset-inline-start: 20px; }
-  .welcome-track { --track-gap: 18px; grid-template-columns: repeat(7, 38px); gap: 8px; }
+  .welcome-track { --track-gap: 18px; grid-template-columns: repeat(8, 34px); gap: 6px; }
   .welcome-track-name { display: none; }
   .welcome-go { width: 100%; justify-content: flex-end; }
 }

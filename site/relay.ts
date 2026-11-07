@@ -1,10 +1,10 @@
 // The connections from the computers, and the requests passed along them. Each computer keeps one WebSocket open
-// to the site (web/remote.ts); a request from its owner's phone goes down it as a head and its body in pieces, and
-// the answer comes back the same way, streamed, so a conversation's live events (server-sent events) arrive as they
-// happen. A phone that leaves mid-answer cancels it on the computer.
+// to the site (web/remote.ts), known by its id (store.ts); a request from its owner's browser goes down it as a head
+// and its body in pieces, and the answer comes back the same way, streamed, so a conversation's live events
+// (server-sent events) arrive as they happen. A browser that leaves mid-answer cancels it on the computer.
 import type { ServerWebSocket } from "bun";
 
-export type Link = { name: string };
+export type Link = { id: string };
 export type Forwarded = { method: string; path: string; headers: Record<string, string>; body?: Uint8Array };
 type Waiting = { ws: ServerWebSocket<Link>; head: (h: { status: number; headers: [string, string][] }) => void; fail: (e: Error) => void; stream?: ReadableStreamDefaultController<Uint8Array> };
 
@@ -17,7 +17,6 @@ export class Offline extends Error {}
 export function createRelay() {
   const computers = new Map<string, ServerWebSocket<Link>>();
   const waiting = new Map<string, Waiting>();
-  const key = (name: string) => name.toLowerCase();
   const send = (ws: ServerWebSocket<Link>, msg: unknown) => { try { ws.send(JSON.stringify(msg)); } catch { /* gone */ } };
   const finish = (id: string, err?: Error) => {
     const w = waiting.get(id);
@@ -29,17 +28,17 @@ export function createRelay() {
   return {
     // A computer's new connection replaces its old one.
     attach(ws: ServerWebSocket<Link>) {
-      const old = computers.get(key(ws.data.name));
-      computers.set(key(ws.data.name), ws);
+      const old = computers.get(ws.data.id);
+      computers.set(ws.data.id, ws);
       if (old && old !== ws) old.close(4000, "replaced");
     },
     detach(ws: ServerWebSocket<Link>) {
-      if (computers.get(key(ws.data.name)) === ws) computers.delete(key(ws.data.name));
+      if (computers.get(ws.data.id) === ws) computers.delete(ws.data.id);
       for (const [id, w] of waiting) if (w.ws === ws) finish(id, new Offline("disconnected"));
     },
     // Closes a computer's connection, as when it is unlinked.
-    drop(name: string) { computers.get(key(name))?.close(4001, "unlinked"); },
-    online: (name: string) => computers.has(key(name)),
+    drop(computer: string) { computers.get(computer)?.close(4001, "unlinked"); },
+    online: (computer: string) => computers.has(computer),
     message(ws: ServerWebSocket<Link>, raw: string | Buffer) {
       let msg: any;
       try { msg = JSON.parse(String(raw)); } catch { return; }
@@ -50,9 +49,9 @@ export function createRelay() {
       else if (msg.t === "end") finish(msg.id);
       else if (msg.t === "error") finish(msg.id, new Error(String(msg.message ?? "failed")));
     },
-    // Passes a request to the named computer and gives back its answer as it comes.
-    async forward(name: string, req: Forwarded, signal?: AbortSignal): Promise<Response> {
-      const ws = computers.get(key(name));
+    // Passes a request to the computer and gives back its answer as it comes.
+    async forward(computer: string, req: Forwarded, signal?: AbortSignal): Promise<Response> {
+      const ws = computers.get(computer);
       if (!ws) throw new Offline("offline");
       const id = crypto.randomUUID();
       const body = req.body ?? new Uint8Array();

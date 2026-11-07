@@ -2,7 +2,13 @@
 const he = {
   brand: { name: "פיפ", tagline: "המלווה שלך לעבודה הבאה" },
   login: {
-    title: "ברוך שובך!", sub: "פיפ רץ את כל הדרך ביער כדי לפגוש אותך.", user: "שם משתמש", password: "סיסמה", submit: "כניסה",
+    title: "כיף שחזרת!", sub: "פיפ רץ את כל הדרך ביער כדי לפגוש אותך.", user: "שם משתמש", password: "סיסמה", submit: "כניסה",
+    siteSub: "נכנסים עם שם המשתמש והסיסמה של פיפ במחשב שלך. המחשב צריך להיות דלוק, ופיפ פתוח בו.",
+    pc: {
+      title: "פיפ עובד מהמחשב שלך", text: "פותחים את פיפ מקיצור הדרך Pip. בלי חשבון במחשב הוא מתחיל בהיכרות, ועם חשבון בהתחברות.",
+      remote: "התחברות מרחוק למחשב אחר", here: "פיפ במחשב הזה", mac: "הורדה ל-Mac",
+      macCopy: "העתקת פקודת ההתקנה ל-Mac", macCopied: "הועתק! מדביקים ב-Terminal",
+    },
     wrong: "שם המשתמש או הסיסמה לא נכונים.", logout: "יציאה",
     createTitle: "נעים להכיר!", createSub: "בוחרים שם משתמש וסיסמה לכניסה במחשב הזה.", repeat: "שוב את הסיסמה", create: "יצירת חשבון",
     mismatch: "הסיסמאות לא זהות.", short: "הסיסמה צריכה לפחות {n} תווים.",
@@ -63,6 +69,14 @@ const he = {
   },
   welcome: {
     label: "שלבי ההיכרות", next: "המשך", back: "חזרה",
+    // The first step, the program on the computer (welcome.tsx, DownloadStep): done here, waited for on the site.
+    download: {
+      title: "פיפ במחשב שלך!", waitTitle: "מורידים את פיפ", short: "הורדה",
+      text: "פיפ עובד מהמחשב שלך, ושם נשמרים קורות החיים והמשרות.",
+      steps: { get: "מורידים", open: "פותחים את הקובץ שירד", link: "פיפ מתחבר לבד" },
+      on: "מחובר!", onWhy: "פיפ פועל במחשב הזה", waiting: "מחכה למחשב שלך", waitingWhy: "אחרי שפותחים את הקובץ שירד, הדף הזה ימשיך לבד",
+      get: "הורדה ל-Windows",
+    },
     hello: {
       title: "נעים מאוד, אני פיפ", short: "פתיחה",
       // What Pip does, a line each with its picture (welcome.tsx, POINTS).
@@ -136,6 +150,15 @@ const he = {
       },
       almostTitle: "כמעט שם", missing: "נשאר עוד מה שכאן למטה. אפשר להשלים עכשיו, או אחר כך מדף הבית.",
     },
+  },
+  // The program stopped with its page open (app.tsx, Offline).
+  offline: {
+    title: "פיפ לא פועל במחשב",
+    text: "כדי להמשיך, פותחים את התוכנה של פיפ.",
+    then: "הדף ימשיך מכאן לבד ברגע שפיפ חוזר.",
+    wait: "מחכה לפיפ",
+    none: "אין עדיין את פיפ במחשב?", get: "הורדה ל-Windows",
+    macCopy: "העתקת פקודת ההתקנה ל-Mac", macCopied: "הועתק. מדביקים ב-Terminal ולוחצים Enter.",
   },
   next: {
     waitingTitle: "צריך ממך תשובה", waitingText: "עצרתי באמצע, כי ההחלטה הזו שלך. מיד אחרי התשובה אמשיך.", waitingLabel: "לשיחה",
@@ -411,6 +434,7 @@ const he = {
     remote_name_taken: "שם המשתמש שלך כבר תפוס באתר.", remote_name: "כדי לשמש באתר, שם המשתמש צריך להתחיל באות או בספרה, בלי סימנים מיוחדים.",
     remote_no_account: "צריך קודם חשבון במחשב הזה.", remote_unlinked: "הגישה מהטלפון בוטלה באתר.", remote_busy: "יותר מדי ניסיונות. אפשר לנסות שוב בעוד רבע שעה.",
     pc_offline: "המחשב לא מחובר עכשיו.", pc_no_answer: "המחשב לא ענה. כדאי לנסות שוב.",
+    login_no_pc: "המחשב לא ענה. כדאי לבדוק שהוא דלוק ושפיפ פתוח בו, ולנסות שוב.", too_large: "זה גדול מדי לשליחה דרך האתר. אפשר עד 40 MB.",
   },
 };
 
@@ -420,6 +444,12 @@ const en: Dict = {
   brand: { name: "Pip", tagline: "Your companion to the next job" },
   login: {
     title: "Welcome back!", sub: "Pip ran all the way through the forest to meet you.", user: "Username", password: "Password", submit: "Log in",
+    siteSub: "Log in with the username and password of Pip on your computer. The computer has to be on, with Pip open on it.",
+    pc: {
+      title: "Pip works from your computer", text: "Open Pip from its Pip shortcut. With no account on the computer it starts with the introduction, and with one, with the login.",
+      remote: "Log in remotely to another computer", here: "Pip on this computer", mac: "Download for Mac",
+      macCopy: "Copy the command for a Mac", macCopied: "Copied! Paste it into Terminal",
+    },
     wrong: "That username or password isn't right.", logout: "Log out",
     createTitle: "Nice to meet you!", createSub: "Pick a username and a password for logging in on this computer.", repeat: "Password again", create: "Create account",
     mismatch: "The passwords don't match.", short: "The password needs at least {n} characters.",
@@ -480,6 +510,13 @@ const en: Dict = {
   },
   welcome: {
     label: "Getting started", next: "Continue", back: "Back",
+    download: {
+      title: "Pip is on your computer!", waitTitle: "Download Pip", short: "Download",
+      text: "Pip works from your computer, where your CV and jobs are kept.",
+      steps: { get: "Download", open: "Open the downloaded file", link: "Pip connects on his own" },
+      on: "Connected!", onWhy: "Pip is running on this computer", waiting: "Waiting for your computer", waitingWhy: "Once the downloaded file is open, this page carries on by itself",
+      get: "Download for Windows",
+    },
     hello: {
       title: "Hi, I'm Pip", short: "Start",
       points: {
@@ -551,6 +588,14 @@ const en: Dict = {
       },
       almostTitle: "Almost there", missing: "What's below is still to do. You can finish it now, or later from the home page.",
     },
+  },
+  offline: {
+    title: "Pip isn't running on the computer",
+    text: "To carry on, open the Pip program.",
+    then: "This page picks up from here by itself as soon as Pip is back.",
+    wait: "Waiting for Pip",
+    none: "Don't have Pip on the computer yet?", get: "Download for Windows",
+    macCopy: "Copy the command that installs it on a Mac", macCopied: "Copied. Paste it into Terminal and press Enter.",
   },
   next: {
     waitingTitle: "I need your answer", waitingText: "I stopped because only you can decide this. As soon as you answer, I'll carry on.", waitingLabel: "Open the conversation",
@@ -825,6 +870,7 @@ const en: Dict = {
     remote_name_taken: "Your username is already taken on the site.", remote_name: "To work on the site, the username has to start with a letter or a digit, with no special characters.",
     remote_no_account: "This computer needs an account first.", remote_unlinked: "Phone access was turned off on the site.", remote_busy: "Too many tries. Try again in a quarter of an hour.",
     pc_offline: "The computer isn't connected right now.", pc_no_answer: "The computer didn't answer. Try again.",
+    login_no_pc: "The computer didn't answer. Check that it's on with Pip open on it, and try again.", too_large: "That's too big to send through the site; up to 40 MB.",
   },
 };
 

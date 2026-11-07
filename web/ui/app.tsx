@@ -1,13 +1,13 @@
 // The frame: shared state, language, theme, the sidebar, Pip's notices, and which screen shows.
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { translate, type Lang } from "./i18n";
-import { api, errorText, Icon, type ApiError } from "./kit";
+import { api, copyText, desktopSystem, errorText, Icon, isComputer, macCommand, type ApiError } from "./kit";
 import { Pip, PipMark, type Mood } from "./pip";
 import { Apps } from "./views/apps";
 import { Chat } from "./views/chat";
 import { Editor, Files, Profile, Rules, Tools } from "./views/docs";
-import { Home } from "./views/home";
-import { Login } from "./login";
+import { Home, Sprite } from "./views/home";
+import { Login, type SiteInfo } from "./login";
 import { Jobs, SavedJobs } from "./views/jobs";
 import { Portals } from "./views/portals";
 import { Settings } from "./views/settings";
@@ -246,6 +246,99 @@ const FONT_WAIT_MS = 3000;
 // leave its trail rather than flash by.
 const BOOT_MIN_MS = 1000;
 
+// The program stopped with its page open (its icon's Quit, the computer turned off, or from a phone the computer
+// unreachable): the whole page waits under the loading screen's own layout, Pip worried where he hops there, at his
+// size there, and under him, where the paw prints were, what happened and how to bring it back, rising in softly line
+// after line, and a plug inching to its socket while it waits. It asks every few seconds, and once the program answers
+// the page loads afresh, the way it was left.
+// Found so while the loading screen still shows (fromBoot), it doesn't fade in over it but grows out of it: once the
+// loading screen has had its time (ready, the page's booted) and its Pip is on the ground between two hops, he stays
+// there, worried, the paw prints fade under him, and the words rise in (from-boot in styles.css).
+const OFFLINE_RETRY_MS = 2500;
+// The loading screen's hop (boot-hop in styles.css): how long one takes, and when in it Pip is up in the air.
+const HOP_MS = 720;
+const HOP_AIR = [0.12 * HOP_MS, 0.64 * HOP_MS];
+// How long the words take to be in.
+const SETTLE_MS = 2200;
+// Waiting for Pip: a plug inching to its socket in hard steps, a spark each time they meet, and back again
+// (offline-plug in styles.css). The plug's metal prongs come out of its body toward the socket, which comes before it
+// in the line, and its cable out of the other side.
+const SOCKET = ["OOOOOOOOO", "OwwwwwwwO", "OwOwwwOwO", "OwOwwwOwO", "OwwwwwwwO", "OwwwOwwwO", "OwwwwwwwO", "OOOOOOOOO"];
+const PLUG = [".....OOOOO...", ".....OyyyOmmm", "cccccOyyyO...", ".....OyyyOmmm", ".....OOOOO..."];
+const SPARK = ["X...X", ".X.X.", "..X..", ".X.X.", "X...X"];
+const PLUG_INK = "#3a2414";
+const PLUG_AMBER = "#ffc94a";
+
+function Plugging() {
+  return (
+    <span className="offline-plug" aria-hidden="true">
+      <Sprite className="offline-socket" rows={SOCKET} colors={{ O: PLUG_INK, w: "#fffaf0" }} />
+      <Sprite className="offline-spark" rows={SPARK} colors={{ X: PLUG_AMBER }} />
+      <Sprite className="offline-plugged" rows={PLUG} colors={{ O: PLUG_INK, y: PLUG_AMBER, c: PLUG_INK, m: "#9aa0a8" }} />
+    </span>
+  );
+}
+
+function Offline({ fromBoot, ready }: { fromBoot: boolean; ready: boolean }) {
+  const { t } = useApp();
+  const [phase, setPhase] = useState<"waiting" | "showing" | "settled">(fromBoot ? "waiting" : "settled");
+  // On the site from a computer, in case Pip isn't on it at all: where to get it, for what it runs (the site's
+  // installer beside this page there, or on a Mac the command for Terminal, copied). On the computer's own address Pip
+  // is on it already.
+  const [system] = useState(() => (!["127.0.0.1", "localhost"].includes(location.hostname) && isComputer() ? desktopSystem() : ""));
+  const [copied, setCopied] = useState<"" | "yes" | "no">("");
+  useEffect(() => {
+    const check = () => { fetch("/api/me", { cache: "no-store" }).then((res) => { if (res.ok) location.reload(); }).catch(() => {}); };
+    const timer = setInterval(check, OFFLINE_RETRY_MS);
+    // Brought up after a while out of sight, when the browser lets its timer run only once a minute: at once.
+    addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => { clearInterval(timer); removeEventListener("focus", check); document.removeEventListener("visibilitychange", check); };
+  }, []);
+  useEffect(() => {
+    if (phase !== "waiting" || !ready) return;
+    const hop = document.querySelector("#boot .boot-pip .pip-bob")?.getAnimations()[0]?.currentTime;
+    const at = typeof hop === "number" ? hop % HOP_MS : 0;
+    const timer = setTimeout(() => setPhase("showing"), at > HOP_AIR[0] && at < HOP_AIR[1] ? HOP_AIR[1] - at : 0);
+    return () => clearTimeout(timer);
+  }, [phase, ready]);
+  // In the same paint as this Pip shows, so the loading screen's and this one are never both or neither on screen; the
+  // loading screen goes once the words are in and this page is opaque over it.
+  useLayoutEffect(() => {
+    if (phase === "settled" && fromBoot) document.getElementById("boot")?.remove();
+    if (phase !== "showing") return;
+    document.getElementById("boot")?.classList.add("to-offline");
+    const timer = setTimeout(() => setPhase("settled"), SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [phase]);
+  return (
+    <div className={`offline ${fromBoot ? "from-boot" : ""} ${phase}`} role="alertdialog" aria-modal="true" aria-labelledby="offline-title" aria-describedby="offline-text">
+      <div className="offline-stage">
+        <Pip mood="worried" className="offline-pip" />
+        <div className="offline-words">
+          <h1 id="offline-title">{t("offline.title")}</h1>
+          <div id="offline-text" className="offline-text">
+            <p>{t("offline.text")}</p>
+            <p>{t("offline.then")}</p>
+          </div>
+          <p className="offline-wait" role="status">{t("offline.wait")}<Plugging /></p>
+          {system && (
+            <p className="offline-get">
+              {t("offline.none")}{" "}
+              {system === "mac"
+                ? <button type="button" onClick={() => copyText(macCommand()).then((ok) => setCopied(ok ? "yes" : "no"))}>{t(copied === "yes" ? "offline.macCopied" : "offline.macCopy")}</button>
+                : <a href="/PipSetup.exe" download>{t("offline.get")}</a>}
+              {copied === "no" && <code dir="ltr">{macCommand()}</code>}
+            </p>
+          )}
+        </div>
+      </div>
+      {/* As tall as the loading screen's paw prints, so Pip stands where he does there. */}
+      <span className="offline-floor" aria-hidden="true" />
+    </div>
+  );
+}
+
 export function App() {
   const [s, setS] = useState<AppState>(EMPTY);
   const [loaded, setLoaded] = useState(false);
@@ -255,6 +348,8 @@ export function App() {
   const [auth, setAuth] = useState<"unknown" | "in" | "out">("unknown");
   // No account on this computer yet: the login makes one (auth.ts).
   const [needsAccount, setNeedsAccount] = useState(false);
+  // On the site, before a phone or a computer reaches a computer of its own: the site answers for it (site/server.ts).
+  const [site, setSite] = useState<SiteInfo | null>(null);
   // The forest run plays when the page opens, not after a logout.
   const [intro, setIntro] = useState(true);
   const [[view, arg], setRoute] = useState(readHash);
@@ -265,6 +360,16 @@ export function App() {
   const draft = useRef("");
   const prefersDark = useMemo(() => matchMedia("(prefers-color-scheme: dark)"), []);
   const [systemDark, setSystemDark] = useState(prefersDark.matches);
+  // Whether the program has stopped answering: asked every few seconds, logged in or not, and known at once when any
+  // call to it fails (kit.tsx's api says so); while it has, Offline covers everything. "boot" when it was so while the
+  // loading screen still showed, which Offline then grows out of.
+  const [offline, setOffline] = useState<false | "boot" | "later">(false);
+  useEffect(() => {
+    const down = () => setOffline((was) => was || (document.querySelector("#boot:not(.done)") ? "boot" : "later"));
+    addEventListener("pip-offline", down);
+    const timer = setInterval(() => { api("me").catch(() => {}); }, 5000);
+    return () => { removeEventListener("pip-offline", down); clearInterval(timer); };
+  }, []);
 
   const refresh = useCallback(async () => {
     const next = await api<AppState>("state");
@@ -284,6 +389,8 @@ export function App() {
     if (!ready || booted) return;
     const timer = setTimeout(() => {
       setBooted(true);
+      // Grown out of by the offline screen, which takes its Pip over and then takes it away (Offline).
+      if (document.querySelector(".offline.from-boot")) return;
       const boot = document.getElementById("boot");
       boot?.classList.add("done");
       setTimeout(() => boot?.remove(), 400);
@@ -292,7 +399,11 @@ export function App() {
   }, [ready, booted]);
 
   useEffect(() => {
-    api<{ loggedIn: boolean; needsAccount: boolean }>("me").then((me) => { setNeedsAccount(me.needsAccount); setAuth(me.loggedIn ? "in" : "out"); }).catch(() => setAuth("out"));
+    api<{ loggedIn: boolean; needsAccount: boolean; site?: boolean; download?: string; mac?: boolean }>("me").then((me) => {
+      setNeedsAccount(me.needsAccount);
+      setSite(me.site ? { download: me.download ?? "", mac: me.mac === true } : null);
+      setAuth(me.loggedIn ? "in" : "out");
+    }).catch(() => setAuth("out"));
     const onExpired = () => { setIntro(false); setAuth("out"); };
     addEventListener("pip-login-required", onExpired);
     const onScheme = (e: MediaQueryListEvent) => setSystemDark(e.matches);
@@ -377,7 +488,8 @@ export function App() {
 
   return (
     <AppContext.Provider value={ctx}>
-      {auth === "out" && booted && <Login intro={intro} create={needsAccount} onDone={() => { setNeedsAccount(false); setRoute(readHash()); setAuth("in"); }} />}
+      {/* Not under Offline, where its forest would run unseen and its field take the focus. */}
+      {auth === "out" && booted && !offline && <Login intro={intro} create={needsAccount} site={site} onDone={() => { setNeedsAccount(false); setRoute(readHash()); setAuth("in"); }} />}
       {welcome && <div className={`welcome-wrap ${booted ? "entering" : "waiting"}`}><Welcome /></div>}
       {/* Laid out but hidden until the state is in too, so the first thing shown is the real page; then it fades in. */}
       {auth === "in" && !welcome && (
@@ -388,6 +500,7 @@ export function App() {
           <Toast />
         </div>
       )}
+      {offline && <Offline fromBoot={offline === "boot"} ready={booted} />}
     </AppContext.Provider>
   );
 }

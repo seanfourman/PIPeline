@@ -11,12 +11,21 @@ import { translate, type Lang } from "./i18n";
 export type ApiError = Error & { code?: string; params?: Record<string, string | number>; status?: number };
 
 export async function api<T = any>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api/${path}`, body === undefined ? {} : {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`/api/${path}`, body === undefined ? {} : {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    });
+  } catch (err) {
+    // Nothing answered: the program isn't running (app.tsx's Offline).
+    if ((err as Error).name !== "AbortError") dispatchEvent(new Event("pip-offline"));
+    throw err;
+  }
   const data = await res.json().catch(() => ({}));
   // The server restarted or the session ended, so the login comes back.
   if (res.status === 401 && data.error === "login_required" && path !== "me") dispatchEvent(new Event("pip-login-required"));
+  // From a phone, the site answered for the computer: it is off, or Pip isn't running on it (site/server.ts).
+  if (data.error === "pc_offline" || data.error === "pc_no_answer") dispatchEvent(new Event("pip-offline"));
   if (!res.ok) {
     const err: ApiError = new Error(data.error || String(res.status));
     err.code = String(data.error ?? "").replaceAll(" ", "_");
@@ -46,6 +55,18 @@ export function External({ url, className = "btn", children }: { url: string; cl
   const href = safeUrl(url);
   return href ? <a className={className} href={href} target="_blank" rel="noopener noreferrer">{children}</a> : null;
 }
+
+// A computer rather than a phone or a tablet: it can hover, or its pointer is fine.
+export const isComputer = () => !matchMedia("(hover: none) and (pointer: coarse)").matches;
+// What a computer runs, for the installer to offer: "windows", "mac", or "" for anything else.
+export function desktopSystem(): "windows" | "mac" | "" {
+  const platform = String((navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform || "").toLowerCase();
+  return platform.startsWith("win") ? "windows" : platform.startsWith("mac") ? "mac" : "";
+}
+// The command that installs Pip on a Mac from the site this page is on (install.sh there), to paste into Terminal.
+export const macCommand = () => `curl -fsSL ${location.origin}/install.sh | bash`;
+// Whether the browser let it onto the clipboard.
+export const copyText = (text: string) => navigator.clipboard.writeText(text).then(() => true, () => false);
 
 type BtnProps = React.ButtonHTMLAttributes<HTMLButtonElement> & { kind?: "" | "primary" | "cta" | "danger" | "ghost" };
 export const Btn = ({ kind = "", className = "", type = "button", ...rest }: BtnProps) => <button type={type} className={`btn ${kind} ${className}`} {...rest} />;

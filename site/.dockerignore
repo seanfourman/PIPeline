@@ -1,0 +1,3 @@
+# Only the site's code goes up: never its local records.
+data/
+*.db

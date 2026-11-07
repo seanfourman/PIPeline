@@ -131,3 +131,6 @@ web/data/
 /site/data/
 # Bundled from web/ui/ on every start
 web/public/build/
+# The installer's build (installer/build.ts): the files it stages and the PipSetup.exe it makes
+/installer/stage/
+/installer/out/

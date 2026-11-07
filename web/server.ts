@@ -38,11 +38,31 @@ mkdirSync(APP_DIR, { recursive: true });
 if (!existsSync(TOKEN_FILE)) writeFileSync(TOKEN_FILE, crypto.randomUUID().replaceAll("-", ""));
 const TOKEN = readFileSync(TOKEN_FILE, "utf8").trim();
 const START_URL = `http://127.0.0.1:${PORT}/?t=${TOKEN}`;
-// Phone access through the site (remote.ts). PIP_SITE is the site's address to offer before one is linked.
-const remote = createRemote({ handle, port: PORT, localToken: TOKEN, defaultSite: process.env.PIP_SITE ?? "" });
+// The site (remote.ts). PIP_SITE is its address: an installed Pip, which the launcher gives it to, pairs with it as
+// soon as it starts and opens there; one run from the repository only offers it in the settings.
+const remote = createRemote({
+  handle, port: PORT, localToken: TOKEN, defaultSite: process.env.PIP_SITE ?? "", pairWith: process.env.PIP_SITE ?? "", accountName: () => auth.user(),
+});
 
-const openBrowser = () => {
-  if (!process.env.JOB_WEB_NO_BROWSER) Bun.spawn(["cmd", "/c", "start", "", START_URL], { stdout: "ignore", stderr: "ignore" });
+// Where to open Pip in the browser: straight on its site by a one-time code when linked to one that answers in time
+// (remote.ts), or else here, on the start link; and whether a page of it is open on this computer already, so that no
+// second one opens. A page asks every few seconds (/api/me, /api/state), but one out of sight for a while only once a
+// minute: here it is seen by the server (pageSeen), and on the site by the site.
+const PAGE_SEEN_MS = 75_000;
+let pageSeen = 0;
+const openPlan = async () => {
+  const away = await remote.openUrl().catch(() => null);
+  return { url: away?.url ?? START_URL, already: Date.now() - pageSeen < PAGE_SEEN_MS || Boolean(away?.open) };
+};
+// The default browser on a link: Windows' start, a Mac's open, or the desktop's own elsewhere.
+const openInBrowser = (url: string) => {
+  const command = process.platform === "win32" ? ["cmd", "/c", "start", "", url] : [process.platform === "darwin" ? "open" : "xdg-open", url];
+  try { Bun.spawn(command, { stdout: "ignore", stderr: "ignore" }); } catch { /* no browser to open it in */ }
+};
+const openBrowser = async () => {
+  const plan = await openPlan();
+  console.log(plan.already ? "Pip is open in the browser already." : `Opening it ${plan.url === START_URL ? "here" : "on the site"}.`);
+  if (!plan.already) openInBrowser(plan.url);
 };
 
 const SECURITY_HEADERS = {
@@ -87,9 +107,16 @@ async function loginRoutes(req: Request, url: URL): Promise<Response | null> {
   if (url.pathname === "/api/account" && req.method === "POST") {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     try {
+      // Paired with its site before there was an account: the name is taken there first, for signing in there. With
+      // the site out of reach the account is made anyway, and takes the name once connected.
+      if (auth.needsAccount()) {
+        await remote.claim(String(body.user ?? "").trim()).catch((err) => {
+          if (err instanceof RemoteError && err.message !== "remote_unreachable") throw new AccountError(err.message);
+        });
+      }
       return loggedIn(await auth.create(body.user, body.password));
     } catch (err) {
-      if (err instanceof AccountError) return json({ error: err.message }, err.message === "account_exists" ? 409 : 400);
+      if (err instanceof AccountError) return json({ error: err.message }, ["account_exists", "remote_name_taken"].includes(err.message) ? 409 : 400);
       throw err;
     }
   }
@@ -124,7 +151,7 @@ function rejected(req: Request, url: URL): Response | null {
     if (!req.headers.get("content-type")?.startsWith("application/json")) return new Response("Unsupported", { status: 415 });
   }
   if (!hasCookie(req)) {
-    return new Response("Open the interface with start-web.cmd. פותחים את הממשק דרך start-web.cmd.", {
+    return new Response("Open Pip from its shortcut, or with start-web.cmd. פותחים את פיפ מקיצור הדרך שלו, או דרך start-web.cmd.", {
       status: 401, headers: { ...SECURITY_HEADERS, "Content-Type": "text/plain; charset=utf-8" },
     });
   }
@@ -420,14 +447,23 @@ setInterval(() => automation.tick(), AUTOMATION_CHECK_MS);
 // Every request, from this computer's browser or passed on from the phone by the site (remote.ts).
 async function handle(req: Request): Promise<Response> {
   const url = new URL(req.url);
+  // Asked where to open Pip, by the launcher (installer/launcher.cs) or a second start, which open it there or, with a
+  // page open already, bring that one up.
+  if (url.pathname === "/open" && url.searchParams.get("t") === TOKEN && HOSTS.has(req.headers.get("host") ?? "")) {
+    return json(await openPlan());
+  }
+  // The start link: on its site, when linked to one that answers in time (remote.ts), or else here.
   if (url.pathname === "/" && url.searchParams.get("t") === TOKEN && HOSTS.has(req.headers.get("host") ?? "")) {
+    const away = await remote.openUrl().catch(() => null);
     return new Response(null, {
       status: 303,
-      headers: { Location: "/", "Set-Cookie": `job_token=${TOKEN}; HttpOnly; SameSite=Strict; Path=/`, ...SECURITY_HEADERS },
+      headers: { Location: away?.url ?? "/", "Set-Cookie": `job_token=${TOKEN}; HttpOnly; SameSite=Strict; Path=/`, ...SECURITY_HEADERS },
     });
   }
   const refusal = rejected(req, url);
   if (refusal) return refusal;
+  // A page of Pip open on this computer, asking as it does every few seconds (not one on the site, passed on).
+  if ((url.pathname === "/api/me" || url.pathname === "/api/state") && req.headers.get("x-pip-relayed") !== "1") pageSeen = Date.now();
   const login = await loginRoutes(req, url);
   if (login) return login;
   if (url.pathname.startsWith("/api/")) {
@@ -450,11 +486,15 @@ try {
 } catch (err) {
   if ((err as { code?: string }).code !== "EADDRINUSE") throw err;
   console.log("The interface is already running. Opening it.");
-  openBrowser();
+  // The one running says where (/open), unless a page of it is open already.
+  if (!process.env.JOB_WEB_NO_BROWSER) {
+    const plan = await fetch(`http://127.0.0.1:${PORT}/open?t=${TOKEN}`).then((r) => r.json()).catch(() => null) as { url?: string; already?: boolean } | null;
+    if (!plan?.already) openInBrowser(plan?.url ?? START_URL);
+  }
   process.exit(0);
 }
 
 remote.start();
 console.log(`Job search interface: http://127.0.0.1:${server.port}`);
 console.log("Keep this window open while you use it.");
-openBrowser();
+if (!process.env.JOB_WEB_NO_BROWSER) openBrowser();

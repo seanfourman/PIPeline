@@ -1,9 +1,12 @@
-// Phone access: this computer keeps a connection open to the site (site/server.ts), and the site passes along it
-// each request its owner's phone makes there. This file answers them with the server's own handler, as if they were
-// made here, so the phone gets the whole interface and the account's login guards it as it does here. Nothing on
-// this computer is opened to the internet: the connection goes out from it. Linking takes the account's name on the
-// site and keeps the key it gives, sealed (vault.ts), in user/app/remote.json.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+// The site: this computer keeps a connection open to it (site/server.ts), and the site passes along it each request a
+// browser tied to this computer makes there, from this computer or a phone. This file answers them with the server's
+// own handler, as if they were made here, so the browser gets the whole interface and the account's login guards it
+// as it does here. Nothing on this computer is opened to the internet: the connection goes out from it.
+// An installed Pip (pairWith, its site) pairs as soon as it starts, before it has an account, and opens itself on the
+// site (openUrl); the account's name, once there is one, is what signing in there takes (claim). One run from the
+// repository links from the settings instead, by the account's name. Either way the key the site gives is kept,
+// sealed (vault.ts), in user/app/remote.json; turning it off from the settings leaves a note there that it is off.
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { APP_DIR } from "./user";
 import { seal, unseal } from "./vault";
@@ -36,8 +39,12 @@ export function siteAddress(input: unknown) {
   }
 }
 
-export function createRemote({ handle, port, localToken, file = FILE, defaultSite = "" }: {
+// How long opening Pip waits for its site before it opens here instead.
+const OPEN_WAIT_MS = 4000;
+
+export function createRemote({ handle, port, localToken, file = FILE, defaultSite = "", pairWith = "", accountName = () => "" }: {
   handle: (req: Request) => Promise<Response>; port: number; localToken: string; file?: string; defaultSite?: string;
+  pairWith?: string; accountName?: () => string;
 }) {
   let ws: WebSocket | null = null;
   let state: RemoteState = "off";
@@ -45,14 +52,16 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
   let retry = 1000;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let ping: ReturnType<typeof setInterval> | undefined;
+  let pairing: Promise<void> | null = null;
   const running = new Map<string, AbortController>();
   const arriving = new Map<string, { req: any; parts: Buffer[] }>();
 
-  // The link as saved, its key still sealed; read opens the key for when it is used.
+  // The link as saved, its key still sealed (a paired computer's name is empty until its account has one); read opens
+  // the key for when it is used.
   const saved = (): Saved | null => {
     try {
       const s = JSON.parse(readFileSync(file, "utf8"));
-      return s?.site && s?.name && s?.key ? { site: s.site, name: s.name, key: s.key } : null;
+      return s?.site && s?.key ? { site: s.site, name: String(s.name ?? ""), key: s.key } : null;
     } catch {
       return null;
     }
@@ -61,13 +70,49 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
     const s = saved();
     try { return s ? { ...s, key: unseal(s.key) } : null; } catch { return null; }
   };
+  const save = (link: Saved) => {
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify({ site: link.site, name: link.name, key: seal(link.key) }));
+  };
+  // Turned off from the settings: an installed Pip then stays off its site, until linked again.
+  const turnedOff = () => { try { return JSON.parse(readFileSync(file, "utf8"))?.off === true; } catch { return false; } };
   const send = (msg: unknown) => { try { ws?.send(JSON.stringify(msg)); } catch { /* reconnecting */ } };
+  // Joins the site with no name yet, and connects.
+  const pair = (site: string) => (pairing ??= (async () => {
+    const origin = siteAddress(site);
+    const res = await fetch(`${origin}/api/site/pair`, { method: "POST" }).catch(() => null);
+    const data = await res?.json().catch(() => ({})) as { key?: string } | undefined;
+    if (!res?.ok || !data?.key) throw new RemoteError("remote_unreachable");
+    save({ site: origin, name: "", key: data.key });
+    connect();
+  })().finally(() => { pairing = null; }));
+  // Takes the account's name on the site, for a paired computer that hasn't one there yet.
+  async function claim(name: string) {
+    const link = read();
+    if (!link || link.name || !name) return;
+    const res = await fetch(`${link.site}/api/site/name`, {
+      method: "POST", headers: { Authorization: `Bearer ${link.key}`, "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+    }).catch(() => null);
+    if (!res) throw new RemoteError("remote_unreachable");
+    const data = await res.json().catch(() => ({})) as { error?: string };
+    if (!res.ok) throw new RemoteError(data.error ?? "remote_unreachable");
+    save({ ...link, name });
+  }
+  function start() {
+    clearTimeout(timer);
+    if (saved() || !pairWith || turnedOff()) return connect();
+    pair(pairWith).catch(() => {
+      timer = setTimeout(start, retry);
+      retry = Math.min(retry * 2, RETRY_MAX_MS);
+    });
+  }
 
   // One request from the phone, answered by the handler and sent back as it comes: the head, then the body in pieces.
   async function answer(msg: any, body: Buffer) {
     const control = new AbortController();
     running.set(msg.id, control);
-    const headers = new Headers({ host: `127.0.0.1:${port}` });
+    // Marked as passed on from the site, so the server can tell it from a page on this computer.
+    const headers = new Headers({ host: `127.0.0.1:${port}`, "x-pip-relayed": "1" });
     for (const h of PASSED_HEADERS) if (msg.headers?.[h]) headers.set(h, String(msg.headers[h]));
     const session = String(msg.headers?.cookie ?? "").match(/(?:^|;\s*)job_session=([0-9a-f]+)/)?.[1];
     headers.set("cookie", `job_token=${localToken}${session ? `; job_session=${session}` : ""}`);
@@ -137,6 +182,8 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
       error = "";
       retry = 1000;
       ping = setInterval(() => send({ t: "ping" }), 25_000);
+      // An account made while the site was out of reach takes its name there now.
+      if (!link.name) claim(accountName()).catch(() => {});
     };
     socket.onmessage = (e) => receive(e.data);
     socket.onclose = (e) => {
@@ -156,8 +203,24 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
       const s = saved();
       return { linked: Boolean(s), site: s?.site ?? defaultSite, name: s?.name ?? "", state: s ? state : "off", error };
     },
-    start: connect,
+    // Connects when linked; an installed Pip that isn't pairs first, and tries again while its site is out of reach.
+    start,
     stop: close,
+    claim,
+    // Where to open Pip in the browser: its site, by a one-time code that ties the browser to this computer, once it is
+    // connected there, and whether a page of it that Pip opened here is open there still (open); or null, when it
+    // isn't linked or the site doesn't answer in time, and Pip opens here.
+    async openUrl(wait = OPEN_WAIT_MS): Promise<{ url: string; open: boolean } | null> {
+      const by = Date.now() + wait;
+      if (pairing) await Promise.race([pairing.catch(() => {}), Bun.sleep(wait)]);
+      const link = read();
+      if (!link) return null;
+      while (state !== "on" && Date.now() < by) await Bun.sleep(100);
+      if (state !== "on") return null;
+      const res = await fetch(`${link.site}/api/site/code`, { method: "POST", headers: { Authorization: `Bearer ${link.key}` }, signal: AbortSignal.timeout(Math.max(500, by - Date.now())) }).catch(() => null);
+      const data = await res?.json().catch(() => ({})) as { code?: string; open?: boolean } | undefined;
+      return res?.ok && data?.code ? { url: `${link.site}/pair/${data.code}`, open: data.open === true } : null;
+    },
     // Takes the account's name on the site and keeps the key it gives; then connects.
     async link(site: unknown, name: string) {
       const origin = siteAddress(site);
@@ -166,18 +229,18 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
       if (!res) throw new RemoteError("remote_unreachable");
       const data = await res.json().catch(() => ({})) as { key?: string; error?: string };
       if (!res.ok || !data.key) throw new RemoteError(data.error ?? "remote_unreachable");
-      mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, JSON.stringify({ site: origin, name, key: seal(data.key) }));
+      save({ site: origin, name, key: data.key });
       error = "";
       connect();
     },
-    // Gives the name back on the site, so it can be taken again, and stops.
+    // Gives the name back on the site, so it can be taken again, and stops; Pip opens here from then on.
     async unlink() {
       const link = read();
       close();
       state = "off";
       if (link) await fetch(`${link.site}/api/site/unlink`, { method: "POST", headers: { Authorization: `Bearer ${link.key}` } }).catch(() => null);
-      if (existsSync(file)) rmSync(file, { force: true });
+      mkdirSync(path.dirname(file), { recursive: true });
+      writeFileSync(file, JSON.stringify({ off: true }));
     },
   };
 }

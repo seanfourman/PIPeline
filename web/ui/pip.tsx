@@ -326,8 +326,9 @@ export function foxPixels(view: "front" | "frontLeap" | "back" | "leap", mood: M
 }
 
 // The logo: Pip's head in one colour, the text colour around it. Big pointed ears, happy ^ ^ eyes cut out,
-// cheek fluff out to the sides, and a short snout. The tab icon, public/icon.svg, is the same head in orange.
-const MARK = [
+// cheek fluff out to the sides, and a short snout. The tab icon, public/icon.svg, is the same head in orange, and
+// so is the installer's (installer/art.ts).
+export const MARK = [
   "X.............X",
   "XX...........XX",
   "XXX.........XXX",

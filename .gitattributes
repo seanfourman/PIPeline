@@ -1,0 +1,2 @@
+# Shell scripts run on a Mac: their lines end in \n alone wherever they are checked out.
+*.sh text eol=lf

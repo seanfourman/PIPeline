@@ -56,7 +56,12 @@ export function openLogin(which: Login) {
   if (!existsSync(exe)) throw new ChatbotError("ai_cli_missing");
   checked = 0;
   if (process.platform === "win32") Bun.spawn(["cmd", "/c", "start", title, exe, ...argv], { stdout: "ignore", stderr: "ignore" });
-  else Bun.spawn([exe, ...argv], { stdout: "ignore", stderr: "ignore" });
+  // On a Mac, in a Terminal window: the command quoted for the shell, then as AppleScript's text.
+  else if (process.platform === "darwin") {
+    const line = [exe, ...argv].map((a) => `'${a.replaceAll("'", `'\\''`)}'`).join(" ");
+    const script = `"${line.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+    Bun.spawn(["osascript", "-e", `tell application "Terminal" to do script ${script}`, "-e", 'tell application "Terminal" to activate'], { stdout: "ignore", stderr: "ignore" });
+  } else Bun.spawn([exe, ...argv], { stdout: "ignore", stderr: "ignore" });
 }
 
 // The whole of what is asked, as one text: the instructions, the conversation so far, and the new message. The

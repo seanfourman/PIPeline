@@ -1,8 +1,9 @@
 // The introduction: what a new user goes through once, in the login's forest, with Pip on a board that changes for
-// each step. It asks for what everything else needs: the name employers see, an AI to work with, the CV the profile
-// is built from (/setup reads it, in a conversation shown on the board), where to search, and whether to get the
-// daily email. A step can be left and come back to, and the track under the board shows which are done. Finishing it
-// marks it done (server.ts), with or without every step; the home page opens it again while there is no profile.
+// each step. Its first is the program itself on the computer, done here by being here (the site waits for it). Then it
+// asks for what everything else needs: the name employers see, an AI to work with, the CV the profile is built from
+// (/setup reads it, in a conversation shown on the board), where to search, and whether to get the daily email. A
+// step can be left and come back to, and the track under the board shows which are done. Finishing it marks it done
+// (server.ts), with or without every step; the home page opens it again while there is no profile.
 // Going to another step is the login's change of language: Pip jumps down off the board, the board flips like a sign
 // to the new step, and Pip jumps back on.
 import React, { createContext, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -20,7 +21,7 @@ import { Conversation, readBase64 } from "./chat";
 import { Digits, PixelArt, Sprite, Tick } from "./home";
 import { AiKeys, MarketsEditor, RUN_TIMES, RUN_TIMES_ADVISED } from "./settings";
 
-const STEPS = ["hello", "name", "ai", "cv", "search", "mail", "done"] as const;
+const STEPS = ["download", "hello", "name", "ai", "cv", "search", "mail", "done"] as const;
 type Step = (typeof STEPS)[number];
 // The steps with a wider board (the class on welcome-center): wide for the ones with the most on them, and the end's
 // as wide as its ticket.
@@ -49,6 +50,8 @@ const RUN_SPEED = 1.1;
 const TOSS_MS = 520;
 const TOSS_RISE = 90;
 const READY_BY_MS = 3000;
+// Opened at the end, how long after the board pops in he jumps down to pack.
+const DOWN_AFTER_MS = 600;
 
 // The board's own little drawings, in its pixels: a page for a document, and the arrow back (drawn pointing to the
 // start of a right-to-left line, turned round in English by its class, like the site's back icon).
@@ -224,6 +227,75 @@ function Actions({ back, note, children }: { back?: () => void; note?: React.Rea
       <div className="welcome-go">{children}</div>
     </div>,
     foot,
+  );
+}
+
+// The computer the first step waits for: a monitor on its stand, drawn round a screen that is the night's navy with
+// three dots taking turns while Pip isn't on it; once he is, the morning sky, Pip himself rising into it from its
+// foot and waving, and the power light by the screen's foot green. The screen and its light are their own boxes under
+// and over the drawing, for their colours to fade. children put something else on the screen: the site's way to Pip
+// on a computer (ui/login.tsx).
+const MONITOR = [
+  "OOOOOOOOOOOOOOOOOOOOOOOO", "OccccccccccccccccccccccO", "OcOOOOOOOOOOOOOOOOOOOOcO", ...Array<string>(10).fill("OcO..................OcO"),
+  "OcOOOOOOOOOOOOOOOOOOOOcO", "Occcccccccccccccccc..ccO", "OOOOOOOOOOOOOOOOOOOOOOOO", ".........OddddO.........", ".........OddddO.........",
+  "......OOOOOOOOOOOO......", "......OccccccccccO......", "......OOOOOOOOOOOO......",
+];
+const MONITOR_COLORS = { O: "#3a2414", c: "#f1dfb6", d: "#c9a46a" };
+
+export function Monitor({ on, children }: { on: boolean; children?: React.ReactNode }) {
+  return (
+    <span className={`welcome-monitor ${on ? "on" : ""}`} aria-hidden="true">
+      <span className="welcome-monitor-screen">
+        {children ?? (on ? <span className="welcome-monitor-pip"><Pip mood="wave" /></span> : <><i /><i /><i /></>)}
+      </span>
+      <Sprite className="welcome-monitor-art" rows={MONITOR} colors={MONITOR_COLORS} />
+      <span className="welcome-monitor-light" />
+    </span>
+  );
+}
+
+// The first step: Pip's program on the computer, as the three little steps to it beside the computer, only what to do
+// (whether the file came down or was opened can't be known here, only whether the program is on), and under them, on
+// a note of its own, whether it is on. Here, in the program, it is: the program is what shows this, so it says so
+// and moves on. On the site (on false), before the program is found, the computer waits, and the way on is the
+// download. The steps' pictures in their own colours: an arrow coming down into a tray, the page that came down, and
+// Pip; the note's a light, green and steady once on, amber and blinking while it waits.
+const INK = "#3a2414";
+const DOWNLOAD_STEPS = [
+  { key: "get", rows: ["..OOO..", "..OYO..", "OOOYOOO", ".OYYYO.", "O.OYO.O", "O..O..O", "OOOOOOO"] },
+  { key: "open", rows: ["OOOOO..", "OpppOO.", "OpbbpOO", "OpppppO", "ObbbbpO", "OpppppO", "OOOOOOO"] },
+  { key: "link", rows: ["O.......O", "OoO...OoO", "OooOOOooO", "OokoookoO", ".OwwkwwO.", "..OwwwO..", "...OOO..."] },
+];
+const STEP_COLORS = { O: INK, Y: "#ffc94a", p: "#fffaf0", b: "#2f6fb0", o: "#f2892e", w: "#fff2df", k: "#2a2236" };
+const LED = ["..OOO..", ".OhLLO.", "OhLLLLO", "OLLLLLO", "OLLLLLO", ".OLLLO.", "..OOO.."];
+
+export function DownloadStep({ on = true, next, download }: { on?: boolean; next?: () => void; download?: string }) {
+  const { t } = useApp();
+  return (
+    <>
+      <div className="welcome-download">
+        <Monitor on={on} />
+        <ol className="welcome-download-steps">
+          {DOWNLOAD_STEPS.map((s) => (
+            <li key={s.key}>
+              <Sprite className="welcome-download-icon" rows={s.rows} colors={STEP_COLORS} />
+              <span dir="auto">{t(`welcome.download.steps.${s.key}`)}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className={`welcome-download-note ${on ? "on" : ""}`} role="status">
+        <Sprite className="welcome-download-led" rows={LED} colors={{ O: INK, h: "#ffffff", L: on ? "#5fae44" : "#ffc94a" }} />
+        <p dir="auto">
+          <strong>{t(on ? "welcome.download.on" : "welcome.download.waiting")}</strong>
+          <span>{t(on ? "welcome.download.onWhy" : "welcome.download.waitingWhy")}</span>
+        </p>
+      </div>
+      <Actions>
+        {on ? <Btn kind="cta" autoFocus onClick={next}>{t("welcome.next")}</Btn>
+          : download && <a className="btn cta" href={download}>{t("welcome.download.get")}</a>}
+      </Actions>
+    </>
   );
 }
 
@@ -1155,6 +1227,8 @@ export function Welcome() {
   const { s, t, lang, refresh } = useApp();
   const logins = s.aiLogins ?? {};
   const done: Record<Step, boolean> = {
+    // Pip's program is on this computer: it is what shows this.
+    download: true,
     hello: Boolean(s.intro?.name),
     name: Boolean(s.intro?.name),
     ai: Boolean(logins.claude || logins.openai || s.aiKeys.openai),
@@ -1163,8 +1237,8 @@ export function Welcome() {
     mail: Boolean(s.settings.automation?.enabled),
     done: false,
   };
-  // It opens where it was left: the first step still to do.
-  const [step, setStep] = useState<Step>(() => (!done.name ? "hello" : (["ai", "cv", "search"] as Step[]).find((x) => !done[x]) ?? "mail"));
+  // It opens where it was left: the first step still to do, or the end with every one done.
+  const [step, setStep] = useState<Step>(() => (!done.name ? "hello" : (["ai", "cv", "search", "mail"] as Step[]).find((x) => !done[x]) ?? "done"));
   const at = STEPS.indexOf(step);
   // The end names what is still to do, if anything, with a way back to each; it can still be finished. With every
   // step done it has a ticket for the road instead (Ticket), filled in while Pip packs, and stamped with his paw;
@@ -1237,9 +1311,10 @@ export function Welcome() {
   // Pip reading the CV, in the background of the steps after it, until the profile is saved: working while /setup
   // runs, and otherwise waiting for the user (an approval, his questions, or a run that stopped).
   const reading: "" | "work" | "ask" = !setup || s.profileReady ? "" : setup.status === "running" ? "work" : "ask";
-  const mood: Mood = step === "hello" ? "wave" : step === "done" ? (missing.length ? "idle" : "happy")
+  const mood: Mood = step === "hello" ? "wave" : step === "download" ? "happy" : step === "done" ? (missing.length ? "idle" : "happy")
     : reading === "work" ? "work" : reading === "ask" ? "ask" : "idle";
   const body: Record<Step, React.ReactNode> = {
+    download: <DownloadStep next={next} />,
     hello: <Actions><Btn kind="cta" autoFocus onClick={next}>{t("welcome.hello.go")}</Btn></Actions>,
     name: <NameStep next={next} back={back} />,
     ai: <AiStep next={next} back={back} />,
@@ -1410,9 +1485,10 @@ function useStepChange(step: Step, setStep: (s: Step) => void, end: Step | null)
   // Setting off: whether the page is stamped while he can't go yet, and what is under way once he does.
   const wantsOff = useRef(false);
   const offing = useRef<{ timers: ReturnType<typeof setTimeout>[]; run?: Animation } | null>(null);
-  // At the end: whether its ticket can come in, held back until he holds the bag open for it (or READY_BY_MS);
-  // whether he holds it open now, catching what is tossed; and what is on its way through the air.
-  const [ready, setReady] = useState(true);
+  // At the end: whether its ticket can come in, held back until he holds the bag open for it (or READY_BY_MS), from
+  // the start when it opens there; whether he holds it open now, catching what is tossed; and what is on its way
+  // through the air.
+  const [ready, setReady] = useState(() => calm || step !== end);
   const readyBy = useRef<ReturnType<typeof setTimeout>>();
   const catching = useRef(false);
   const tossed = useRef(new Set<Element>());
@@ -1545,6 +1621,27 @@ function useStepChange(step: Step, setStep: (s: Step) => void, end: Step | null)
     };
   };
 
+  // Down off the board to beside it, from where he stands on it, unless there is no room there.
+  const jumpDown = () => {
+    const from = perch.current!.getBoundingClientRect();
+    const spot = spotFor(current.current, from);
+    if (spot.behind) return false;
+    away.current = { from, wait: spot.wait, px: from.width / 22, behind: false, state: "down" };
+    jumpOff.current = true;
+    setFlying({ left: from.left, top: from.top, width: from.width, behind: false });
+    return true;
+  };
+  // Opened at the end, every step done before: once the board has popped in he jumps down beside it and packs, as
+  // when it is come to, the ticket waiting for him.
+  useEffect(() => {
+    if (calm || step !== end) return;
+    awaitBag();
+    at(DOWN_AFTER_MS / 1000, () => {
+      if (away.current || current.current !== ends.current) return;
+      if (!perch.current || !board.current || !jumpDown()) letIn();
+    });
+  }, []);
+
   // The ticket is stamped: after a moment he puts the bag he holds on and goes; still on the ground from the step's
   // change and not yet packing, he packs and goes; on the board, he jumps down off it to beside it first. Unless
   // another step has come meanwhile.
@@ -1559,12 +1656,7 @@ function useStepChange(step: Step, setStep: (s: Step) => void, end: Step | null)
         else if (a.state === "ground" && !turning.current) settle();
         return;
       }
-      const from = perch.current.getBoundingClientRect();
-      const spot = spotFor(current.current, from);
-      if (spot.behind) { wantsOff.current = false; return; }
-      away.current = { from, wait: spot.wait, px: from.width / 22, behind: false, state: "down" };
-      jumpOff.current = true;
-      setFlying({ left: from.left, top: from.top, width: from.width, behind: false });
+      if (!jumpDown()) wantsOff.current = false;
     });
   };
   // From where he stands to past the screen's edge on his side, faster as he goes.
