@@ -1,7 +1,7 @@
 // Shared building blocks. Text from postings and from the agent always goes in as text, never as HTML.
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  ArrowUp, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Cpu, createLucideIcon, Download, ExternalLink, Feather, FileText, Folder, Gauge,
+  ArrowUp, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, ClipboardCheck, Cpu, createLucideIcon, Download, ExternalLink, Feather, FileText, Folder, Gauge,
   Gem, LayoutGrid, Leaf, ListChecks, LogOut, MapPin, MessageCircle, Moon, Plus, RefreshCw, Search, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
   Sparkles, Square, Sun, TriangleAlert, User, X, Zap,
   type LucideIcon,
@@ -198,7 +198,7 @@ const Office = createLucideIcon("building-front", [
 // Icons from Lucide, an open icon set (ISC licence); only these are bundled.
 const ICONS: Record<string, LucideIcon> = {
   home: House, jobs: Search, saved: Bookmark, apps: FileText, chat: MessageCircle, profile: User, settings: Settings,
-  rules: ListChecks, tools: LayoutGrid, files: Folder, plus: Plus, sun: Sun, moon: Moon, logout: LogOut, filters: SlidersHorizontal,
+  rules: ListChecks, tools: LayoutGrid, files: Folder, more: CircleEllipsis, plus: Plus, sun: Sun, moon: Moon, logout: LogOut, filters: SlidersHorizontal,
   ai: Sparkles, open: ExternalLink, apply: ClipboardCheck, pin: MapPin, close: X, onward: ChevronLeft, back: ChevronRight, down: ChevronDown, check: Check, find: Search,
   warn: TriangleAlert, send: ArrowUp, stop: Square, download: Download, file: FileText, portals: Office, refresh: RefreshCw, gauge: Gauge,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,

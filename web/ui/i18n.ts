@@ -26,7 +26,7 @@ const he = {
   },
   nav: {
     home: "הבית", jobs: "משרות", saved: "משרות שמורות", portals: "פורטלים", apps: "ההגשות שלי", chat: "שיחות", you: "עליך", profile: "הפרופיל שלי", settings: "הגדרות",
-    advanced: "מתקדם", rules: "כללי קורות חיים", tools: "כל הכלים", files: "קבצים", waiting: "{n} מחכות לך",
+    advanced: "מתקדם", rules: "כללי קורות חיים", tools: "כל הכלים", files: "קבצים", more: "עוד", waiting: "{n} מחכות לך",
     dark: "מצב כהה", light: "מצב בהיר", language: "שפה", main: "ניווט ראשי", welcome: "היכרות",
   },
   pip: {
@@ -519,7 +519,7 @@ const en: Dict = {
   },
   nav: {
     home: "Home", jobs: "Jobs", saved: "Saved jobs", portals: "Portals", apps: "My applications", chat: "Conversations", you: "About you", profile: "My profile", settings: "Settings",
-    advanced: "Advanced", rules: "CV rules", tools: "All tools", files: "Files", waiting: "{n} waiting for you",
+    advanced: "Advanced", rules: "CV rules", tools: "All tools", files: "Files", more: "More", waiting: "{n} waiting for you",
     dark: "Dark mode", light: "Light mode", language: "Language", main: "Main navigation", welcome: "Getting started",
   },
   pip: {

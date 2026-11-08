@@ -1,5 +1,5 @@
 // The frame: shared state, language, theme, the sidebar, Pip's notices, and which screen shows.
-import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { translate, type Lang } from "./i18n";
 import { api, copyText, desktopSystem, errorText, Icon, isComputer, macCommand, type ApiError } from "./kit";
 import { Pip, PipMark, type Mood } from "./pip";
@@ -97,11 +97,13 @@ export function friendlyTitle(title: string, t: Ctx["t"]) {
   return detail ? `${name}: ${detail}` : name;
 }
 
-// One flat list, like a social site's sidebar; the order still runs from daily use to the advanced pages.
+// One flat list, like a social site's sidebar; the order still runs from daily use to the advanced pages. The first
+// SHOWN are in the list, and those after them in More's menu at its end, where any page added later goes too.
 const NAV: [string, string][] = [
   ["dash", "home"], ["jobs", "jobs"], ["saved", "saved"], ["portals", "portals"], ["apps", "apps"], ["chat", "chat"],
   ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"],
 ];
+const SHOWN = 10;
 
 // The sidebar. Language and theme live on the settings page; the foot is the account, with a button to log out. Beside
 // the logo, here only, a tag that says Pip is still in beta.
@@ -110,6 +112,17 @@ function Sidebar() {
   const current = view === "cv" || view === "letter" ? "files" : view;
   const waiting = s.sessions.filter((x) => x.status === "waiting").length;
   const name = String(s.settings.displayName ?? "").trim() || s.account || "";
+  const more = NAV.slice(SHOWN);
+  // A page's row, in the list or in More's menu; i, its place, is for the menu's rows coming in one after another.
+  const row = ([id, icon]: [string, string], i: number) => (
+    <a key={id} href={`#/${id}`} aria-current={current === id ? "page" : undefined} style={{ "--i": i } as React.CSSProperties}>
+      <span className="nav-icon">
+        <Icon name={icon} filled={current === id} />
+        {id === "chat" && waiting > 0 && <span className="count" aria-label={t("nav.waiting", { n: waiting })}>{waiting}</span>}
+      </span>
+      <span className="nav-label">{t(`nav.${id === "dash" ? "home" : id}`)}</span>
+    </a>
+  );
   return (
     <nav className="side" aria-label={t("nav.main")}>
       <div className="brand-row">
@@ -117,15 +130,8 @@ function Sidebar() {
         <span className="beta">{t("brand.beta")}</span>
       </div>
       <div className="nav">
-        {NAV.map(([id, icon]) => (
-          <a key={id} href={`#/${id}`} aria-current={current === id ? "page" : undefined}>
-            <span className="nav-icon">
-              <Icon name={icon} filled={current === id} />
-              {id === "chat" && waiting > 0 && <span className="count" aria-label={t("nav.waiting", { n: waiting })}>{waiting}</span>}
-            </span>
-            <span className="nav-label">{t(`nav.${id === "dash" ? "home" : id}`)}</span>
-          </a>
-        ))}
+        {NAV.slice(0, SHOWN).map(row)}
+        {more.length > 0 && <More here={more.some(([id]) => id === current)}>{more.map(row)}</More>}
       </div>
       <a className="btn post" href="#/chat/new" aria-label={t("chat.new")}><Icon name="plus" /><span>{t("chat.new")}</span></a>
       <div className="account">
@@ -134,6 +140,96 @@ function Sidebar() {
         <button type="button" className="account-out" onClick={logout} aria-label={t("login.logout")}><Icon name="logout" /></button>
       </div>
     </nav>
+  );
+}
+
+// The More menu's gap from its button, and the least it keeps from the window's top and bottom.
+const MORE_GAP = 6;
+const MORE_EDGE = 8;
+
+// More, at the end of the sidebar's list, as on a social site: a row like the others, three dots in a circle and the
+// word, that opens a round menu of the pages after the list's first SHOWN. The menu is as wide as the sidebar inside
+// its edges, and opens above More, over the rows before it; under it only where there is no room above (a phone's
+// top bar), as under it, it would lie over part of the main button. It pops out of More's middle and goes back into
+// it (styles.css). It is a popover, so it stands above everything, and a click outside, Escape, a page picked in it,
+// the page scrolling or the window changing size close it, as they do Select's list. Opened with the keys, its first
+// page takes the focus, the arrow keys go up and down it, and Tab out of either end closes it. While the page you
+// are on is in it, More is bold and its icon filled, as that page's own row would be.
+function More({ here, children }: { here: boolean; children: React.ReactNode }) {
+  const { t } = useApp();
+  const id = useId();
+  const button = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  // Whether the menu was open as More was pressed: the press has closed it already then, and the click that follows
+  // should not open it again.
+  const wasOpen = useRef(false);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const el = menu.current;
+    if (!el) return;
+    const toggled = (e: Event) => setOpen((e as ToggleEvent).newState === "open");
+    el.addEventListener("toggle", toggled);
+    return () => el.removeEventListener("toggle", toggled);
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => { if (!menu.current?.contains(e.target as Node)) menu.current?.hidePopover(); };
+    const shut = () => menu.current?.hidePopover();
+    addEventListener("scroll", away, true);
+    addEventListener("resize", shut);
+    return () => { removeEventListener("scroll", away, true); removeEventListener("resize", shut); };
+  }, [open]);
+
+  const show = (keys: boolean) => {
+    const el = button.current, pop = menu.current, side = el?.closest<HTMLElement>(".side");
+    if (!el || !pop || !side) return;
+    if (pop.matches(":popover-open")) { pop.hidePopover(); return; }
+    // Inside the sidebar's padding, and its border and scrollbar where it has them.
+    const bar = side.getBoundingClientRect(), pad = getComputedStyle(side);
+    const left = bar.left + side.clientLeft + parseFloat(pad.paddingLeft);
+    Object.assign(pop.style, { left: `${left}px`, width: `${side.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight)}px` });
+    pop.showPopover();
+    // Then, shown and with its height, above More or under it, growing from More's middle, before it is drawn.
+    const at = el.getBoundingClientRect(), height = pop.offsetHeight;
+    const above = at.top - MORE_GAP - MORE_EDGE;
+    const top = height <= above || above > innerHeight - at.bottom - MORE_GAP - MORE_EDGE ? at.top - MORE_GAP - height : at.bottom + MORE_GAP;
+    Object.assign(pop.style, { top: `${top}px`, transformOrigin: `${at.left + at.width / 2 - left}px ${at.top + at.height / 2 - top}px` });
+    if (keys) pop.querySelector("a")?.focus({ preventScroll: true });
+  };
+  const keys = (e: React.KeyboardEvent) => {
+    const links = [...(menu.current?.querySelectorAll("a") ?? [])];
+    const at = links.indexOf(document.activeElement as HTMLAnchorElement);
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      links[(at + (e.key === "ArrowDown" ? 1 : -1) + links.length) % links.length]?.focus();
+    } else if (e.key === "Tab" && at === (e.shiftKey ? 0 : links.length - 1)) {
+      // Back onto More, or on past it.
+      menu.current?.hidePopover();
+      button.current?.focus({ preventScroll: true });
+      if (e.shiftKey) e.preventDefault();
+    }
+  };
+
+  return (
+    <>
+      <button
+        ref={button} type="button" className={`nav-more ${here ? "here" : ""}`} aria-expanded={open} aria-controls={`${id}-menu`}
+        onPointerDown={() => { wasOpen.current = open; }}
+        onClick={(e) => { if (wasOpen.current) wasOpen.current = false; else show(e.detail === 0); }}
+      >
+        <span className="nav-icon"><Icon name="more" filled={here} /></span>
+        <span className="nav-label">{t("nav.more")}</span>
+      </button>
+      {/* popover is not in React 18's types yet, so it goes in as a plain attribute. */}
+      <div
+        ref={menu} id={`${id}-menu`} {...{ popover: "auto" }} className="more-menu" onKeyDown={keys}
+        onClick={(e) => { if ((e.target as Element).closest("a")) menu.current?.hidePopover(); }}
+      >
+        {children}
+      </div>
+    </>
   );
 }
 
