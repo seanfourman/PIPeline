@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { COMMANDS, useApp } from "../app";
 import { SaveNote, useAutoSave } from "../autosave";
-import { api, Btn, Card, Field, Markdown, Page, Spinner } from "../kit";
+import { api, Btn, Card, Field, goTo, Markdown, Page, Spinner } from "../kit";
 
 const Loading = () => { const { t } = useApp(); return <div className="row note"><Spinner />{t("common.loading")}</div>; };
 
@@ -72,7 +72,7 @@ function DocumentCard({ kind }: { kind: "profile" | "rules" }) {
 
 function ViaChat({ draftKey }: { draftKey: string }) {
   const { t, draft } = useApp();
-  return <Btn onClick={() => { draft.current = t(draftKey); location.hash = "#/chat/new"; }}>{t("common.viaChat")}</Btn>;
+  return <Btn onClick={() => { draft.current = t(draftKey); goTo("/chat/new"); }}>{t("common.viaChat")}</Btn>;
 }
 
 export function Profile() {
@@ -202,16 +202,16 @@ export function Files() {
         <h2>{t("files.sources")}</h2>
         {!sources ? <Loading /> : sources.length ? sources.map((x) => (
           <div key={`${x.kind}/${x.name}`} className="list-link">
-            <a className="ellipsis" dir="ltr" href={`#/${x.kind}/${x.name}`}>{x.name}</a>
+            <a className="ellipsis" dir="ltr" href={`/${x.kind}/${encodeURIComponent(x.name)}`}>{x.name}</a>
             <span className="note">{x.kind === "cv" ? t("apps.cv") : t("apps.letter")}</span>
           </div>
         )) : <p className="note">{t("files.noSources")}</p>}
       </Card>
       <div className="files">
         <nav className="card file-list" aria-label={t("files.title")}>
-          <a className="file-link" href="#/rules">{t("files.links.rules")}</a>
-          <a className="file-link" href="#/profile">{t("files.links.profile")}</a>
-          <a className="file-link" href="#/settings">{t("files.links.settings")}</a>
+          <a className="file-link" href="/rules">{t("files.links.rules")}</a>
+          <a className="file-link" href="/profile">{t("files.links.profile")}</a>
+          <a className="file-link" href="/settings">{t("files.links.settings")}</a>
           {error && <p className="error-line">{error}</p>}
           {groups?.map((g) => (
             <React.Fragment key={g.title}>
@@ -261,7 +261,7 @@ export function Editor({ kind, name }: { kind: string; name: string }) {
   };
   return (
     <Page wide title={t(kind === "cv" ? "editor.cvTitle" : "editor.letterTitle")} sub={t(kind === "cv" ? "editor.cvSub" : "editor.letterSub")}
-      actions={<><a className="btn" href="#/files">{t("editor.back")}</a><Btn kind="primary" disabled={busy || !doc} onClick={build}>{t("editor.build")}</Btn></>}>
+      actions={<><a className="btn" href="/files">{t("editor.back")}</a><Btn kind="primary" disabled={busy || !doc} onClick={build}>{t("editor.build")}</Btn></>}>
       <p className="note" dir="ltr">{name}</p>
       {status[0] && <p className={status[1] ? "error-line" : "note"} role="status" dir="auto">{status[0]}</p>}
       {doc && (

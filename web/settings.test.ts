@@ -51,6 +51,10 @@ describe("the portals' settings", () => {
     expect(text).toContain("site:hiremetech.com");
     expect(text).not.toContain("site:il.indeed.com");
     expect(text).toContain("don't search those here");
+    // The recruiting platforms too, an industry choice notwithstanding, each kept to its own site by the search's
+    // domain filter, since site: alone doesn't.
+    expect(text).toContain("site:comeet.com/jobs, site:job-boards.greenhouse.io, site:jobs.lever.co, site:jobs.ashbyhq.com");
+    expect(text).toContain("allowed_domains");
   });
 });
 

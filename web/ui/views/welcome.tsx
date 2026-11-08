@@ -11,7 +11,7 @@ import { createPortal, flushSync } from "react-dom";
 import { useApp } from "../app";
 import { paintStill } from "../intro";
 import { jump, OFF_BOARD, type Point } from "../jump";
-import { api, Btn, Field, Spinner } from "../kit";
+import { api, Btn, Field, goTo, Spinner } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, PipSetsOff, pixelPath, type Mood } from "../pip";
 import { ENGLISH_NAME, englishOnly } from "../../names";
@@ -1263,10 +1263,11 @@ export function Welcome() {
   }, [birds]);
   const next = () => go(at + 1);
   const back = () => go(at - 1);
+  // Finished, the home page in its place, so Back doesn't lead into it again.
   const finish = async () => {
     await api("intro/done", {}).catch(() => {});
     await refresh();
-    location.hash = "#/dash";
+    goTo("/", true);
   };
   const almost = step === "done" && missing.length > 0;
   const ending = step === "done" && !almost;

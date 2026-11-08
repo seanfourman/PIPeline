@@ -60,7 +60,7 @@ function Threads({ id, onPick }: { id: string; onPick: () => void }) {
   const list = useRef<HTMLDivElement>(null);
   return (
     <nav className="threads" aria-label={t("chat.list")}>
-      <a className="thread-new" href="#/chat/new" onClick={onPick}><Icon name="plus" /><span>{t("chat.new")}</span></a>
+      <a className="thread-new" href="/chat/new" onClick={onPick}><Icon name="plus" /><span>{t("chat.new")}</span></a>
       <div className="threads-scroll">
         <div ref={list} className="threads-list">
           <div>
@@ -70,7 +70,7 @@ function Threads({ id, onPick }: { id: string; onPick: () => void }) {
                 <section key={g} className="thread-group">
                   <h2>{t(`chat.groups.${g}`)}</h2>
                   {items.map((c) => (
-                    <a key={c.id} className="thread" href={`#/chat/${c.id}`} aria-current={c.id === id ? "page" : undefined} onClick={onPick}>
+                    <a key={c.id} className="thread" href={`/chat/${c.id}`} aria-current={c.id === id ? "page" : undefined} onClick={onPick}>
                       <span className="thread-title" dir="auto">{friendlyTitle(c.title, t)}</span>
                       {c.status !== "idle" && <span className={`thread-dot ${c.status}`} role="img" aria-label={t(`session.${c.status}`)} />}
                     </a>

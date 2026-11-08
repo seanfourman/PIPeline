@@ -2,10 +2,11 @@
 // the searches (boards.ts, data.ts) and the daily run. Each says how it is covered:
 //   search  the system searches it for every role: LinkedIn and freehire through their tools, and the Israeli boards
 //           AllJobs, Drushim and JobMaster by reading their search pages (boards.ts)
-//   read    the system reads the employer's own list of jobs, its page on AllJobs (by its AllJobs id) or a search
-//           for its name on Drushim, for the fields of the roles in the settings
+//   read    the system reads the employer's own list of jobs, its page on AllJobs (by its AllJobs id), a search for
+//           its name on Drushim or its own careers site where boards.ts has a reader for it, for the fields of the
+//           roles in the settings
 //   web     the daily run's agent looks for it through web search (renderBlock in settings.ts), since the site
-//           can't be read directly
+//           can't be read directly, or, on a recruiting platform, to find the companies on it this list doesn't name
 //   link    only to open: a group, a site that refuses automatic reading
 // Employers outside high-tech ("low-tech": health funds, hospitals, insurers, banks, government) are read only while
 // the setting is on, and only in the industries chosen, if any. Both the server and the browser use this, so nothing
@@ -30,9 +31,13 @@ export type Industry = (typeof INDUSTRIES)[number]["id"];
 export const INDUSTRY_IDS: readonly string[] = INDUSTRIES.map((i) => i.id);
 
 export type How = "search" | "read" | "web" | "link";
-export type Kind = "board" | "employer" | "community";
-// alljobs: the employer's AllJobs id; drushim: its name as Drushim shows it, searched there and matched on the company.
-export type Read = { alljobs: number } | { drushim: string };
+export type Kind = "board" | "platform" | "employer" | "community";
+// alljobs: the employer's AllJobs id; drushim: its name as Drushim shows it, searched there and matched on the company;
+// for a high-tech employer, its board on a recruiting platform (greenhouse, lever, ashby, workable: its board's name there;
+// comeet: "<name>/<id>" as on comeet.com/jobs/), its Eightfold careers site's host, or its own careers site, by the
+// reader boards.ts has for it.
+export type Read = { alljobs: number } | { drushim: string } | { greenhouse: string } | { lever: string } | { ashby: string } | { comeet: string }
+  | { workable: string } | { jobvite: string } | { eightfold: string } | { own: "matrix" | "mobileye" | "amazon" | "apple" | "google" | "checkpoint" | "paloalto" | "hibob" | "unity" };
 export type Portal = {
   id: string; kind: Kind; how: How; he: string; en: string; industry: Industry; url: string;
   // Outside high-tech: read only while the low-tech setting is on.
@@ -51,6 +56,31 @@ const aj = (id: string, industry: Industry, he: string, en: string, cid: number,
 // One without a page on AllJobs, read through Drushim's search for its name.
 const dr = (id: string, industry: Industry, he: string, en: string, name: string, own?: string): Portal =>
   ({ id, kind: "employer", how: "read", he, en, industry, lowTech: industry !== "defense", read: { drushim: name }, url: own ?? DRUSHIM_SEARCH(name) });
+// A high-tech employer read where it keeps its jobs (Read): on a recruiting platform (Greenhouse's board, gh; Comeet's,
+// cm; Lever's, lv; Ashby's, ab; Workable's, wk), its careers site's search, or a page of its own; its careers page is
+// what the page opens, or else its board.
+const tech = (id: string, he: string, en: string, read: Read, url: string): Portal => ({ id, kind: "employer", how: "read", he, en, industry: "hightech", read, url });
+const gh = (id: string, he: string, en: string, board: string, url = `https://job-boards.greenhouse.io/${board}`) => tech(id, he, en, { greenhouse: board }, url);
+const cm = (id: string, he: string, en: string, path: string, url = `https://www.comeet.com/jobs/${path}`) => tech(id, he, en, { comeet: path }, url);
+const lv = (id: string, he: string, en: string, slug: string) => tech(id, he, en, { lever: slug }, `https://jobs.lever.co/${slug}`);
+const ab = (id: string, he: string, en: string, org: string) => tech(id, he, en, { ashby: org }, `https://jobs.ashbyhq.com/${encodeURIComponent(org)}`);
+const wk = (id: string, he: string, en: string, account: string) => tech(id, he, en, { workable: account }, `https://apply.workable.com/${account}/`);
+// A software house or IT company, which posts on AllJobs: read there like the employers outside high-tech, but as
+// high-tech, whatever the low-tech setting.
+const ajTech = (id: string, he: string, en: string, cid: number) => tech(id, he, en, { alljobs: cid }, ALLJOBS(cid));
+// One outside high-tech, or in defense, whose jobs are on Comeet: read there.
+const cmIn = (id: string, industry: Industry, he: string, en: string, path: string): Portal =>
+  ({ id, kind: "employer", how: "read", he, en, industry, lowTech: industry !== "defense", read: { comeet: path }, url: `https://www.comeet.com/jobs/${path}` });
+// One whose list can't be read (its site refuses it, or only a script fills it in): the daily run's agent looks for
+// its jobs through web search, on its job pages (site).
+const webTech = (id: string, he: string, en: string, site: string, url: string): Portal => ({ id, kind: "employer", how: "web", he, en, industry: "hightech", site, url });
+// A recruiting platform, which keeps the job pages of companies from everywhere, most of them not on this list: the
+// daily run's agent searches its pages (site) for the roles in the market. What the page opens is the same search
+// for Israel.
+const platform = (id: string, name: string, site: string): Portal => ({
+  id, kind: "platform", how: "web", he: name, en: name, industry: "hightech", site,
+  url: `https://www.google.com/search?q=${encodeURIComponent(`site:${site} Israel`)}`,
+});
 // One whose site can't be read: only opened.
 const open = (id: string, industry: Industry, he: string, en: string, url: string): Portal =>
   ({ id, kind: "employer", how: "link", he, en, industry, lowTech: industry !== "defense", url });
@@ -71,8 +101,21 @@ export const PORTALS: Portal[] = [
   { id: "gotfriends", kind: "board", how: "web", he: "Gotfriends", en: "Gotfriends", industry: "hightech", site: "gotfriends.co.il", url: "https://www.gotfriends.co.il/" },
   { id: "ethosia", kind: "board", how: "web", he: "אתוסיה", en: "Ethosia", industry: "hightech", site: "ethosia.co.il", url: "https://www.ethosia.co.il/" },
   { id: "nisha", kind: "board", how: "web", he: "נישה", en: "Nisha", industry: "hightech", site: "nisha.co.il", url: "https://www.nisha.co.il/" },
+  { id: "secret-tel-aviv", kind: "board", how: "web", he: "Secret Tel Aviv Jobs", en: "Secret Tel Aviv Jobs", industry: "hightech", site: "jobs.secrettelaviv.com", url: "https://jobs.secrettelaviv.com/" },
+  { id: "nbn-jobs", kind: "board", how: "web", he: "לוח המשרות של נפש בנפש", en: "Nefesh B'Nefesh job board", industry: "hightech", site: "nbn.org.il/jobboard", url: "https://www.nbn.org.il/jobboard/" },
   { id: "civil-service", kind: "board", how: "link", he: "נציבות שירות המדינה", en: "Civil Service Commission", industry: "government", lowTech: true, url: "https://ejobs.gov.il/gius/" },
   { id: "taasuka", kind: "board", how: "link", he: "שירות התעסוקה", en: "Israeli Employment Service", industry: "government", lowTech: true, url: "https://www.taasuka.gov.il/" },
+
+  // Recruiting platforms. A web search of them in November 2026 found jobs in Israel at companies the list didn't
+  // have, junior ones among them (PTC, Deloitte and Morphisec on Comeet, Snappy on Ashby), and on Workday, students'
+  // and graduates' jobs at Intel, Altera and Dell.
+  platform("comeet", "Comeet", "comeet.com/jobs"),
+  platform("greenhouse", "Greenhouse", "job-boards.greenhouse.io"),
+  platform("lever", "Lever", "jobs.lever.co"),
+  platform("ashby", "Ashby", "jobs.ashbyhq.com"),
+  platform("workable", "Workable", "apply.workable.com"),
+  platform("workday", "Workday", "myworkdayjobs.com"),
+  platform("hibob-careers", "HiBob Careers", "careers.hibob.com"),
 
   // Posts and groups.
   { id: "linkedin-posts", kind: "community", how: "web", he: "פוסטים בלינקדאין", en: "LinkedIn posts", industry: "hightech", site: "linkedin.com/posts", url: "https://www.linkedin.com/search/results/content/?keywords=%D7%9E%D7%92%D7%99%D7%99%D7%A1%D7%99%D7%9D",
@@ -84,6 +127,167 @@ export const PORTALS: Portal[] = [
   { id: "wa-junior-dev", kind: "community", how: "link", he: "וואטסאפ: פיתוח ג'וניור", en: "WhatsApp: junior development", industry: "hightech", url: "https://chat.whatsapp.com/FivKeyb8zpXA9kcYmUMLoH" },
   { id: "wa-students", kind: "community", how: "link", he: "וואטסאפ: סטודנטים והתמחות - פיתוח, QA, DevOps", en: "WhatsApp: student and intern - development, QA, DevOps", industry: "hightech", url: "https://chat.whatsapp.com/IkZFRecPQSJGyN4UcSVkgD" },
   { id: "tg-hireme", kind: "community", how: "link", he: "טלגרם: הבוט של HireMe", en: "Telegram: HireMe's bot", industry: "hightech", url: "https://t.me/Hireme_israelbot" },
+
+  // High-tech: the global companies' R&D in Israel, the Israeli tech companies, and Matrix, which hires for itself
+  // and for the companies and ministries it works for. Each was looked up in November 2026 where it keeps its jobs,
+  // and read there, with jobs in Israel then. Intel (its site refuses being read, and Workday, where it keeps its
+  // jobs, gives the list only by POST), Meta (its list comes only by GraphQL), Wix (a script fills in every page, and
+  // SmartRecruiters, where it keeps its jobs, refuses its API in robots.txt) and Lemonade (its careers site has no
+  // robots.txt to go by) are looked for through web search instead, in the daily run, on the pages of their jobs.
+  tech("nvidia", "אנבידיה", "Nvidia", { eightfold: "jobs.nvidia.com" }, "https://jobs.nvidia.com/careers"),
+  tech("microsoft", "מיקרוסופט", "Microsoft", { eightfold: "apply.careers.microsoft.com" }, "https://apply.careers.microsoft.com/careers"),
+  tech("google", "גוגל", "Google", { own: "google" }, "https://www.google.com/about/careers/applications/jobs/results?location=Israel"),
+  tech("apple", "אפל", "Apple", { own: "apple" }, "https://jobs.apple.com/en-il/search?location=israel-ISR"),
+  tech("amazon", "אמזון", "Amazon", { own: "amazon" }, "https://www.amazon.jobs/en/search?country=ISR"),
+  tech("applied-materials", "אפלייד מטיריאלס", "Applied Materials", { eightfold: "careers.appliedmaterials.com" }, "https://careers.appliedmaterials.com/careers"),
+  gh("zscaler", "זיסקיילר", "Zscaler", "zscaler", "https://www.zscaler.com/careers"),
+  tech("mobileye", "מובילאיי", "Mobileye", { own: "mobileye" }, "https://careers.mobileye.com/jobs"),
+  tech("amdocs", "אמדוקס", "Amdocs", { eightfold: "jobs.amdocs.com" }, "https://jobs.amdocs.com/careers"),
+  gh("nice", "נייס", "NICE", "nice", "https://www.nice.com/careers"),
+  tech("check-point", "צ'ק פוינט", "Check Point", { own: "checkpoint" }, "https://careers.checkpoint.com/jobs?country=Israel"),
+  tech("palo-alto", "פאלו אלטו נטוורקס (וסייברארק)", "Palo Alto Networks (and CyberArk)", { own: "paloalto" }, "https://jobs.paloaltonetworks.com/en/search-jobs/Israel/47263/2/294640/31/35/50/2"),
+  tech("monday", "מאנדיי", "monday.com", { ashby: "monday.com" }, "https://monday.com/careers"),
+  cm("fiverr", "פייבר", "Fiverr", "fiverr/60.002", "https://www.fiverr.com/jobs"),
+  tech("hibob", "הייבוב", "HiBob", { own: "hibob" }, "https://www.hibob.com/careers/"),
+  tech("varonis", "ורוניס", "Varonis", { jobvite: "varonis" }, "https://careers.varonis.com/"),
+  tech("unity", "יוניטי", "Unity", { own: "unity" }, "https://unity.com/careers/positions"),
+  webTech("intel", "אינטל", "Intel", "intel.wd1.myworkdayjobs.com", "https://jobs.intel.com/"),
+  webTech("meta", "מטא", "Meta", "metacareers.com/jobs", "https://www.metacareers.com/jobs"),
+  webTech("wix", "וויקס", "Wix", "jobs.smartrecruiters.com/Wix2", "https://careers.wix.com/positions"),
+  webTech("lemonade", "למונייד", "Lemonade", "makers.lemonade.com", "https://makers.lemonade.com/careers"),
+  tech("matrix", "מטריקס", "Matrix", { own: "matrix" }, "https://www.matrix.co.il/jobs/"),
+  gh("wiz", "וויז", "Wiz", "wizinc", "https://www.wiz.io/careers"),
+  gh("cato-networks", "קאטו נטוורקס", "Cato Networks", "catonetworks", "https://www.catonetworks.com/careers/"),
+  gh("sentinelone", "סנטינל וואן", "SentinelOne", "sentinellabs", "https://www.sentinelone.com/careers/"),
+  gh("taboola", "טאבולה", "Taboola", "taboola", "https://www.taboola.com/careers"),
+  gh("appsflyer", "אפספלייר", "AppsFlyer", "appsflyer", "https://careers.appsflyer.com/"),
+  gh("similarweb", "סימילרווב", "Similarweb", "similarweb", "https://www.similarweb.com/corp/careers/"),
+  gh("payoneer", "פיוניר", "Payoneer", "payoneer", "https://www.payoneer.com/careers/"),
+  gh("jfrog", "ג'יפרוג", "JFrog", "jfrog", "https://join.jfrog.com/"),
+  gh("riskified", "ריסקיפייד", "Riskified", "riskified", "https://www.riskified.com/careers/"),
+  gh("gong", "גונג", "Gong", "gongio", "https://www.gong.io/careers/"),
+  gh("playtika", "פלייטיקה", "Playtika", "playtikaltd", "https://www.playtika.com/careers/"),
+  tech("moon-active", "מון אקטיב", "Moon Active", { ashby: "moonactive" }, "https://www.moonactive.com/careers/"),
+  cm("cyera", "סיירה", "Cyera", "cyera/17.008", "https://www.cyera.com/careers"),
+  cm("upwind", "אפווינד", "Upwind", "upwind/49.004", "https://www.upwind.io/careers"),
+  gh("aidoc", "איידוק", "Aidoc", "aidocmedical", "https://www.aidoc.com/about/careers/"),
+  cm("global-e", "גלובל-אי", "Global-e", "global-e/62.002", "https://www.global-e.com/careers/"),
+  cm("pentera", "פנטרה", "Pentera", "pentera/C5.00D", "https://pentera.io/careers/"),
+  cm("nextsilicon", "נקסט סיליקון", "NextSilicon", "nextsilicon/18.007", "https://www.nextsilicon.com/careers/"),
+  cm("sygnia", "סיגניה", "Sygnia", "sygnia/78.00A", "https://www.sygnia.co/careers/"),
+  cm("cognyte", "קוגנייט", "Cognyte", "cognyte/F2.009", "https://www.cognyte.com/careers/"),
+  cm("ceragon", "סרגון", "Ceragon", "ceragon/D3.003", "https://www.ceragon.com/about-ceragon/careers"),
+  gh("via", "ויה", "Via", "via", "https://ridewithvia.com/careers"),
+  gh("island", "איילנד", "Island", "island", "https://www.island.io/careers"),
+  gh("pagaya", "פגאיה", "Pagaya", "pagayais", "https://pagaya.com/careers"),
+  gh("forter", "פורטר", "Forter", "forter", "https://www.forter.com/careers/"),
+  cm("silverfort", "סילברפורט", "Silverfort", "silverfort/54.007", "https://www.silverfort.com/careers/"),
+  cm("earnix", "ארניקס", "Earnix", "earnix/93.00B", "https://earnix.com/our-story/careers/"),
+  cm("arbe", "ארבה", "Arbe", "arbe/C6.001", "https://arberobotics.com/career/"),
+  tech("walkme", "ווקמי", "WalkMe", { lever: "walkme" }, "https://www.walkme.com/careers/"),
+  gh("tipalti", "טיפלטי", "Tipalti", "tipaltisolutions", "https://tipalti.com/company/jobs/"),
+  gh("axonius", "אקסוניוס", "Axonius", "axonius", "https://www.axonius.com/company/careers"),
+  gh("yotpo", "יוטפו", "Yotpo", "yotpo", "https://www.yotpo.com/careers/"),
+  gh("transmit-security", "טרנסמיט סקיוריטי", "Transmit Security", "transmitsecurity", "https://transmitsecurity.com/careers"),
+  tech("viz-ai", "Viz.ai", "Viz.ai", { ashby: "Viz.ai" }, "https://www.viz.ai/jobs"),
+  gh("eleos-health", "אלאוס", "Eleos Health", "eleoshealth", "https://eleos.health/careers/"),
+  cm("immunai", "אימונאי", "Immunai", "immunai/37.009", "https://www.immunai.com/careers/"),
+  cm("stampli", "סטמפלי", "Stampli", "stampli/F6.007", "https://www.stampli.com/careers/"),
+  cm("navina", "נבינה", "Navina", "navina/E6.00C", "https://www.navina.ai/careers"),
+  cm("nanox", "ננו-אקס", "Nanox", "nanox/43.00F", "https://www.nanox.vision/careers/"),
+  gh("orca-security", "אורקה סקיוריטי", "Orca Security", "orcasecurity", "https://orca.security/about/careers/"),
+  cm("aqua-security", "אקווה סקיוריטי", "Aqua Security", "aquasec/91.001", "https://www.aquasec.com/careers/"),
+  cm("checkmarx", "צ'קמרקס", "Checkmarx", "checkmarx/C0.008", "https://checkmarx.com/company/careers/"),
+  cm("tailor-brands", "טיילור בראנדס", "Tailor Brands", "tailorbrands/94.009", "https://www.tailorbrands.com/careers"),
+  cm("ai21", "AI21", "AI21 Labs", "ai21/E6.001", "https://www.ai21.com/careers/"),
+  cm("wsc-sports", "WSC ספורט", "WSC Sports", "wsc-sports/93.007", "https://wsc-sports.com/careers/"),
+  gh("cymulate", "סימולייט", "Cymulate", "cymulate", "https://cymulate.com/careers/"),
+  gh("salt-security", "סולט סקיוריטי", "Salt Security", "saltsecurity", "https://salt.security/careers"),
+  gh("k-health", "K Health", "K Health", "khealthcareers", "https://khealth.com/careers"),
+  cm("zesty", "זסטי", "Zesty", "zesty/06.000", "https://zesty.co/careers/"),
+  gh("torq", "טורק", "Torq", "torq", "https://torq.io/careers/"),
+  gh("lightrun", "לייטראן", "Lightrun", "lightrun", "https://lightrun.com/careers/"),
+  gh("obligo", "אובליגו", "Obligo", "obligo", "https://www.myobligo.com/careers"),
+  cm("elementor", "אלמנטור", "Elementor", "elementor/A3.00F", "https://elementor.careers/"),
+  cm("imagry", "אימג'רי", "Imagry", "imagry/B7.00F", "https://imagry.co/"),
+  cm("firebolt", "פיירבולט", "Firebolt", "firebolt/26.004", "https://www.firebolt.io/careers"),
+  cm("dataloop", "דאטהלופ", "Dataloop", "dataloop/B5.00A", "https://dataloop.ai/careers/"),
+  cm("xm-cyber", "XM סייבר", "XM Cyber", "xmcyber/15.005", "https://xmcyber.com/"),
+  cm("ludeo", "לודאו", "Ludeo", "ludeo/D7.008", "https://business.ludeo.com/careers"),
+  // Found in November 2026 by searching the recruiting platforms' job pages for Israel, each board then read for real.
+  // A few had no job in Israel that day (Surecomp, Perion, Palantir) but have teams here.
+  cm("vast-data", "VAST Data", "VAST Data", "vastdata/43.001"),
+  cm("drivenets", "דרייבנטס", "DriveNets", "drivenets/72.006"),
+  cm("claroty", "קלארוטי", "Claroty", "claroty/f2.004"),
+  cm("algosec", "אלגוסק", "AlgoSec", "algosec/71.006"),
+  cm("team8", "Team8", "Team8", "team8/61.003"),
+  cm("commit", "קומיט", "CommIT", "comm-it/76.008"),
+  cm("abra", "abra", "abra R&D", "abra_rnd/15.007"),
+  cm("xsight-labs", "אקסייט לאבס", "Xsight Labs", "xsightlabs/46.00C"),
+  cm("airobotics", "איירובוטיקס", "Airobotics", "airobotics/AA.005"),
+  cm("fetcherr", "פטצ'ר", "Fetcherr", "fetcherr/68.006"),
+  cm("fullpath", "פולפאת'", "Fullpath", "fullpath/54.002"),
+  cm("exodigo", "אקסודיגו", "Exodigo", "exodigo/89.005"),
+  cm("port", "Port", "Port", "port/59.004"),
+  cm("inmanage", "אינמנג'", "inManage", "inmanage/B7.006"),
+  cm("uveye", "UVeye", "UVeye", "uveye/92.00F"),
+  cm("lumenis", "לומניס", "Lumenis", "lumenis/A1.00C"),
+  cm("rapid-medical", "רפיד מדיקל", "Rapid Medical", "rapidmedical/5A.003"),
+  cm("madlan", "מדלן", "Madlan", "Madlan/33.00F"),
+  cm("voyantis", "וויאנטיס", "Voyantis", "voyantis/86.00B"),
+  cm("webbing", "Webbing", "Webbing", "webbing/46.00E"),
+  cm("morphisec", "מורפיסק", "Morphisec", "morphisec/65.00C"),
+  cm("surecomp", "שורקומפ", "Surecomp", "Surecomp/24.00E"),
+  gh("astera-labs", "Astera Labs", "Astera Labs", "asteralabs"),
+  gh("hello-heart", "Hello Heart", "Hello Heart", "helloheart"),
+  gh("at-bay", "At-Bay", "At-Bay", "atbayjobs"),
+  gh("pendo", "Pendo", "Pendo", "pendo"),
+  gh("bluevine", "Bluevine", "Bluevine", "bluevineisrael"),
+  gh("descope", "דסקופ", "Descope", "descope"),
+  gh("figma", "פיגמה", "Figma", "figma"),
+  gh("pontera", "פונטרה", "Pontera", "pontera"),
+  gh("brainpop", "BrainPOP", "BrainPOP", "brainpop"),
+  gh("wolt", "וולט", "Wolt", "woltisrael"),
+  gh("perion", "פריון", "Perion", "perionnetworkltd"),
+  lv("cye", "CYE", "CYE", "CYE"),
+  lv("houzz", "Houzz", "Houzz", "houzz"),
+  lv("cloudinary", "קלאודינרי", "Cloudinary", "cloudinary"),
+  lv("lendbuzz", "Lendbuzz", "Lendbuzz", "lendbuzz"),
+  lv("zadara", "זדארה", "Zadara", "Zadara"),
+  lv("traild", "Traild", "Traild", "traildsoftware"),
+  lv("spin-ai", "Spin.AI", "Spin.AI", "spinai"),
+  lv("palantir", "פלנטיר", "Palantir", "palantir"),
+  ab("tavily", "Tavily", "Tavily", "tavily"),
+  ab("pointfive", "PointFive", "PointFive", "pointfive"),
+  ab("pi-security", "Pi Security", "Pi Security", "pi-security"),
+  ab("snappy", "סנאפי", "Snappy", "Snappy"),
+  ab("human-security", "HUMAN Security", "HUMAN Security", "human"),
+  ab("singular", "סינגולר", "Singular", "singular"),
+  ab("unit", "Unit", "Unit", "unit"),
+  wk("humanz", "Humanz", "Humanz", "humanz"),
+  // Software houses and IT companies, which take on many juniors for their clients' projects, like Matrix: read on
+  // AllJobs, where they post (its directory's high-tech, computing and software-house industries, November 2026).
+  ajTech("malam-team", "מלם תים", "Malam Team", 294086),
+  ajTech("mertens", "מרטנס - מלם תים", "Mertens - Malam Team", 352881),
+  ajTech("elad-systems", "אלעד מערכות", "Elad Systems", 3637),
+  ajTech("ness", "נס טכנולוגיות", "Ness Technologies", 3172),
+  ajTech("one", "וואן טכנולוגיות", "One Technologies", 61904),
+  ajTech("calanit", "כלנית (וואן)", "Calanit by One", 151960),
+  ajTech("consist", "קונסיסט", "Consist", 9322),
+  ajTech("octally", "אוקטאלי", "Octally", 164967),
+  ajTech("gtech", "Gtech", "Gtech", 90589),
+  ajTech("software-ag-spl", "Software AG - SPL", "Software AG - SPL", 194131),
+  ajTech("omnisys", "אומניסיס", "Omnisys", 33485),
+  ajTech("hisec-labs", "היי סק מעבדות", "HiSec Labs", 217204),
+  ajTech("omc", "OMC", "OMC", 260879),
+  ajTech("hilan", "חילן", "Hilan", 36623),
+  ajTech("idor", "עידור מחשבים", "Idor Computers", 6932),
+  ajTech("sysnet", "סיסנת", "Sysnet", 4949),
+  ajTech("liacom", "ליאקום", "Liacom", 37322),
+  ajTech("tsg-it", "TSG IT", "TSG IT", 340799),
+  ajTech("risco", "ריסקו", "Risco Group", 19459),
+  ajTech("systematics", "סיסטמטיקס", "Systematics", 491),
+  ajTech("hyp", "Hyp", "Hyp", 318963),
 
   // Health: the health funds, the hospitals, and the organisations around them.
   aj("clalit", "health", "כללית", "Clalit", 2090, "https://jobs.clalitapps.co.il/clalit/index.html"),
@@ -150,7 +354,7 @@ export const PORTALS: Portal[] = [
   // Banks, cards, investment houses and the audit firms.
   aj("leumi", "finance", "בנק לאומי", "Bank Leumi", 125),
   aj("hapoalim", "finance", "בנק הפועלים", "Bank Hapoalim", 124),
-  aj("discount", "finance", "בנק דיסקונט", "Discount Bank", 87),
+  cmIn("discount", "finance", "בנק דיסקונט", "Discount Bank", "dbank/F8.004"),
   aj("mizrahi", "finance", "מזרחי טפחות", "Mizrahi Tefahot", 180495),
   aj("fibi", "finance", "הבנק הבינלאומי", "First International Bank", 225397),
   aj("jerusalem-bank", "finance", "בנק ירושלים", "Bank of Jerusalem", 24498),
@@ -175,7 +379,8 @@ export const PORTALS: Portal[] = [
   aj("more", "finance", "מור בית השקעות", "More Investment House", 229658),
   aj("analyst", "finance", "אנליסט בית השקעות", "Analyst Investment House", 221966),
   aj("mimun-yashir", "finance", "מימון ישיר", "Direct Finance", 352108),
-  aj("deloitte", "finance", "Deloitte", "Deloitte Israel", 265533),
+  cmIn("deloitte", "finance", "Deloitte", "Deloitte Israel", "deloitte/F7.00B"),
+  cmIn("kpmg", "finance", "KPMG סומך חייקין", "KPMG Somekh Chaikin", "somekhchaikin/F3.007"),
   aj("ey", "finance", "EY", "EY Israel", 358395),
   aj("dnb", "finance", "Dun & Bradstreet", "Dun & Bradstreet Israel", 115431),
 
@@ -514,6 +719,7 @@ export const PORTALS: Portal[] = [
   aj("elta", "defense", "אלתא", "ELTA", 304830),
   aj("beit-shemesh-engines", "defense", "מנועי בית שמש", "Beit Shemesh Engines", 5533),
   aj("iwi", "defense", "IWI", "IWI", 333787),
+  cmIn("drs-rada", "defense", "DRS רדא", "DRS RADA", "rada/73.009"),
 ];
 
 const BY_ID = new Map(PORTALS.map((p) => [p.id, p]));

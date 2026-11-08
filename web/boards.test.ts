@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { allJobsCategories, parseAllJobs, parseDrushim, parseJobMaster, postedOn, readEmployer, readOwnPage, searchBoard, text, type Fetch } from "./boards";
+import {
+  allJobsCategories, CHECKPOINT, day, MATRIX, matrixCategories, MOBILEYE, PALOALTO, parseAllJobs, parseAmazon, parseApple, parseAshby, parseCheckPoint, parseComeet,
+  parseDrushim, parseEightfold, parseGoogle, parseGreenhouse, parseJobMaster, parseJobPostings, parseJobvite, parseLever, parseMatrix, parseMobileye, parseRadancy,
+  parseUnity, parseWorkable, postedOn, readEmployer, readOwnPage, searchBoard, searchTerms, text, type Fetch,
+} from "./boards";
 import { portalById } from "./portals";
 import { boardQueries, fieldsOf, titleMatches, titleWords } from "./roles";
 
@@ -22,6 +26,19 @@ const jobMasterCard = (key: number, title: string, company: string, place: strin
   <article id="misra${key}" class="CardStyle JobItem"><a class="CardHeader View_Job_Details" href='/jobs/checknum.asp?key=${key}'> ${title} </a>
   <span class="Gray"> פורסם לפני 26 דקות </span> ע"י <a class="font14 CompanyNameLink" href="checkhevra.asp?cs=X"><span>${company}</span></a>
   <li class="jobLocation"><a href="/jobs/l-x">${place}</a></li></article>`;
+// Matrix's careers site: its jobs page's list of categories, which the page shows twice, and a category's postings.
+const matrixList = `<ul id="jobs_category_list" class="expanded">
+  <li class="cat-item cat-item-20"><a href="https://www.matrix.co.il/jobs/משרות/%d7%a4%d7%99%d7%aa%d7%95%d7%97/">פיתוח תוכנה</a>
+  <ul class='children'><li class="cat-item cat-item-21"><a href="https://www.matrix.co.il/jobs/משרות/%d7%a4%d7%99%d7%aa%d7%95%d7%97/java/">JAVA</a></li></ul></li>
+  <li class="cat-item cat-item-30"><a href="https://www.matrix.co.il/jobs/משרות/data/">DATA</a></li>
+  <li class="cat-item cat-item-40"><a href="https://www.matrix.co.il/jobs/משרות/%d7%9e%d7%98%d7%94/">מטה</a></li></ul>`;
+const matrixPage = `<div class="jobs-categories-selector">${matrixList}</div><div class="jobs-categories-selector">${matrixList}</div>`;
+const matrixItem = (id: number, title: string, slug: string, areas: string, site = "https://www.matrix.co.il") => `
+  <div class="job-item" id="job-item-9161${id}" data-soc-url="${site}/jobs/משרה/${slug}/" data-profession-ids="33" job-id="${id}">
+  <button class="add-to-my-jobs">הוספת משרה למשרות שלי</button>
+  <h2 class="job-title"><a href="${site}/jobs/משרה/${slug}/">${title}</a></h2><br>
+  <b>איזור: </b><b class="job-areas">${areas}</b><p>דרישות</p></div>`;
+const matrixUrl = (rest: string) => new URL(`jobs/${rest}`, "https://www.matrix.co.il/").href;
 
 describe("reading the boards' pages", () => {
   test("AllJobs: each posting once, with its company, place and date", () => {
@@ -68,6 +85,139 @@ describe("reading the boards' pages", () => {
     expect(found[0]).toEqual({ title: "Data Analyst להראל ביטוח ופיננסים!", company: "הראל ביטוח ופיננסים", location: "רמת גן", date: "2026-11-05", url: "https://www.drushim.co.il/job/38893136/c48b7a5f/", source: "drushim" });
     expect(found[1].location).toBe("");
     expect(found[1].date).toBe("2026-11-04");
+  });
+
+  test("Matrix: its categories, once each, not their subcategories", () => {
+    expect(matrixCategories(matrixPage)).toEqual([
+      { url: matrixUrl("משרות/%d7%a4%d7%99%d7%aa%d7%95%d7%97/"), name: "פיתוח תוכנה" },
+      { url: matrixUrl("משרות/data/"), name: "DATA" },
+      { url: matrixUrl("משרות/%d7%9e%d7%98%d7%94/"), name: "מטה" },
+    ]);
+  });
+
+  test("Matrix: each posting's title, its link on the site and its areas", () => {
+    const html = matrixItem(79835, "מפתח/ת JAVA ג&#8217;וניור", "java-junior", "גוש דן, השרון") + matrixItem(2, "Data Analyst", "elsewhere", "צפון", "https://other.co.il");
+    expect(parseMatrix(html)).toEqual([
+      { title: "מפתח/ת JAVA ג’וניור", company: "", location: "גוש דן, השרון", date: "", url: matrixUrl("משרה/java-junior/"), source: "page" },
+    ]);
+  });
+
+  test("Lever: each posting with its places, and only a link on Lever", () => {
+    const json = JSON.stringify([
+      { text: "Big Data Engineer", categories: { location: "Tel Aviv", allLocations: ["Tel Aviv"] }, hostedUrl: "https://jobs.lever.co/walkme/4c2c", createdAt: 1793694228000 },
+      { text: "Data Engineer", categories: { location: "Tel Aviv" }, hostedUrl: "https://elsewhere.com/x", createdAt: 1793694228000 },
+    ]);
+    expect(parseLever(json)).toEqual([{ title: "Big Data Engineer", company: "", location: "Tel Aviv, Tel Aviv", date: "2026-11-03", url: "https://jobs.lever.co/walkme/4c2c", source: "page" }]);
+  });
+
+  test("Workable: each job with the places it shows, and only a link on Workable", () => {
+    const json = JSON.stringify({ name: "Humanz", jobs: [
+      { title: "Junior PPC", url: "https://apply.workable.com/j/AB12CD34EF", published_on: "2026-11-02", country: "Israel", city: "Ramat Gan",
+        locations: [{ country: "Israel", countryCode: "IL", city: "Ramat Gan", hidden: false }, { country: "Israel", countryCode: "IL", city: "Haifa", hidden: true }] },
+      { title: "Account Executive", url: "https://elsewhere.com/j/1", published_on: "2026-11-02", country: "United Kingdom", city: "London", locations: [] },
+    ] });
+    expect(parseWorkable(json)).toEqual([{ title: "Junior PPC", company: "", location: "Ramat Gan, Israel", date: "2026-11-02", url: "https://apply.workable.com/j/AB12CD34EF", source: "page" }]);
+    expect(() => parseWorkable("{}")).toThrow();
+  });
+
+  test("Ashby: the job board's jobs from the page's data, though more script follows it", () => {
+    const html = `<script>window.__appData = {"organization":{"name":"Moon Active"},"jobBoard":{"jobPostings":[
+      {"id":"6f2a-11","title":"Backend Developer","locationName":"Tel Aviv","secondaryLocations":[{"locationName":"Remote, Israel"}]}]}};
+      window.addEventListener("load", function () { loadBundle(); });</script>`;
+    expect(parseAshby(html, "moonactive")).toEqual([{ title: "Backend Developer", company: "", location: "Tel Aviv, Remote, Israel", date: "", url: "https://jobs.ashbyhq.com/moonactive/6f2a-11", source: "page" }]);
+  });
+
+  test("Comeet: the positions from the page's data, past where it is declared empty, each with its country", () => {
+    const position = (name: string, country: string, city: string) => ({ name, location: { name: city, country, city }, time_updated: "2026-11-05T20:38:43Z", url_comeet_hosted_page: `https://www.comeet.com/jobs/cyera/17.008/${name.toLowerCase().replace(/\W+/g, "-")}/AB.123` });
+    const html = `<script>var COMPANY_DATA ;\n var COMPANY_POSITIONS_DATA ;\n var POSITION_DATA ;</script><script>
+      COMPANY_POSITIONS_DATA = ${JSON.stringify([position("AI Researcher", "IL", "Tel Aviv"), position("Sales Lead", "US", "New York")])};\n</script>`;
+    expect(parseComeet(html)).toEqual([
+      { title: "AI Researcher", company: "", location: "Tel Aviv, Israel", date: "2026-11-05", url: "https://www.comeet.com/jobs/cyera/17.008/ai-researcher/AB.123", source: "page" },
+      { title: "Sales Lead", company: "", location: "New York, US", date: "2026-11-05", url: "https://www.comeet.com/jobs/cyera/17.008/sales-lead/AB.123", source: "page" },
+    ]);
+  });
+
+  test("Eightfold, Amazon, Apple: each search's results with their places, days and pages", () => {
+    expect(parseEightfold(JSON.stringify({ data: { positions: [{ name: "Customer Engineer", locations: ["Mig Ha'emek,ISR"], postedTs: 1793836800, positionUrl: "/careers/job/790318821053" }] } }), "careers.appliedmaterials.com"))
+      .toEqual([{ title: "Customer Engineer", company: "", location: "Mig Ha'emek,ISR", date: "2026-11-05", url: "https://careers.appliedmaterials.com/careers/job/790318821053", source: "page" }]);
+    expect(parseAmazon(JSON.stringify({ jobs: [{ title: "Software Development Engineer", location: "IL, Haifa", posted_date: "September  2, 2026", job_path: "/en/jobs/10525878/sde" }] })))
+      .toEqual([{ title: "Software Development Engineer", company: "", location: "IL, Haifa", date: "2026-09-02", url: "https://www.amazon.jobs/en/jobs/10525878/sde", source: "page" }]);
+    const data = { loaderData: { search: { search: { searchResults: [{ id: "200694001-0865", postingTitle: "Cellular SW Engineer", transformedPostingTitle: "cellular-sw-engineer",
+      postDateInGMT: "2026-11-08T10:32:48.962Z", locations: [{ name: "Herzliya", countryName: "Israel" }] }] } } } };
+    const apple = `<script>window.__staticRouterHydrationData = JSON.parse(${JSON.stringify(JSON.stringify(data))});</script>`;
+    expect(parseApple(apple)).toEqual([{ title: "Cellular SW Engineer", company: "", location: "Herzliya, Israel", date: "2026-11-08", url: "https://jobs.apple.com/en-il/details/200694001-0865/cellular-sw-engineer", source: "page" }]);
+  });
+
+  test("Google: each card's title and place, not the filters' headings over the list", () => {
+    const card = (id: number, title: string, place: string) => `<li class="lLd3Je"><div><h3 class="QJPWVe">${title}</h3><span><i>place</i><span class="r0wTof">${place}</span></span>
+      <p>Minimum qualifications</p><a class="WpHeLc" href="jobs/results/${id}-${title.toLowerCase().replace(/\W+/g, "-")}?location=Israel" aria-label="Learn more">Learn more</a></div></li>`;
+    const html = `<title>Search Jobs — Google Careers</title><h3>Locations</h3><span>Israel</span><h3>Experience</h3><ul>${card(1338, "Software Engineer III", "Tel Aviv, Israel")}${card(1339, "Data Scientist", "Haifa, Israel")}</ul>`;
+    expect(parseGoogle(html)).toEqual([
+      { title: "Software Engineer III", company: "", location: "Tel Aviv, Israel", date: "", url: "https://www.google.com/about/careers/applications/jobs/results/1338-software-engineer-iii", source: "page" },
+      { title: "Data Scientist", company: "", location: "Haifa, Israel", date: "", url: "https://www.google.com/about/careers/applications/jobs/results/1339-data-scientist", source: "page" },
+    ]);
+  });
+
+  test("Mobileye: each card's title, the place after it, and its page", () => {
+    const card = (title: string, place: string, slug: string) => `<div class="jobItem toggleClose" data-v-18ea0e85><p class="category" data-v-d5d26d91>Algorithms</p>
+      <p class="jobTitle" data-v-d5d26d91>${title}</p><p class="location" data-v-d5d26d91>${place}</p><p>Full time</p><a href="/jobs/${slug}/e3011eb4" class="newTab">x</a></div>`;
+    expect(parseMobileye(card("AI Algorithm Engineer", "Jerusalem", "ai-algorithm-engineer") + card("Account Manager", "Mumbai", "account-manager"))).toEqual([
+      { title: "AI Algorithm Engineer", company: "", location: "Jerusalem", date: "", url: `${MOBILEYE}/ai-algorithm-engineer/e3011eb4`, source: "page" },
+      { title: "Account Manager", company: "", location: "Mumbai", date: "", url: `${MOBILEYE}/account-manager/e3011eb4`, source: "page" },
+    ]);
+  });
+
+  test("Check Point: a page of its list for Israel from the page's data, and how many pages there are", () => {
+    const data = { props: { pageProps: { result: { numberOfMatches: 40, numberOfPages: 4, jobPostingsList: [
+      { id: "2374789", title: "Backend Developer", city: "Tel Aviv-Yafo", country: "Israel", datePosted: "2026-11-04T10:00:00Z", slug: "backend-developer" },
+    ] } } } };
+    expect(parseCheckPoint(`<script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script>`)).toEqual({ pages: 4, found: [
+      { title: "Backend Developer", company: "", location: "Tel Aviv-Yafo, Israel", date: "2026-11-04", url: "https://careers.checkpoint.com/jobs/2374789/backend-developer", source: "page" },
+    ] });
+  });
+
+  test("Radancy (Palo Alto): each result's title and place, and the pages", () => {
+    const html = `<section data-total-results="114" data-total-pages="8" data-current-page="1"><ul><li>
+      <a class="section29__search-results-link" href="/en/job/petach-tikva/senior-staff-software-engineer/47263/99" data-job-id="99"><h2 class="section29__search-results-job-title">Senior Staff Software Engineer</h2>
+      <div><span class="section29__result-location newLoc">Petach Tikva, Israel</span></div></a></li></ul></section>`;
+    expect(parseRadancy(html, "https://jobs.paloaltonetworks.com")).toEqual({ pages: 8, found: [
+      { title: "Senior Staff Software Engineer", company: "", location: "Petach Tikva, Israel", date: "", url: "https://jobs.paloaltonetworks.com/en/job/petach-tikva/senior-staff-software-engineer/47263/99", source: "page" },
+    ] });
+  });
+
+  test("marked job postings (HiBob): a country's code as its name, and only links on the site", () => {
+    const posting = (title: string, locality: string, url: string) => `<script type="application/ld+json">${JSON.stringify({ "@context": "https://schema.org", "@type": "JobPosting", title, datePosted: "2026-11-08T11:37:41.000Z",
+      jobLocation: { "@type": "Place", address: { "@type": "PostalAddress", addressLocality: locality } }, url })}</script>`;
+    const html = posting("Frontend Engineer", "IL", "https://hibob-fa0ad69d0cb34a.careers.hibob.com/jobs/faa5807c/apply") + posting("Data Analyst", "IL", "https://evil.example.com/jobs/1");
+    expect(parseJobPostings(html, ".careers.hibob.com")).toEqual([
+      { title: "Frontend Engineer", company: "", location: "Israel", date: "2026-11-08", url: "https://hibob-fa0ad69d0cb34a.careers.hibob.com/jobs/faa5807c/apply", source: "page" },
+    ]);
+  });
+
+  test("Jobvite (Varonis): each row's job and its place, the row's last mark", () => {
+    const row = (id: string, title: string, team: string, place: string) => `<li class="row"><a href="/varonis/job/${id}?nl=1"><div class="job-item"><div class="jv-job-list-name"> ${title} </div>
+      <div class="ml-auto jv-job-list-location"><span>${team}</span><span> ${place} </span></div></div></a></li>`;
+    expect(parseJobvite(row("o5zVAfwT", "Senior Data Scientist", "R&amp;D", "Israel") + row("oAbc", "Account Manager", "Sales", "Dallas, Texas"), "varonis")).toEqual([
+      { title: "Senior Data Scientist", company: "", location: "Israel", date: "", url: "https://jobs.jobvite.com/varonis/job/o5zVAfwT", source: "page" },
+      { title: "Account Manager", company: "", location: "Dallas, Texas", date: "", url: "https://jobs.jobvite.com/varonis/job/oAbc", source: "page" },
+    ]);
+  });
+
+  test("Unity: each position from the page's data, quotes and all", () => {
+    const item = { title: "Senior SDK Developer, Monetization", locations: ["Tel Aviv, Israel"], department: "Engineering & R&D", id: "JOBREQ-1",
+      externalUrl: "https://unitytech.wd1.myworkdayjobs.com/Unity/job/Tel-Aviv-Israel/Senior-SDK-Developer_JOBREQ-1" };
+    const html = `<script>self.__next_f.push([1,${JSON.stringify(`5:["$","div",null,{"positions":[${JSON.stringify(item)}]}]`)}])</script>`;
+    expect(parseUnity(html)).toEqual([{ title: "Senior SDK Developer, Monetization", company: "", location: "Tel Aviv, Israel", date: "", url: item.externalUrl, source: "page" }]);
+  });
+
+  test("Greenhouse: a list that isn't one fails, rather than say there are no jobs", () => {
+    expect(() => parseGreenhouse(`{"error":"Job board not found"}`, "x")).toThrow();
+    expect(parseGreenhouse(JSON.stringify({ jobs: [{ id: "x", title: "Data Analyst" }] }), "x")).toEqual([]);
+  });
+
+  test("the day from what the sites give, and the searches from the roles", () => {
+    expect([day("2026-10-20T08:00:00-04:00"), day(1793694228), day(1793694228000), day("September  2, 2026"), day("08 Nov 2026"), day("soon")]).toEqual(["2026-10-20", "2026-11-03", "2026-11-03", "2026-09-02", "2026-11-08", ""]);
+    expect(searchTerms([{ label: "a", query: "Junior Data Analyst" }, { label: "b", query: "Data Analyst" }, { label: "c", query: "Senior ML Engineer" }])).toEqual(["Data Analyst", "ML Engineer"]);
   });
 
   test("JobMaster: one article per posting", () => {
@@ -135,6 +285,76 @@ describe("an employer's own jobs", () => {
     const fetch: Fetch = async () => drushimCard(1, "Data Analyst", "מרכז רפואי שיבא", "רמת גן") + drushimCard(2, "Data Analyst", "שמירה וביטחון", "רמת גן");
     const found = await readEmployer(portalById("sheba")!, roles, { fetch, today });
     expect(found.map((p) => p.company)).toEqual(["מרכז רפואי שיבא"]);
+  });
+
+  test("on its own site (Matrix): its jobs page, then only the lists of the categories the roles' fields are in, and only titles for the roles", async () => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      if (url === MATRIX) return matrixPage;
+      if (url === matrixUrl("משרות/data/")) return matrixItem(1, "Data Analyst לחברה פיננסית", "data-analyst", "גוש דן") + matrixItem(2, "נהג/ת", "driver", "גוש דן");
+      return "";
+    };
+    const found = await readEmployer(portalById("matrix")!, roles, { fetch, today });
+    expect(asked).toEqual([MATRIX, matrixUrl("משרות/data/")]);
+    expect(found).toEqual([expect.objectContaining({ title: "Data Analyst לחברה פיננסית", company: "מטריקס", location: "גוש דן", portal: "matrix" })]);
+  });
+
+  test("on its own site (Matrix): a jobs page with no categories fails, rather than say there are no jobs", async () => {
+    await expect(readEmployer(portalById("matrix")!, roles, { fetch: async () => "<html></html>", today })).rejects.toThrow();
+  });
+
+  test("on Greenhouse (Wiz): its board's list, only the jobs in Israel and for the roles, each linked on the board", async () => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      return JSON.stringify({ jobs: [
+        { id: 11, title: "Data Analyst", location: { name: "Tel Aviv" }, updated_at: "2026-11-01T09:00:00-04:00", first_published: "2026-10-20T08:00:00-04:00" },
+        { id: 12, title: "Data Analyst", location: { name: "New York, NY" }, updated_at: "2026-11-01T09:00:00-04:00" },
+        { id: 13, title: "Account Executive", location: { name: "Tel Aviv" }, updated_at: "2026-11-01T09:00:00-04:00" },
+      ] });
+    };
+    const found = await readEmployer(portalById("wiz")!, roles, { fetch, today });
+    expect(asked).toEqual(["https://boards-api.greenhouse.io/v1/boards/wizinc/jobs"]);
+    expect(found).toEqual([{ title: "Data Analyst", company: "וויז", location: "Tel Aviv", date: "2026-10-20", url: "https://job-boards.greenhouse.io/wizinc/jobs/11", source: "page", portal: "wiz" }]);
+  });
+
+  test("on Workable (Humanz): its account's list, only the jobs in Israel", async () => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      return JSON.stringify({ jobs: [
+        { title: "Data Analyst", url: "https://apply.workable.com/j/1A", published_on: "2026-11-01", locations: [{ country: "Israel", city: "Ramat Gan" }] },
+        { title: "Data Analyst", url: "https://apply.workable.com/j/2B", published_on: "2026-11-01", locations: [{ country: "United Kingdom", city: "London" }] },
+      ] });
+    };
+    const found = await readEmployer(portalById("humanz")!, roles, { fetch, today });
+    expect(asked).toEqual(["https://apply.workable.com/api/v1/widget/accounts/humanz"]);
+    expect(found.map((p) => [p.title, p.location, p.url])).toEqual([["Data Analyst", "Ramat Gan, Israel", "https://apply.workable.com/j/1A"]]);
+  });
+
+  test("on a careers site's search (Nvidia, on Eightfold): asked for Israel and each role, without its level", async () => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      return JSON.stringify({ data: { positions: [{ name: "Data Analyst", locations: ["Israel, Yokneam"], postedTs: 1793694228, positionUrl: "/careers/job/893397629693" }] } });
+    };
+    const found = await readEmployer(portalById("nvidia")!, roles, { fetch, today });
+    expect(asked).toEqual(["https://jobs.nvidia.com/api/pcsx/search?domain=nvidia.com&query=Data%20Analyst&location=Israel&start=0"]);
+    expect(found).toEqual([expect.objectContaining({ title: "Data Analyst", location: "Israel, Yokneam", date: "2026-11-03", url: "https://jobs.nvidia.com/careers/job/893397629693", company: "אנבידיה" })]);
+  });
+
+  test("over pages (Check Point, Palo Alto): the first, then as many as it says there are, by the addresses that may be read", async () => {
+    const asked: string[] = [];
+    const page = (n: number) => `<script id="__NEXT_DATA__" type="application/json">${JSON.stringify({ props: { pageProps: { result: { numberOfPages: 2, jobPostingsList: [
+      { id: String(n), title: `Data Analyst ${n}`, city: "Tel Aviv-Yafo", country: "Israel", slug: `data-analyst-${n}` }] } } } })}</script>`;
+    const fetch: Fetch = async (url) => { asked.push(url); return page(asked.length); };
+    expect((await readEmployer(portalById("check-point")!, roles, { fetch, today })).map((p) => p.title)).toEqual(["Data Analyst 1", "Data Analyst 2"]);
+    expect(asked).toEqual([CHECKPOINT, `${CHECKPOINT}&page=2`]);
+    asked.length = 0;
+    const radancy = `<div data-total-pages="2"><a href="/en/job/tel-aviv/data-analyst/47263/1"><h2>Data Analyst</h2><span class="result-location">Tel Aviv-Yafo, Israel</span></a></div>`;
+    await readEmployer(portalById("palo-alto")!, roles, { fetch: async (url) => { asked.push(url); return radancy; }, today });
+    expect(asked).toEqual([PALOALTO, `${PALOALTO}?p=2`]);
   });
 
   test("a careers page the user added: only its own site's links with the roles' words", async () => {

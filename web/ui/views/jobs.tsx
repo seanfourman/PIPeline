@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { store, stored, useApp } from "../app";
-import { api, Badge, Btn, Card, External, Icon, Page, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
+import { api, Badge, Btn, Card, External, goTo, Icon, Page, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
@@ -896,7 +896,7 @@ function Quick() {
           </div>
         </form>
         {noMarket ? (
-          <p className="seek-note">{t("jobs.needMarket")} <a href="#/settings">{t("jobs.toSettings")}</a></p>
+          <p className="seek-note">{t("jobs.needMarket")} <a href="/settings">{t("jobs.toSettings")}</a></p>
         ) : (
           <RoleSuggestions onPick={run} />
         )}
@@ -925,7 +925,7 @@ function Quick() {
 export const Jobs = () => <div className="page jobs-page"><Quick /></div>;
 
 // The saved jobs, a tab of their own in the sidebar, in two tabs: the jobs the user saved, and those Pip found, with
-// the ranking's scores. Each tab says how many it shows. The tab is in the address (#/saved/found), so the home
+// the ranking's scores. Each tab says how many it shows. The tab is in the address (/saved/found), so the home
 // page's links open Pip's; with nothing saved yet, Pip's opens first. Over Pip's list, while some of it waits to be
 // ranked, how many, and the button that ranks them.
 export function SavedJobs() {
@@ -945,7 +945,7 @@ export function SavedJobs() {
   };
   const tab = arg === "mine" || arg === "found" ? arg : mine.length ? "mine" : "found";
   const tabButton = (id: "mine" | "found", label: string) => (
-    <button type="button" role="tab" aria-selected={tab === id} onClick={() => { location.hash = `#/saved/${id}`; }}>{label}</button>
+    <button type="button" role="tab" aria-selected={tab === id} onClick={() => goTo(`/saved/${id}`)}>{label}</button>
   );
   return (
     <Page title={t("jobs.savedTitle")}>

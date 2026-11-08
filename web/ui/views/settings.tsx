@@ -560,7 +560,7 @@ export function Settings() {
       {/* Which industries to search and whether employers outside high-tech are read; the portals page lists them all. */}
       <Card className="stack">
         <IndustryPicker draft={draft} update={update} />
-        <a className="portal-link" href="#/portals">{t("settings.toPortals")}</a>
+        <a className="portal-link" href="/portals">{t("settings.toPortals")}</a>
       </Card>
 
       <Card className="stack">

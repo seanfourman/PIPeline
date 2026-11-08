@@ -7,7 +7,7 @@
 import { readFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { DRUSHIM_SEARCH, type Portal } from "./portals";
+import { DRUSHIM_SEARCH, type Portal, type Read } from "./portals";
 import { PYTHON, runTool, type Run } from "./ranker";
 import { fieldsOf, titleMatches, titleWords, type Role } from "./roles";
 
@@ -16,8 +16,9 @@ export const BOARDS: Board[] = ["alljobs", "drushim", "jobmaster"];
 // source: the board, or "page" for a careers page the user added.
 export type Posting = { title: string; company: string; location: string; date: string; url: string; source: Board | "page" };
 
-// Between two pages from the same site.
+// Between two pages from the same site; longer where its robots.txt asks for it (Crawl-delay).
 const GAP_MS = 500;
+const GAPS: Record<string, number> = { "api.lever.co": 1000 };
 const MAX_TEXT = 160;
 
 const SEARCH: Record<Board, (q: string) => string> = {
@@ -161,7 +162,7 @@ async function inTurn<T>(host: string, work: () => Promise<T>): Promise<T> {
   const mine = new Promise<void>((r) => (release = r));
   turns.set(host, before.then(() => mine));
   await before;
-  try { return await work(); } finally { setTimeout(release, GAP_MS); }
+  try { return await work(); } finally { setTimeout(release, GAPS[host] ?? GAP_MS); }
 }
 
 // A page through tools/fetch_page.py, or null when the site said no (robots.txt), failed or answered with an error.
@@ -244,10 +245,345 @@ export async function readEmployer(p: Portal, roles: Role[], o: { fetch: Fetch; 
     if (html === null) throw new Error("Drushim did not answer");
     const plain = (s: string) => s.replace(/["'״׳\-\s]/g, "");
     all.push(...parseDrushim(html, o.today).filter((x) => plain(x.company).includes(plain(name))));
+  } else if (p.read) {
+    all.push(...await readCareers(p.read, roles, o));
   }
   const seen = new Set<string>();
   return all.filter((x) => !seen.has(x.url) && seen.add(x.url) && titleMatches(x.title, words))
     .map((x) => ({ ...x, company: x.company || p.he, portal: p.id }));
+}
+
+// ---------- Matrix's careers site ----------
+
+// matrix.co.il/jobs: a page of its categories, each with a page that lists all of its postings at once (its
+// subcategories only filter that list in the browser, and its pages' numbers bring the same list again).
+export const MATRIX = "https://www.matrix.co.il/jobs/";
+// Its categories, by name, that hold each field's postings; the government ministries' few, of every kind, are every
+// field's.
+const MATRIX_CATEGORY: Record<string, RegExp> = {
+  software: /פיתוח תוכנה|ארכיטקטורה|פיתוח אוטומציה|CRM|ERP|SAP|^RT$|משרדי ממשלה/i,
+  hardware: /^RT$|משרדי ממשלה/i,
+  data: /DATA|DBA|ניתוח מערכות|משרדי ממשלה/i,
+  quality: /בדיקות|אוטומציה|משרדי ממשלה/,
+  infra: /DevOps|תשתיות|סיסטם|CLOUD|תמיכה|משרדי ממשלה/i,
+  security: /סייבר|אבטחת מידע|משרדי ממשלה/,
+  product: /ניהול פרויקטים|UI\/UX|ניתוח מערכות|תמיכה|משרדי ממשלה/i,
+  start: /בוגרים|תמיכה|משרדי ממשלה/,
+};
+
+// Matrix's jobs page: its categories, each with its list's address; not the subcategories, whose addresses go on
+// from their category's, and once, though the page lists them twice.
+export function matrixCategories(html: string) {
+  const start = html.indexOf('id="jobs_category_list"');
+  if (start < 0) return [];
+  const end = html.indexOf('id="jobs_category_list"', start + 1);
+  const all = [...html.slice(start, end > 0 ? end : undefined).matchAll(/<li\b[^>]*class=["']cat-item[^"']*["'][^>]*>\s*<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi)]
+    .flatMap((m) => {
+      try { return [{ url: new URL(decode(m[1]), MATRIX).href, name: text(m[2]) }]; } catch { return []; }
+    })
+    .filter((c) => c.url.startsWith(MATRIX) && c.name);
+  const seen = new Set<string>();
+  return all.filter((c) => !all.some((p) => c.url !== p.url && c.url.startsWith(p.url)) && !seen.has(c.url) && Boolean(seen.add(c.url)));
+}
+
+// A Matrix category's list: each posting a job-item, its title linked to the posting on the site, and its areas.
+export function parseMatrix(html: string): Posting[] {
+  return html.split(/<div\b[^>]*class=["']job-item["']/i).slice(1).flatMap((item): Posting[] => {
+    const link = item.match(/class=["']job-title["'][^>]*>\s*<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/i);
+    if (!link) return [];
+    let url: URL;
+    try { url = new URL(decode(link[1]), MATRIX); } catch { return []; }
+    const title = text(link[2]);
+    if (!title || !url.href.startsWith(MATRIX)) return [];
+    return [{ title, company: "", location: text(item.match(/class=["']job-areas["'][^>]*>([\s\S]*?)<\//i)?.[1] ?? ""), date: "", url: url.href, source: "page" }];
+  });
+}
+
+// Matrix's postings in the fields: its jobs page, then the list of each category the fields' postings are in.
+async function readMatrix(fields: string[], o: { fetch: Fetch; signal?: AbortSignal }) {
+  const first = await o.fetch(MATRIX, o.signal);
+  if (first === null) throw new Error("Matrix did not answer");
+  const categories = matrixCategories(first);
+  if (!categories.length) throw new Error("Matrix's jobs page lists no categories");
+  const all: Posting[] = [];
+  for (const c of categories.filter((x) => fields.some((f) => MATRIX_CATEGORY[f]?.test(x.name)))) {
+    if (o.signal?.aborted) break;
+    const html = await o.fetch(c.url, o.signal);
+    if (html) all.push(...parseMatrix(html));
+  }
+  return all;
+}
+
+// ---------- high-tech employers' own lists ----------
+
+// Where a high-tech employer keeps its jobs (portals.ts's Read): a recruiting platform's public list of them
+// (Greenhouse's, Lever's and Workable's APIs, Ashby's and Comeet's job board pages, no key used), its careers site's search
+// (Eightfold's, Amazon's, Apple's, Google's), asked for Israel and for each of the roles, or a page of its own
+// (Matrix's, Mobileye's). A list has every job the employer has open anywhere, so only those in Israel are kept.
+
+// Places in Israel as job locations name them, in English and in Hebrew.
+export const ISRAEL = /israel|tel[\s-]?aviv|herzl?iy?a|haifa|jerusalem|petah|petach|ra'?anana|netanya|be'?er[\s-]?sheva|yokneam|yoqneam|kfar[\s-]?saba|rosh[\s-]?ha'?ayin|ramat[\s-]?gan|hod[\s-]?hasharon|rehovot|caesarea|airport city|or[\s-]?yehuda|bnei[\s-]?brak|holon|givatayim|modi'?in|ashdod|ashkelon|\blod\b|ness[\s-]?ziona|rishon|kiryat|nazareth|karmiel|migdal|mig[\s-]?ha'?emek|ישראל|תל[\s-]?אביב|הרצליה|חיפה|ירושלים|פתח[\s-]?תקו?וה|רעננה|נתניה|באר[\s-]?שבע|יקנעם|כפר[\s-]?סבא|ראש[\s-]?העין|רמת[\s-]?גן|הוד[\s-]?השרון|רחובות|קיסריה|אור[\s-]?יהודה|בני[\s-]?ברק|חולון|גבעתיים|מודיעין|אשדוד|אשקלון|נס[\s-]?ציונה|ראשון[\s-]?לציון|מגדל[\s-]?העמק/i;
+const inIsrael = (p: Posting) => ISRAEL.test(p.location);
+
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+// A day as YYYY-MM-DD, from an ISO time, seconds or milliseconds since 1970, or words ("September 2, 2026",
+// "08 Nov 2026"); "" when there is none.
+export function day(t: unknown): string {
+  if (typeof t === "number" && t > 0) return new Date(t < 1e12 ? t * 1000 : t).toISOString().slice(0, 10);
+  const s = String(t ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const words = s.match(/^(?:(\d{1,2})\s+([a-z]{3})[a-z]*|([a-z]{3})[a-z]*\s+(\d{1,2}),?)\s+(\d{4})$/i);
+  if (!words) return "";
+  const month = MONTHS.indexOf((words[2] ?? words[3]).toLowerCase()) + 1;
+  return month ? `${words[5]}-${String(month).padStart(2, "0")}-${(words[1] ?? words[4]).padStart(2, "0")}` : "";
+}
+
+// The JSON value (an object or a list) that starts at text[at], found by its brackets, minding strings.
+export function jsonAt(text: string, at: number) {
+  let depth = 0, inString = false;
+  for (let i = at; i >= 0 && i < text.length; i++) {
+    const ch = text[i];
+    if (inString) { if (ch === "\\") i++; else if (ch === '"') inString = false; continue; }
+    if (ch === '"') inString = true;
+    else if (ch === "{" || ch === "[") depth++;
+    else if ((ch === "}" || ch === "]") && --depth === 0) return text.slice(at, i + 1);
+  }
+  return "";
+}
+
+// A link from a list, kept only where it points at the site it came from.
+const onSite = (href: unknown, origin: string): string => {
+  try { const url = new URL(String(href ?? ""), origin); return url.origin === new URL(origin).origin ? url.href : ""; } catch { return ""; }
+};
+const posting = (title: unknown, location: unknown, date: string, url: string): Posting[] => {
+  const name = text(String(title ?? ""));
+  return name && url ? [{ title: name, company: "", location: text(String(location ?? "")), date, url, source: "page" }] : [];
+};
+
+// Greenhouse's list of a board's jobs: each one's title, place and first day, linked to its page on the board.
+export function parseGreenhouse(json: string, board: string): Posting[] {
+  const jobs = JSON.parse(json)?.jobs;
+  if (!Array.isArray(jobs)) throw new Error("not a Greenhouse list");
+  return jobs.flatMap((j) => (/^\d+$/.test(String(j?.id)) ? posting(j.title, j.location?.name, day(j.first_published ?? j.updated_at), `https://job-boards.greenhouse.io/${board}/jobs/${j.id}`) : []));
+}
+
+// Lever's list: each posting's title, places and day, with its own page on Lever.
+export function parseLever(json: string): Posting[] {
+  const jobs = JSON.parse(json);
+  if (!Array.isArray(jobs)) throw new Error("not a Lever list");
+  return jobs.flatMap((j) => posting(j?.text, [j?.categories?.location, ...(j?.categories?.allLocations ?? [])].filter(Boolean).join(", "), day(j?.createdAt), onSite(j?.hostedUrl, "https://jobs.lever.co")));
+}
+
+// Workable's list of an account's jobs (the one its careers page's widget shows): each job's title, the places it
+// shows, and its day, linked to its page on Workable.
+export function parseWorkable(json: string): Posting[] {
+  const jobs = JSON.parse(json)?.jobs;
+  if (!Array.isArray(jobs)) throw new Error("not a Workable list");
+  return jobs.flatMap((j) => {
+    const places = (Array.isArray(j?.locations) && j.locations.length ? j.locations.filter((l: any) => !l?.hidden) : [j])
+      .map((l: any) => [l?.city, l?.country].filter(Boolean).join(", "));
+    return posting(j?.title, [...new Set(places)].filter(Boolean).join("; "), day(j?.published_on), onSite(j?.url, "https://apply.workable.com"));
+  });
+}
+
+// Ashby's job board page: its jobs in the page's data (window.__appData), each with its places.
+export function parseAshby(html: string, org: string): Posting[] {
+  const at = html.indexOf("window.__appData");
+  const jobs = at < 0 ? null : JSON.parse(jsonAt(html, html.indexOf("{", at)) || "null")?.jobBoard?.jobPostings;
+  if (!Array.isArray(jobs)) throw new Error("not an Ashby job board");
+  return jobs.flatMap((j) => (/^[\w-]+$/.test(String(j?.id)) ? posting(j.title, [j.locationName, ...(j.secondaryLocations ?? []).map((l: any) => l?.locationName)].filter(Boolean).join(", "), "", `https://jobs.ashbyhq.com/${encodeURIComponent(org)}/${j.id}`) : []));
+}
+
+// Comeet's job board page: its positions in the page's data (COMPANY_POSITIONS_DATA, given its value well after it is
+// declared), each with its place and its country, and its own page on Comeet.
+export function parseComeet(html: string): Posting[] {
+  const at = html.search(/COMPANY_POSITIONS_DATA\s*=\s*\[/);
+  const positions = at < 0 ? null : JSON.parse(jsonAt(html, html.indexOf("[", at)) || "null");
+  if (!Array.isArray(positions)) throw new Error("not a Comeet job board");
+  return positions.flatMap((p) => {
+    const where = p?.location ?? {};
+    const parts = [where.name, where.city, where.country === "IL" ? "Israel" : where.country].flatMap((x) => String(x ?? "").split(/,\s*/)).filter(Boolean);
+    return posting(p?.name, [...new Set(parts)].join(", "), day(p?.time_updated), onSite(p?.url_comeet_hosted_page, "https://www.comeet.com"));
+  }).filter((x) => x.url.startsWith("https://www.comeet.com/jobs/"));
+}
+
+// An Eightfold careers site's search: its positions, each with its places, day and page on the site.
+export function parseEightfold(json: string, host: string): Posting[] {
+  const positions = JSON.parse(json)?.data?.positions;
+  if (!Array.isArray(positions)) throw new Error("not an Eightfold search");
+  return positions.flatMap((p) => posting(p?.name, (p?.locations ?? []).join("; "), day(p?.postedTs), String(p?.positionUrl ?? "").startsWith("/") ? onSite(p.positionUrl, `https://${host}`) : ""));
+}
+
+// Amazon's job search: each job's title, place, day and page.
+export function parseAmazon(json: string): Posting[] {
+  const jobs = JSON.parse(json)?.jobs;
+  if (!Array.isArray(jobs)) throw new Error("not an Amazon search");
+  return jobs.flatMap((j) => posting(j?.title, j?.location ?? j?.city, day(j?.posted_date), String(j?.job_path ?? "").startsWith("/") ? onSite(j.job_path, "https://www.amazon.jobs") : ""));
+}
+
+// Apple's job search page: its results in the page's data (a JSON text handed to JSON.parse), each with its places,
+// day and details page.
+export function parseApple(html: string): Posting[] {
+  const at = html.indexOf('JSON.parse("', html.indexOf("__staticRouterHydrationData"));
+  let end = at + 12;
+  while (end < html.length && html[end] !== '"') end += html[end] === "\\" ? 2 : 1;
+  const find = (v: any): any[] | null => {
+    if (!v || typeof v !== "object") return null;
+    if (Array.isArray(v.searchResults)) return v.searchResults;
+    for (const x of Object.values(v)) { const got = find(x); if (got) return got; }
+    return null;
+  };
+  let results: any[] | null = null;
+  try { results = at < 0 ? null : find(JSON.parse(JSON.parse(`"${html.slice(at + 12, end)}"`))); } catch { results = null; }
+  if (!results) throw new Error("not an Apple job search");
+  return results.flatMap((r) => posting(r?.postingTitle, (r?.locations ?? []).map((l: any) => [l?.name, l?.countryName].filter(Boolean).join(", ")).join("; "), day(r?.postDateInGMT),
+    r?.id && r?.transformedPostingTitle ? `https://jobs.apple.com/en-il/details/${encodeURIComponent(r.id)}/${encodeURIComponent(r.transformedPostingTitle)}` : ""));
+}
+
+// Google's job search page: each card's title (its heading) and its place, before the card's link to the job.
+export function parseGoogle(html: string): Posting[] {
+  const links = [...html.matchAll(/href="(jobs\/results\/\d+[\w-]*)[^"]*"/g)];
+  if (!links.length && !html.includes("Google Careers")) throw new Error("not a Google job search");
+  const seen = new Set<string>();
+  return links.flatMap((m, i): Posting[] => {
+    const url = `https://www.google.com/about/careers/applications/${m[1]}`;
+    if (seen.has(url)) return [];
+    seen.add(url);
+    const card = html.slice(links[i - 1]?.index ?? 0, m.index);
+    const heading = card.lastIndexOf("<h3");
+    const title = heading < 0 ? "" : card.slice(heading).match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i)?.[1];
+    const place = heading < 0 ? "" : card.slice(heading).match(/>([^<>]*Israel[^<>]*)</)?.[1];
+    return posting(title, place, "", url);
+  });
+}
+
+// Mobileye's jobs page: each job a card (jobItem), its title, then its place, and its page.
+export const MOBILEYE = "https://careers.mobileye.com/jobs";
+export function parseMobileye(html: string): Posting[] {
+  const cards = html.split(/<div\b[^>]*class="jobItem\b/).slice(1);
+  if (!cards.length) throw new Error("not Mobileye's jobs page");
+  return cards.flatMap((card) => {
+    const title = card.match(/class="jobTitle"[^>]*>([\s\S]*?)<\//)?.[1];
+    const after = card.slice(card.indexOf("jobTitle"));
+    const place = after.match(/<\/p>[\s\S]*?>([^<>]*\S[^<>]*)</)?.[1];
+    return posting(title, place, "", onSite(card.match(/href="(\/jobs\/[^"]+)"/)?.[1], "https://careers.mobileye.com"));
+  });
+}
+
+// Check Point's careers site: its list for Israel, ten to a page, in the page's data (Next.js), each job linked to its
+// page there.
+export const CHECKPOINT = "https://careers.checkpoint.com/jobs?country=Israel";
+export function parseCheckPoint(html: string): { pages: number; found: Posting[] } {
+  const data = html.match(/<script id="__NEXT_DATA__" type="application\/json"[^>]*>([\s\S]*?)<\/script>/)?.[1];
+  const result = data ? JSON.parse(data)?.props?.pageProps?.result : null;
+  if (!Array.isArray(result?.jobPostingsList)) throw new Error("not Check Point's jobs page");
+  return {
+    pages: Number(result.numberOfPages) || 1,
+    found: result.jobPostingsList.flatMap((j: any) => (/^\d+$/.test(String(j?.id)) && /^[\w-]+$/.test(String(j?.slug))
+      ? posting(j.title, [j.city, j.country].filter(Boolean).join(", "), day(j.datePosted), `https://careers.checkpoint.com/jobs/${j.id}/${j.slug}`) : [])),
+  };
+}
+
+// Palo Alto Networks' careers site, CyberArk's now too (Radancy): its search for Israel, fifteen to a page, the pages
+// by ?p= (its own next link goes by an address its robots.txt keeps closed), each result's title and place.
+export const PALOALTO = "https://jobs.paloaltonetworks.com/en/search-jobs/Israel/47263/2/294640/31/35/50/2";
+export function parseRadancy(html: string, origin: string): { pages: number; found: Posting[] } {
+  const results = [...html.matchAll(/<a\b[^>]*href="(\/[a-z]{2}\/job\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
+  if (!results.length && !/data-total-results/.test(html)) throw new Error("not a Radancy search");
+  return {
+    pages: Number(html.match(/data-total-pages="(\d+)"/)?.[1] ?? 1),
+    found: results.flatMap((m) => posting(m[2].match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/)?.[1], m[2].match(/class="[^"]*result-location[^"]*"[^>]*>([\s\S]*?)<\/span>/)?.[1], "", onSite(m[1], origin))),
+  };
+}
+
+// A page whose jobs are marked for search engines (JSON-LD JobPosting), as HiBob's careers page is: each one's title,
+// places (a country's code standing for its name, as "IL") and day, with its link where it is on site's hosts.
+export function parseJobPostings(html: string, site: string): Posting[] {
+  const items = [...html.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)].flatMap((m) => {
+    try { const j = JSON.parse(m[1]); return Array.isArray(j) ? j : j?.["@graph"] ?? [j]; } catch { return []; }
+  }).filter((j) => j?.["@type"] === "JobPosting");
+  if (!items.length) throw new Error("no job postings marked on the page");
+  const name = (x: unknown) => (x && typeof x === "object" ? (x as { name?: unknown }).name : x);
+  return items.flatMap((j) => {
+    const places = (Array.isArray(j.jobLocation) ? j.jobLocation : [j.jobLocation]).map((l: any) =>
+      [l?.address?.addressLocality, l?.address?.addressRegion, name(l?.address?.addressCountry)].map((x) => (x === "IL" ? "Israel" : x)).filter(Boolean).join(", "));
+    let url = "";
+    try { const u = new URL(String(j.url ?? "")); if (u.protocol === "https:" && u.hostname.endsWith(site)) url = u.href; } catch { /* none */ }
+    return posting(j.title, [...new Set(places)].filter(Boolean).join("; "), day(j.datePosted), url);
+  });
+}
+
+// A Jobvite careers page (jobs.jobvite.com/<company>/jobs): each row's job, its place (the row's last mark: a place, or
+// how many there are), and its page there.
+export function parseJobvite(html: string, company: string): Posting[] {
+  const rows = [...html.matchAll(new RegExp(`<a\\b[^>]*href="(/${company.replace(/\W/g, "")}/job/\\w+)[^"]*"[^>]*>([\\s\\S]*?)</a>`, "g"))];
+  if (!rows.length && !html.includes("jv-job-list")) throw new Error("not a Jobvite list");
+  return rows.flatMap((m) => {
+    const spans = [...(m[2].match(/jv-job-list-location[^>]*>([\s\S]*?)<\/div>/)?.[1] ?? "").matchAll(/<span\b[^>]*>([\s\S]*?)<\/span>/g)].map((s) => s[1]);
+    return posting(m[2].match(/jv-job-list-name[^>]*>([\s\S]*?)<\/div>/)?.[1], spans[spans.length - 1], "", `https://jobs.jobvite.com${m[1]}`);
+  });
+}
+
+// Unity's positions page: each position in the page's data, its title, places and Workday page.
+export function parseUnity(html: string): Posting[] {
+  const items = [...html.replace(/\\"/g, '"').matchAll(/\{"title":"((?:[^"\\]|\\.)*)","locations":\[((?:"[^"]*",?)*)\][^{}]*?"externalUrl":"(https:\/\/unitytech\.wd1\.myworkdayjobs\.com\/[^"]+)"/g)];
+  if (!items.length) throw new Error("not Unity's positions page");
+  return items.flatMap((m) => {
+    let title = m[1];
+    try { title = JSON.parse(`"${m[1]}"`); } catch { /* kept as it came */ }
+    return posting(title, [...m[2].matchAll(/"([^"]*)"/g)].map((x) => x[1]).join("; "), "", m[3]);
+  });
+}
+
+// What a careers site is searched for: each role's title without its level, which big employers seldom put in a
+// title, up to eight.
+export const searchTerms = (roles: Role[]) =>
+  [...new Set(roles.map((r) => r.query.replace(/^(junior|senior|graduate|student|intern)\s+/i, "").trim()).filter(Boolean))].slice(0, 8);
+
+// A high-tech employer's jobs in Israel, from where it keeps them.
+async function readCareers(read: Read, roles: Role[], o: { fetch: Fetch; signal?: AbortSignal }): Promise<Posting[]> {
+  const page = async (url: string) => {
+    const body = await o.fetch(url, o.signal);
+    if (body === null) throw new Error(`${new URL(url).host} did not answer`);
+    return body;
+  };
+  const search = async (url: (term: string) => string, parse: (body: string) => Posting[]) => {
+    const all: Posting[] = [];
+    for (const term of searchTerms(roles)) {
+      if (o.signal?.aborted) break;
+      all.push(...parse(await page(url(encodeURIComponent(term)))));
+    }
+    return all;
+  };
+  // A list over pages: the first, then each one after it it says there is, up to ten.
+  const paged = async (first: string, next: (n: number) => string, parse: (body: string) => { pages: number; found: Posting[] }) => {
+    const one = parse(await page(first));
+    const all = [...one.found];
+    for (let n = 2; n <= Math.min(one.pages, 10) && !o.signal?.aborted; n++) all.push(...parse(await page(next(n))).found);
+    return all;
+  };
+  let found: Posting[];
+  if ("greenhouse" in read) found = parseGreenhouse(await page(`https://boards-api.greenhouse.io/v1/boards/${read.greenhouse}/jobs`), read.greenhouse);
+  else if ("jobvite" in read) found = parseJobvite(await page(`https://jobs.jobvite.com/${read.jobvite}/jobs`), read.jobvite);
+  else if ("lever" in read) found = parseLever(await page(`https://api.lever.co/v0/postings/${read.lever}?mode=json`));
+  else if ("workable" in read) found = parseWorkable(await page(`https://apply.workable.com/api/v1/widget/accounts/${encodeURIComponent(read.workable)}`));
+  else if ("ashby" in read) found = parseAshby(await page(`https://jobs.ashbyhq.com/${encodeURIComponent(read.ashby)}`), read.ashby);
+  else if ("comeet" in read) found = parseComeet(await page(`https://www.comeet.com/jobs/${read.comeet}`));
+  else if ("eightfold" in read) {
+    const host = read.eightfold;
+    found = await search((q) => `https://${host}/api/pcsx/search?domain=${host.split(".").slice(-2).join(".")}&query=${q}&location=Israel&start=0`, (b) => parseEightfold(b, host));
+  } else if ("own" in read) {
+    if (read.own === "matrix") return readMatrix(fieldsOf(roles), o);
+    found = read.own === "amazon" ? await search((q) => `https://www.amazon.jobs/en/search.json?country=ISR&base_query=${q}&result_limit=50&sort=recent`, parseAmazon)
+      : read.own === "apple" ? await search((q) => `https://jobs.apple.com/en-il/search?location=israel-ISR&search=${q}`, parseApple)
+      : read.own === "google" ? await search((q) => `https://www.google.com/about/careers/applications/jobs/results?location=Israel&q=${q}`, parseGoogle)
+      : read.own === "checkpoint" ? await paged(CHECKPOINT, (n) => `${CHECKPOINT}&page=${n}`, parseCheckPoint)
+      : read.own === "paloalto" ? await paged(PALOALTO, (n) => `${PALOALTO}?p=${n}`, (b) => parseRadancy(b, "https://jobs.paloaltonetworks.com"))
+      : read.own === "hibob" ? parseJobPostings(await page("https://hibob.teamme.link/"), ".careers.hibob.com")
+      : read.own === "unity" ? parseUnity(await page("https://unity.com/careers/positions"))
+      : parseMobileye(await page(MOBILEYE));
+  } else return [];
+  return found.filter(inIsrael);
 }
 
 // A careers page the user added (portals page): its links that look like a posting and have one of the roles' words.

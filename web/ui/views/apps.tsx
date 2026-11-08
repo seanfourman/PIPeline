@@ -102,7 +102,7 @@ function DocLink({ path, label }: { path: unknown; label: string }) {
 // CV is built, joined to it in one file (transcript.ts); with none kept yet, the way to the settings to put one.
 function TranscriptLinks({ cvFile }: { cvFile: unknown }) {
   const { s, t } = useApp();
-  if (!s.transcript) return <a href="#/settings">{t("apps.addTranscript")}</a>;
+  if (!s.transcript) return <a href="/settings">{t("apps.addTranscript")}</a>;
   const cv = inUserFolder(cvFile).replace(/\.tex$/i, ".pdf");
   const built = /^user\/cv\/[^/]+\.pdf$/i.test(cv) && s.files.some((f) => f.path === cv);
   return (
@@ -156,7 +156,7 @@ export function Apps() {
                     </td>
                     <td><div className="row">
                       <DocLink path={a.cv_file} label={t("apps.cv")} />
-                      {name && <a href={`#/cv/${name}`}>{t("common.edit")}</a>}
+                      {name && <a href={`/cv/${encodeURIComponent(name)}`}>{t("common.edit")}</a>}
                       <DocLink path={a.cover_letter_file} label={t("apps.letter")} />
                       {a.asksTranscript && <TranscriptLinks cvFile={a.cv_file} />}
                     </div></td>
@@ -172,7 +172,7 @@ export function Apps() {
           <p className="note table-note">{t("apps.atsTip")}</p>
         </Card>
       ) : (
-        <Card className="empty">{t("apps.empty")}<a className="btn primary" href="#/jobs">{t("apps.find")}</a></Card>
+        <Card className="empty">{t("apps.empty")}<a className="btn primary" href="/jobs">{t("apps.find")}</a></Card>
       )}
       {s.files.length > 0 && (
         <Card>

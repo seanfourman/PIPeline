@@ -32,7 +32,7 @@ const TAIL_Y = 9;
 // them the computer still refuses one when the button is pressed.
 let commonOnes: Promise<Set<string>> | null = null;
 const loadCommon = () =>
-  (commonOnes ??= fetch("common-passwords.txt").then((r) => (r.ok ? r.text() : "")).then(commonPasswords, () => new Set<string>()));
+  (commonOnes ??= fetch("/common-passwords.txt").then((r) => (r.ok ? r.text() : "")).then(commonPasswords, () => new Set<string>()));
 
 // What Pip says over the board while the account is made, in the speech bubble he has behind the sidebar: beside his
 // face, its tail at his mouth, placed by the size the forest draws him at (forestScale) and on whole pixels, on the

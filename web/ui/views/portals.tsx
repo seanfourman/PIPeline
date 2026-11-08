@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { useApp } from "../app";
 import { SaveNote, useAutoSave } from "../autosave";
-import { api, Btn, Card, External, Icon, Page, Spinner } from "../kit";
+import { api, Btn, Card, External, goTo, Icon, Page, Spinner } from "../kit";
 import { Select } from "../select";
 import { employersToRead, INDUSTRIES, portalOn, PORTALS, webPortals, type How, type OwnPortal, type Portal } from "../../portals";
 
@@ -130,7 +130,7 @@ export function Portals() {
     try {
       const session = await api("portals/scan", {});
       await refresh();
-      location.hash = `#/chat/${session.id}`;
+      goTo(`/chat/${session.id}`);
     } catch (e) {
       say(err(e), "worried");
       setBusy(false);
@@ -138,6 +138,7 @@ export function Portals() {
   };
 
   const boards = PORTALS.filter((p) => p.kind === "board");
+  const platforms = PORTALS.filter((p) => p.kind === "platform");
   const community = PORTALS.filter((p) => p.kind === "community");
   const counts = {
     search: boards.filter((p) => p.how === "search" && portalOn(p, picks)).length,
@@ -162,6 +163,12 @@ export function Portals() {
       </Card>
 
       <Card className="stack">
+        <h2>{t("portals.platforms")}</h2>
+        <p className="note">{t("portals.platformsNote")}</p>
+        <ul className="portal-list">{platforms.map(row)}</ul>
+      </Card>
+
+      <Card className="stack">
         <h2>{t("portals.employers")}</h2>
         <p className="note">{t("portals.employersNote")}</p>
         {!picks.lowTech && (
@@ -169,7 +176,7 @@ export function Portals() {
             <Btn kind="ghost" onClick={() => update((d) => { d.lowTech = true; })}>{t("portals.turnOn")}</Btn>
           </p>
         )}
-        {INDUSTRIES.filter((i) => i.id !== "hightech").map((i) => {
+        {INDUSTRIES.map((i) => {
           const here = PORTALS.filter((p) => p.kind === "employer" && p.industry === i.id);
           if (!here.length) return null;
           return (

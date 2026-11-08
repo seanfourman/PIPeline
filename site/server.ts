@@ -86,12 +86,17 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
     if (!origin || origin === "null") return req.headers.get("sec-fetch-site") === "same-origin";
     try { return new URL(origin).host === req.headers.get("host"); } catch { return false; }
   };
-  // One of the interface's files, the page itself at /, or null.
-  const appFile = (pathname: string) => {
+  // One of the interface's files, the page itself at /, or null. The browser opening an address with no file at it
+  // gets the page too: the app's pages (/jobs, /chat/<id>) are addresses in it, which it shows (web/ui/app.tsx).
+  const appFile = (req: Request, pathname: string) => {
     let rel: string;
     try { rel = pathname === "/" ? "index.html" : decodeURIComponent(pathname.slice(1)); } catch { return null; }
-    const abs = path.join(appRoot, rel);
-    if (!abs.startsWith(appRoot + path.sep) || !existsSync(abs) || !statSync(abs).isFile()) return null;
+    let abs = path.join(appRoot, rel);
+    if (!abs.startsWith(appRoot + path.sep)) return null;
+    if (!existsSync(abs) || !statSync(abs).isFile()) {
+      if (!/\btext\/html\b/.test(req.headers.get("accept") ?? "")) return null;
+      abs = path.join(appRoot, "index.html");
+    }
     return new Response(Bun.file(abs), { headers: { ...SECURITY, "Content-Type": MIME[path.extname(abs)] ?? "application/octet-stream", "Content-Security-Policy": PAGE_POLICY } });
   };
   const goHome = (cookies: string[] = []) => {
@@ -225,13 +230,13 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
         if (url.pathname === "/api/me") return json({ loggedIn: false, needsAccount: false, site: true, download, mac });
         if (url.pathname === "/api/login" && req.method === "POST") return sameSite(req) ? signIn(req, server) : new Response("Forbidden", { status: 403 });
         if (api) return json({ error: "login_required" }, 401);
-        return (reading && appFile(url.pathname)) || new Response("Not found", { status: 404, headers: SECURITY });
+        return (reading && appFile(req, url.pathname)) || new Response("Not found", { status: 404, headers: SECURITY });
       }
       // Tied to a computer: the interface's own files (the page, its code, styles and fonts) still from here, the newest
       // the site has, whatever the computer's copy is, so a change to them shows as soon as the site has it, without
       // Pip on the computer installed again; what the account holds (its API, its documents) from the computer.
       if (!api && reading) {
-        const own = appFile(url.pathname);
+        const own = appFile(req, url.pathname);
         if (own) return own;
       }
       // Its computer off: its API says so, and the interface shows that until the computer is back.

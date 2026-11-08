@@ -1,7 +1,7 @@
 // Local web interface for the job-search workspace. Listens on this computer only.
 // First, so the user's folder is in place before any module below reads it.
 import "./upgrade";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createSession, createTaskSession, getSession, isAccess, listSessions, runTask, runUnattended } from "./agent";
 import { AccountError, clearedCookie, createAuth, sessionCookie } from "./auth";
@@ -19,7 +19,7 @@ import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, list
 import { REPO } from "./policy";
 import { createRemote, RemoteError } from "./remote";
 import { readSaved, setSaved } from "./saved";
-import { loadSettings, REGION_PRESETS, saveSettings } from "./settings";
+import { loadSettings, REGION_PRESETS, saveSettings, syncWorkspace } from "./settings";
 import { joinWithTranscript, removeTranscript, saveTranscript, TRANSCRIPT, TranscriptError, transcriptInfo } from "./transcript";
 import { getUpload, saveUpload, UploadError } from "./uploads";
 import { nameProblem } from "./ui/account-rules";
@@ -34,6 +34,10 @@ await buildInterface(path.join(PUBLIC, "build"));
 watchInterface(path.join(PUBLIC, "build"));
 // Whether Claude and ChatGPT are signed in, known before the first conversation asks.
 cliStatus().catch(() => {});
+// The settings' block in the agent's files written afresh as the server starts (settings.ts), so what a new version
+// changed in it, such as the sites the daily run searches the web on, reaches the agent without the settings saved
+// again.
+if (existsSync(path.join(APP_DIR, "settings.json"))) syncWorkspace(loadSettings(), REPO);
 
 mkdirSync(APP_DIR, { recursive: true });
 if (!existsSync(TOKEN_FILE)) writeFileSync(TOKEN_FILE, crypto.randomUUID().replaceAll("-", ""));
@@ -163,6 +167,9 @@ async function loginRoutes(req: Request, url: URL): Promise<Response | null> {
 
 const hasCookie = (req: Request) =>
   (req.headers.get("cookie") ?? "").split(/;\s*/).includes(`job_token=${TOKEN}`);
+
+// The browser opening a page (an address typed, a link followed, a reload), rather than a file one asks for.
+const opensPage = (req: Request) => (req.method === "GET" || req.method === "HEAD") && /\btext\/html\b/.test(req.headers.get("accept") ?? "");
 
 // A website the user visits must not be able to reach this server, so the host,
 // the origin of every write, and a cookie that never leaves this site are all checked.
@@ -501,9 +508,16 @@ async function handle(req: Request): Promise<Response> {
   }
   if (url.pathname === "/file") return document(url);
 
+  // A file of the interface, or one of the app's pages (/jobs, /chat/<id>): the browser opening an address with no file
+  // at it gets the one page, which shows the page the address names, or the home page for one it doesn't. A script, a
+  // style or a picture asked for and not there is not found, as before.
   const rel = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
-  const abs = path.join(PUBLIC, rel);
-  if (!abs.startsWith(PUBLIC + path.sep) || !existsSync(abs)) return new Response("Not found", { status: 404 });
+  let abs = path.join(PUBLIC, rel);
+  if (!abs.startsWith(PUBLIC + path.sep)) return new Response("Not found", { status: 404 });
+  if (!existsSync(abs) || !statSync(abs).isFile()) {
+    if (!opensPage(req)) return new Response("Not found", { status: 404 });
+    abs = path.join(PUBLIC, "index.html");
+  }
   return new Response(Bun.file(abs), { headers: { ...SECURITY_HEADERS, "Content-Type": MIME[path.extname(abs)] ?? "application/octet-stream" } });
 }
 

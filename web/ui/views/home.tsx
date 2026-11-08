@@ -1,7 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { store, stored, useApp, type AppState } from "../app";
 import { paintStill } from "../intro";
-import { Btn } from "../kit";
+import { Btn, goTo } from "../kit";
 import { Pip, PipAsleep, pixelPath } from "../pip";
 
 // Small one-colour drawings in the banner's pixel blocks rather than a font's or an icon set's: the tick on a
@@ -98,25 +98,25 @@ export function appStats(s: AppState) {
 
 
 export function nextStep(s: AppState, t: ReturnType<typeof useApp>["t"], start: (p: string) => void) {
-  const go = (hash: string) => () => { location.hash = hash; };
+  const go = (path: string) => () => goTo(path);
   const step = (name: string, run: () => void, params = {}) => ({
     title: t(`next.${name}Title`, params), text: t(`next.${name}Text`, params), label: t(`next.${name}Label`, params), run,
   });
   const status = (a: Record<string, any>) => String(a.status ?? "").toLowerCase();
   const waiting = s.sessions.find((x) => x.status === "waiting");
-  if (waiting) return step("waiting", go(`#/chat/${waiting.id}`));
+  if (waiting) return step("waiting", go(`/chat/${waiting.id}`));
   // The introduction builds the profile; put aside, it opens again from here.
-  if (!s.profileReady) return step("profile", go("#/welcome"));
-  if (!s.settings.markets?.length) return step("markets", go("#/settings"));
+  if (!s.profileReady) return step("profile", go("/welcome"));
+  if (!s.settings.markets?.length) return step("markets", go("/settings"));
   const interview = s.applications.find((a) => status(a) === "interview");
   if (interview) return step("interview", () => start(`/interview ${interview.company} ${interview.role}`), { company: interview.company });
   const drafted = s.applications.find((a) => status(a) === "drafted");
-  if (drafted) return step("drafted", go("#/apps"), { company: drafted.company });
+  if (drafted) return step("drafted", go("/apps"), { company: drafted.company });
   const top = s.jobs.filter((j) => j.status === "ranked" && j.score !== null && j.tier !== "far" && j.url).sort((a, b) => b.score - a.score)[0];
   if (top) return step("top", () => start(`/apply ${top.url}`), { title: top.title, company: top.company, score: top.score });
   const fresh = s.jobs.filter((j) => j.status === "new" || j.status === "unreachable").length;
   if (fresh) return step("fresh", () => start("/rank"), { n: fresh });
-  return step("start", go("#/jobs"));
+  return step("start", go("/jobs"));
 }
 
 // A later stage counts the earlier ones as passed, because someone can apply to a job they found on their own.
@@ -128,12 +128,12 @@ function journey(s: AppState, t: ReturnType<typeof useApp>["t"]) {
     label: t(`home.stages.${key}`), hint: reached ? (done ?? t(`home.stages.${key}Done`, { n })) : t(`home.stages.${key}Todo`), reached, href,
   });
   const stages = [
-    stage("meet", 0, ready, "#/profile", t("home.stages.meetReady")),
-    stage("find", s.jobs.length, s.jobs.length > 0, "#/jobs"),
-    stage("cv", made, made > 0, "#/apps"),
-    stage("send", st.sent, st.sent > 0, "#/apps"),
-    stage("interview", st.interview, st.interview > 0, "#/apps"),
-    stage("offer", st.offer, st.offer > 0, "#/apps"),
+    stage("meet", 0, ready, "/profile", t("home.stages.meetReady")),
+    stage("find", s.jobs.length, s.jobs.length > 0, "/jobs"),
+    stage("cv", made, made > 0, "/apps"),
+    stage("send", st.sent, st.sent > 0, "/apps"),
+    stage("interview", st.interview, st.interview > 0, "/apps"),
+    stage("offer", st.offer, st.offer > 0, "/apps"),
   ];
   const furthest = stages.reduce((last, x, i) => (x.reached ? i : last), -1);
   return { stages, current: Math.min(furthest + 1, stages.length - 1), finished: st.offer > 0 };
@@ -340,7 +340,7 @@ const PIN = [".XXX.", "XX.XX", "XX.XX", ".XXX.", "..X.."];
 // company, and the place by a pin.
 function Item({ job }: { job: Job }) {
   return (
-    <a className="item" href="#/saved/found" aria-label={`${job.score}: ${job.title}, ${job.company}`}>
+    <a className="item" href="/saved/found" aria-label={`${job.score}: ${job.title}, ${job.company}`}>
       <span className="item-score"><Digits n={job.score} /></span>
       {/* The words run in their own language's direction inside each line. */}
       <strong className="item-title"><bdi dir="auto">{job.title}</bdi></strong>
@@ -370,22 +370,22 @@ export function Home() {
       <Hero />
       <div className="page home">
         <section className="stats" aria-label={t("home.glance")}>
-          {stat("fresh", fresh, "#/saved/found")}
-          {stat("sent", st.sent, "#/apps")}
-          {stat("interview", st.interview, "#/apps")}
-          {stat("offer", st.offer, "#/apps")}
+          {stat("fresh", fresh, "/saved/found")}
+          {stat("sent", st.sent, "/apps")}
+          {stat("interview", st.interview, "/apps")}
+          {stat("offer", st.offer, "/apps")}
         </section>
         <section className="best">
           <div className="best-head">
             <h2>{t("home.topJobs")}</h2>
             <PixelArt className="best-ledge" rows={LEDGE} />
-            {top.length > 0 && <a className="best-all" href="#/saved/found">{t("home.allJobs")}</a>}
+            {top.length > 0 && <a className="best-all" href="/saved/found">{t("home.allJobs")}</a>}
           </div>
           <Shelves jobs={top} />
           {!top.length && (
             <div className="best-empty">
               <p>{t("home.noJobs")}</p>
-              <a className="btn pixel" href="#/jobs">{t("home.toJobs")}</a>
+              <a className="btn pixel" href="/jobs">{t("home.toJobs")}</a>
             </div>
           )}
         </section>

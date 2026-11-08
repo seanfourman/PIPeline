@@ -45,6 +45,15 @@ export function errorText(err: ApiError, lang: Lang) {
 
 export const safeUrl = (u: unknown) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : null);
 
+// The app's pages are addresses of their own (/jobs, /chat/<id>) in its one page, which shows the one the address
+// names (app.tsx). Going to one in the page, as its links do: a new step in the browser's history, or in place of
+// this one; App hears of it (ROUTED) as it does of Back and Forward.
+export const ROUTED = "pip-routed";
+export function goTo(path: string, replace = false) {
+  history[replace ? "replaceState" : "pushState"](null, "", path);
+  dispatchEvent(new Event(ROUTED));
+}
+
 // Values side by side on one line, a company, a place and a date, kept apart by a space wider than a word's and
 // nothing drawn in it: a mark between them reads as clutter.
 export function Spaced({ parts }: { parts: React.ReactNode[] }) {

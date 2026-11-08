@@ -1,7 +1,7 @@
 // The frame: shared state, language, theme, the sidebar, Pip's notices, and which screen shows.
 import React, { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { translate, type Lang } from "./i18n";
-import { api, copyText, desktopSystem, errorText, Icon, isComputer, macCommand, type ApiError } from "./kit";
+import { api, copyText, desktopSystem, errorText, goTo, Icon, isComputer, macCommand, ROUTED, type ApiError } from "./kit";
 import { Pip, PipMark, type Mood } from "./pip";
 import { Apps } from "./views/apps";
 import { Chat } from "./views/chat";
@@ -72,10 +72,17 @@ export const store = (key: string, value: string) => { try { localStorage.setIte
 export const LANGUAGES_ON = false;
 export const THEMES_ON = false;
 
-function readHash(): [string, string | undefined] {
-  const [view = "dash", arg] = location.hash.slice(2).split("/");
-  return [view || "dash", arg ? decodeURIComponent(arg) : undefined];
+// The page an address names, and what it opens there: /jobs, /chat/<id>, the home page at /. One of the old kind,
+// from before the pages had addresses of their own (/#/jobs), is read the same, and App sets it right.
+function readRoute(): [string, string | undefined] {
+  const at = location.hash.startsWith("#/") ? location.hash.slice(1) : location.pathname;
+  const [view = "", arg] = at.slice(1).split("/");
+  let named = arg;
+  try { named = arg && decodeURIComponent(arg); } catch { /* kept as it came */ }
+  return [view || "dash", named || undefined];
 }
+// A page's address, the home page's /.
+const pagePath = (view: string, arg?: string) => (view === "dash" && !arg ? "/" : `/${view}${arg ? `/${encodeURIComponent(arg)}` : ""}`);
 
 export const COMMANDS: { group: string; items: { id: string; arg?: boolean; danger?: boolean }[] }[] = [
   { group: "daily", items: [{ id: "job-scraper" }, { id: "rank" }, { id: "apply", arg: true }, { id: "interview", arg: true }, { id: "outcome", arg: true }] },
@@ -104,6 +111,8 @@ const NAV: [string, string][] = [
   ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"],
 ];
 const SHOWN = 10;
+// Every page an address can open: the sidebar's, a CV or a letter in the editor, and the introduction.
+const PAGES = new Set([...NAV.map(([id]) => id), "cv", "letter", "welcome"]);
 
 // The sidebar. Language and theme live on the settings page; the foot is the account, with a button to log out. Beside
 // the logo, here only, a tag that says Pip is still in beta.
@@ -115,7 +124,7 @@ function Sidebar() {
   const more = NAV.slice(SHOWN);
   // A page's row, in the list or in More's menu; i, its place, is for the menu's rows coming in one after another.
   const row = ([id, icon]: [string, string], i: number) => (
-    <a key={id} href={`#/${id}`} aria-current={current === id ? "page" : undefined} style={{ "--i": i } as React.CSSProperties}>
+    <a key={id} href={pagePath(id)} aria-current={current === id ? "page" : undefined} style={{ "--i": i } as React.CSSProperties}>
       <span className="nav-icon">
         <Icon name={icon} filled={current === id} />
         {id === "chat" && waiting > 0 && <span className="count" aria-label={t("nav.waiting", { n: waiting })}>{waiting}</span>}
@@ -126,14 +135,14 @@ function Sidebar() {
   return (
     <nav className="side" aria-label={t("nav.main")}>
       <div className="brand-row">
-        <a className="brand" href="#/dash" aria-label={t("brand.name")}><PipMark /></a>
+        <a className="brand" href="/" aria-label={t("brand.name")}><PipMark /></a>
         <span className="beta">{t("brand.beta")}</span>
       </div>
       <div className="nav">
         {NAV.slice(0, SHOWN).map(row)}
         {more.length > 0 && <More here={more.some(([id]) => id === current)}>{more.map(row)}</More>}
       </div>
-      <a className="btn post" href="#/chat/new" aria-label={t("chat.new")}><Icon name="plus" /><span>{t("chat.new")}</span></a>
+      <a className="btn post" href="/chat/new" aria-label={t("chat.new")}><Icon name="plus" /><span>{t("chat.new")}</span></a>
       <div className="account">
         <span className="avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
         <span className="account-name ellipsis">{name}</span>
@@ -236,8 +245,8 @@ function More({ here, children }: { here: boolean; children: React.ReactNode }) 
 export function companionLine(s: AppState, view: string, t: Ctx["t"]): { text: string; mood: Mood; href?: string; action?: string; news?: boolean } {
   const waiting = s.sessions.find((x) => x.status === "waiting");
   const running = s.sessions.find((x) => x.status === "running");
-  if (waiting) return { text: t("pip.waiting"), mood: "ask", href: `#/chat/${waiting.id}`, action: t("pip.toChat"), news: true };
-  if (running) return { text: t("pip.running"), mood: "work", href: `#/chat/${running.id}`, action: t("pip.watch") };
+  if (waiting) return { text: t("pip.waiting"), mood: "ask", href: `/chat/${waiting.id}`, action: t("pip.toChat"), news: true };
+  if (running) return { text: t("pip.running"), mood: "work", href: `/chat/${running.id}`, action: t("pip.watch") };
   const line = t(`pip.views.${view}`);
   return { text: typeof line === "string" && !line.startsWith("pip.") ? line : "", mood: "idle" };
 }
@@ -273,7 +282,7 @@ function PeekingPip() {
       ? { key: `news:${news.text}`, text: news.text, mood: news.mood }
       : session
         ? {
-          key: `${session.id}:${work}`, text: t(work ? "pip.peekWork" : "pip.peek"), mood: work ? "work" : undefined, href: `#/chat/${session.id}`,
+          key: `${session.id}:${work}`, text: t(work ? "pip.peekWork" : "pip.peek"), mood: work ? "work" : undefined, href: `/chat/${session.id}`,
           label: `${t(work ? "pip.peekWork" : "pip.peek")} ${t("pip.peekIn")} ${friendlyTitle(session.title, t)}`,
         }
         : null;
@@ -470,7 +479,7 @@ export function App() {
   const [site, setSite] = useState<SiteInfo | null>(null);
   // The forest run plays when the page opens, not after a logout.
   const [intro, setIntro] = useState(true);
-  const [[view, arg], setRoute] = useState(readHash);
+  const [[view, arg], setRoute] = useState(readRoute);
   const [lang, setLangState] = useState<Lang>(() => (LANGUAGES_ON && stored("lang") === "en" ? "en" : "he"));
   const [theme, setTheme] = useState(() => (THEMES_ON ? stored("theme") ?? "" : "light"));
   const [news, setNews] = useState<News>(null);
@@ -566,14 +575,55 @@ export function App() {
     return () => { removeEventListener("pip-login-required", onExpired); prefersDark.removeEventListener("change", onScheme); };
   }, [prefersDark]);
 
+  // The page from the address as it changes, by Back and Forward (popstate) or in the page (ROUTED: kit's goTo, and the
+  // links below), with the state asked for afresh and the focus on the page's main part.
   useEffect(() => {
     if (auth !== "in") return;
-    const onHash = () => { setRoute(readHash()); refresh().catch(() => {}); document.getElementById("main")?.focus({ preventScroll: true }); };
-    addEventListener("hashchange", onHash);
+    const onRoute = () => { setRoute(readRoute()); refresh().catch(() => {}); document.getElementById("main")?.focus({ preventScroll: true }); };
+    addEventListener("popstate", onRoute);
+    addEventListener(ROUTED, onRoute);
     refresh().catch(() => setLoaded(true));
     const timer = setInterval(() => refresh().catch(() => {}), 5000);
-    return () => { removeEventListener("hashchange", onHash); clearInterval(timer); };
+    return () => { removeEventListener("popstate", onRoute); removeEventListener(ROUTED, onRoute); clearInterval(timer); };
   }, [auth, refresh]);
+
+  // A click on a link to one of the app's pages goes there in the page rather than loading it again; the browser's
+  // own ways with a link stay as they were (a new tab or window, a download, another site, a file of the account's).
+  // A link to the page already open does nothing, as before.
+  useEffect(() => {
+    const follow = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const a = (e.target as Element | null)?.closest?.("a");
+      if (!a?.href || (a.target && a.target !== "_self") || a.hasAttribute("download")) return;
+      const to = new URL(a.href);
+      if (to.origin !== location.origin || to.hash || (to.pathname !== "/" && !PAGES.has(to.pathname.split("/")[1]))) return;
+      e.preventDefault();
+      if (to.pathname + to.search !== location.pathname + location.search) goTo(to.pathname + to.search);
+    };
+    document.addEventListener("click", follow);
+    return () => document.removeEventListener("click", follow);
+  }, []);
+
+  // An address of the old kind (/#/jobs), set right once as the page opens.
+  useLayoutEffect(() => { if (location.hash.startsWith("#/")) history.replaceState(null, "", pagePath(view, arg)); }, []);
+
+  // The page an address may show, signed in and with the state in: the introduction while it is still to do; it again
+  // only while the profile it builds isn't ready, as the home page sends you back to it then; and an address of no
+  // page, the home page. Worked out as an address is arrived at (opened, followed or typed), and again when the
+  // introduction comes to be still to do; not when it comes to be done, so it isn't left midway. The address is
+  // changed to the page's in place where it is another, so Back doesn't lead to it. Signed out, the login covers
+  // every address, and keeps it, to land there once in.
+  const arrived = useRef("");
+  useLayoutEffect(() => {
+    if (auth !== "in" || !loaded) { arrived.current = ""; return; }
+    const fresh = arrived.current !== view;
+    arrived.current = view;
+    const page = !s.intro?.done ? "welcome" : !fresh ? view : view === "welcome" ? (s.profileReady ? "dash" : "welcome") : PAGES.has(view) ? view : "dash";
+    if (page === view) return;
+    arrived.current = page;
+    history.replaceState(null, "", pagePath(page));
+    setRoute([page, undefined]);
+  }, [auth, loaded, view, s.intro?.done]);
 
   // A language picked before logging in reaches the saved settings once they load.
   useEffect(() => {
@@ -594,7 +644,8 @@ export function App() {
 
   const t = useCallback((key: string, params?: Record<string, string | number>) => translate(lang, key, params), [lang]);
   const waiting = s.sessions.filter((x) => x.status === "waiting").length;
-  // A new user's introduction, until it is finished or put aside, and whenever the home page sends them back to it.
+  // A new user's introduction, until it is finished or put aside, and whenever the home page sends them back to it
+  // (its address kept to it as it is arrived at, above).
   const welcome = auth === "in" && loaded && (view === "welcome" || !s.intro?.done);
   useEffect(() => { document.title = `${waiting ? `(${waiting}) ` : ""}${t("brand.name")} / ${t(`nav.${welcome ? "welcome" : view === "dash" ? "home" : view}`)}`; }, [waiting, view, welcome, t]);
 
@@ -633,7 +684,7 @@ export function App() {
     },
     start: async (prompt, model, access, files) => {
       const session = await begin(prompt, model, access, files);
-      location.hash = `#/chat/${session.id}`;
+      goTo(`/chat/${session.id}`);
     },
     run: async (prompt) => { await begin(prompt); },
     logout: () => {
@@ -644,7 +695,7 @@ export function App() {
   return (
     <AppContext.Provider value={ctx}>
       {/* Not under Offline, where its forest would run unseen and its field take the focus. */}
-      {auth === "out" && booted && !offline && <Login intro={intro} create={needsAccount} site={site} onDone={() => { setNeedsAccount(false); setRoute(readHash()); setAuth("in"); }} />}
+      {auth === "out" && booted && !offline && <Login intro={intro} create={needsAccount} site={site} onDone={() => { setNeedsAccount(false); setRoute(readRoute()); setAuth("in"); }} />}
       {welcome && <div className={`welcome-wrap ${booted ? "entering" : "waiting"}`}><Welcome /></div>}
       {/* Laid out but hidden until the state is in too, so the first thing shown is the real page; then it fades in. */}
       {auth === "in" && !welcome && (
