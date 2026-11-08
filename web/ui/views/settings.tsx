@@ -584,7 +584,18 @@ export function Settings() {
         <h2>{t("settings.daily")}</h2>
         <p className="note">{t("settings.dailyNote")}</p>
         <p className="warn-line">{t("settings.dailyWarn")}</p>
-        <label className="check"><input type="checkbox" checked={draft.automation.enabled} onChange={(e) => setAuto("enabled", e.target.checked)} />{t("settings.enable")}</label>
+        {/* Turned on here, it runs here: an account on several computers runs it on one of them (accounts.ts), and one
+            that runs it elsewhere says so, with the way to run it here instead. */}
+        <label className="check">
+          <input type="checkbox" checked={draft.automation.enabled} onChange={(e) => { const on = e.target.checked; update((d) => { d.automation.enabled = on; if (on) d.automation.computer = s.computer ?? ""; }); }} />
+          {t("settings.enable")}
+        </label>
+        {draft.automation.enabled && draft.automation.computer && s.computer && draft.automation.computer !== s.computer && (
+          <p className="warn-line daily-elsewhere">
+            {t("settings.dailyElsewhere")}
+            <Btn kind="ghost" onClick={() => setAuto("computer", s.computer)}>{t("settings.dailyHere")}</Btn>
+          </p>
+        )}
         <div className="fields">
           <Field label={t("settings.email")}><input type="email" dir="ltr" value={draft.automation.email} onChange={(e) => setAuto("email", e.target.value)} /></Field>
           {number(t("settings.perDay"), draft.automation.maxPerDay, (n) => setAuto("maxPerDay", n))}

@@ -16,6 +16,8 @@ export class Offline extends Error {}
 
 export function createRelay() {
   const computers = new Map<string, ServerWebSocket<Link>>();
+  // The account open on each computer, as it says when it connects and when another is opened (web/remote.ts).
+  const open = new Map<string, string>();
   const waiting = new Map<string, Waiting>();
   const send = (ws: ServerWebSocket<Link>, msg: unknown) => { try { ws.send(JSON.stringify(msg)); } catch { /* gone */ } };
   const finish = (id: string, err?: Error) => {
@@ -33,15 +35,17 @@ export function createRelay() {
       if (old && old !== ws) old.close(4000, "replaced");
     },
     detach(ws: ServerWebSocket<Link>) {
-      if (computers.get(ws.data.id) === ws) computers.delete(ws.data.id);
+      if (computers.get(ws.data.id) === ws) { computers.delete(ws.data.id); open.delete(ws.data.id); }
       for (const [id, w] of waiting) if (w.ws === ws) finish(id, new Offline("disconnected"));
     },
     // Closes a computer's connection, as when it is unlinked.
     drop(computer: string) { computers.get(computer)?.close(4001, "unlinked"); },
     online: (computer: string) => computers.has(computer),
+    openOn: (computer: string) => open.get(computer) ?? "",
     message(ws: ServerWebSocket<Link>, raw: string | Buffer) {
       let msg: any;
       try { msg = JSON.parse(String(raw)); } catch { return; }
+      if (msg?.t === "open" && computers.get(ws.data.id) === ws) { open.set(ws.data.id, String(msg.name ?? "").slice(0, 40)); return; }
       const w = waiting.get(String(msg?.id ?? ""));
       if (!w || w.ws !== ws) return;
       if (msg.t === "head") w.head({ status: Number(msg.status) || 502, headers: Array.isArray(msg.headers) ? msg.headers : [] });

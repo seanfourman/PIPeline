@@ -5,10 +5,14 @@
 // A login outlasts the server: kept in user/app/sessions.json by a hash of its id (the id itself is only in the
 // browser's cookie), with when it was last used, for SESSION_MS. So Pip starting again, as it does when it updates
 // itself, doesn't ask for the login again. Logins belong to the account they were made for: an account made again
-// starts with none.
+// starts with none. The account also has an id and a salt (accounts.ts), and wherever its password is typed, the key
+// its computers seal what they send each other with is made from them and kept (synckey.ts).
+// The browser keeps its logins to this computer's other accounts too, in a cookie of their own (rememberedOf), as on a
+// social site: opening one of them again takes no password while its login lasts.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createHash, timingSafeEqual } from "node:crypto";
+import { deriveKey, loadKey, newSalt, saveKey } from "./synckey";
 import { commonPasswords, nameProblem, passwordError } from "./ui/account-rules";
 import { APP_DIR } from "./user";
 
@@ -32,19 +36,28 @@ const same = (a: string, b: string) => {
 };
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
-const sessionOf = (cookieHeader: string | null) =>
+export const sessionOf = (cookieHeader: string | null) =>
   (cookieHeader ?? "").split(/;\s*/).find((c) => c.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1) ?? "";
 
 export class AccountError extends Error {}
 
 export function createAuth(file = ACCOUNT_FILE) {
   const sessionsFile = path.join(path.dirname(file), "sessions.json");
-  const read = (): { user: string; hash: string } | null => {
+  // The account's folder, which its key is kept in: the folder app/ is in.
+  const accountDir = path.dirname(path.dirname(file));
+  const read = (): { user: string; hash: string; id?: string; salt?: string } | null => {
     try {
       const saved = JSON.parse(readFileSync(file, "utf8"));
       return typeof saved?.user === "string" && typeof saved?.hash === "string" ? saved : null;
     } catch {
       return null;
+    }
+  };
+  // The account's key, made from the password just typed, unless this computer has it already.
+  const keep = (password: string) => {
+    const salt = read()?.salt;
+    if (salt && !loadKey(accountDir)) {
+      try { saveKey(accountDir, deriveKey(password, salt)); } catch { /* kept the next time the password is typed */ }
     }
   };
   // Which account the logins written down are for.
@@ -77,12 +90,37 @@ export function createAuth(file = ACCOUNT_FILE) {
     save();
     return id;
   };
+  // Whether the name and password are the account's, without logging in (another computer joining it).
+  const verify = async (user: unknown, password: unknown) => {
+    const account = read();
+    if (!account) return false;
+    const userOk = same(String(user ?? "").trim().toLowerCase(), account.user.toLowerCase());
+    const passwordOk = await Bun.password.verify(String(password ?? ""), account.hash).catch(() => false);
+    if (userOk && passwordOk) keep(String(password));
+    return userOk && passwordOk;
+  };
   // Throws the first thing wrong with a new account's name or password.
   const validate = (name: string, secret: string) => {
     if (read()) throw new AccountError("account_exists");
     if (nameProblem(name).problem) throw new AccountError("account_name");
     const wrong = passwordError(secret, name, commonOnes());
     if (wrong) throw new AccountError(wrong);
+  };
+  // Whether a login's id is one of the account's, still in use: its last use written down once an hour at most.
+  const holds = (id: string) => {
+    const key = id ? sha256(id) : "";
+    const at = sessions.get(key);
+    if (at === undefined) return false;
+    if (Date.now() - at >= SESSION_MS) {
+      sessions.delete(key);
+      save();
+      return false;
+    }
+    if (Date.now() - at >= TOUCH_MS) {
+      sessions.set(key, Date.now());
+      save();
+    }
+    return true;
   };
   return {
     // No account yet: the first visit makes one.
@@ -96,35 +134,19 @@ export function createAuth(file = ACCOUNT_FILE) {
       const secret = String(password ?? "");
       validate(name, secret);
       mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, JSON.stringify({ user: name, hash: await Bun.password.hash(secret) }));
+      const id = crypto.randomUUID().replaceAll("-", "").slice(0, 16);
+      writeFileSync(file, JSON.stringify({ user: name, hash: await Bun.password.hash(secret), id, salt: newSalt() }));
+      keep(secret);
       sessions.clear();
       return open();
     },
+    verify,
     // Returns a new session id, or null when the name or password is wrong.
-    async login(user: unknown, password: unknown): Promise<string | null> {
-      const account = read();
-      if (!account) return null;
-      const userOk = same(String(user ?? "").trim().toLowerCase(), account.user.toLowerCase());
-      const passwordOk = await Bun.password.verify(String(password ?? ""), account.hash).catch(() => false);
-      return userOk && passwordOk ? open() : null;
-    },
-    // Whether the cookie carries a login, still in use: its last use written down once an hour at most.
-    check(cookieHeader: string | null) {
-      const id = sessionOf(cookieHeader);
-      const key = id ? sha256(id) : "";
-      const at = sessions.get(key);
-      if (at === undefined) return false;
-      if (Date.now() - at >= SESSION_MS) {
-        sessions.delete(key);
-        save();
-        return false;
-      }
-      if (Date.now() - at >= TOUCH_MS) {
-        sessions.set(key, Date.now());
-        save();
-      }
-      return true;
-    },
+    login: async (user: unknown, password: unknown): Promise<string | null> => ((await verify(user, password)) ? open() : null),
+    // Whether the cookie carries a login of the account's, still in use.
+    check: (cookieHeader: string | null) => holds(sessionOf(cookieHeader)),
+    // The same for a login's id itself: one the browser remembers for this account while another is open.
+    holds,
     logout(cookieHeader: string | null) {
       const id = sessionOf(cookieHeader);
       if (id && sessions.delete(sha256(id))) save();
@@ -134,3 +156,22 @@ export function createAuth(file = ACCOUNT_FILE) {
 
 export const sessionCookie = (id: string) => `${SESSION_COOKIE}=${id}; HttpOnly; SameSite=Strict; Path=/`;
 export const clearedCookie = `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`;
+
+// The browser's logins to this computer's other accounts, each by the account's id (accounts.ts) and the login's id,
+// as "<account>.<login>" joined by "_". Kept as long as the login's own cookie is, and never passed on by the site
+// (remote.ts), so it opens nothing from the phone.
+export const REMEMBERED_COOKIE = "job_accounts";
+const REMEMBERED = /^([0-9a-f]{16,32})\.([0-9a-f]{32})$/;
+const REMEMBERED_MAX = 20;
+export function rememberedOf(cookieHeader: string | null) {
+  const value = (cookieHeader ?? "").split(/;\s*/).find((c) => c.startsWith(`${REMEMBERED_COOKIE}=`))?.slice(REMEMBERED_COOKIE.length + 1) ?? "";
+  const kept = new Map<string, string>();
+  for (const one of value.split("_").slice(0, REMEMBERED_MAX)) {
+    const m = one.match(REMEMBERED);
+    if (m) kept.set(m[1], m[2]);
+  }
+  return kept;
+}
+export const rememberedCookie = (kept: Map<string, string>) => kept.size
+  ? `${REMEMBERED_COOKIE}=${[...kept].slice(0, REMEMBERED_MAX).map(([account, login]) => `${account}.${login}`).join("_")}; HttpOnly; SameSite=Strict; Path=/`
+  : `${REMEMBERED_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`;

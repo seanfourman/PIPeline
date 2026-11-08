@@ -26,7 +26,8 @@ export type Settings = {
   // The AI the site works with first, the others connected taking over when it fails (ai.ts).
   aiPrimary: "claude" | "openai";
   // The server runs the automation, so none of this reaches the agent's files.
-  automation: { enabled: boolean; email: string; maxPerDay: number; runTimes: string[]; minScore: number };
+  // computer: the one of the account's computers that runs it (accounts.ts's computerId), "" for whichever has it on.
+  automation: { enabled: boolean; email: string; maxPerDay: number; runTimes: string[]; minScore: number; computer: string };
   // The quick search's own choices on the jobs page, kept from one visit to the next: how recent, which market
   // ("all" or a code), the work type ("" follows workMode), and which areas show. Only the page uses these.
   quickSearch: { days: "1" | "7" | "14" | "30"; market: string; mode: "" | "any" | "remote" | "hybrid" | "onsite"; areas: "relevant" | "listed" | "all" };
@@ -48,7 +49,7 @@ export const EMPTY_SETTINGS: Settings = {
   displayName: "", home: "", markets: [], areas: [], workMode: "any", seniority: "any", relocate: false,
   roles: [{ id: "software", label: "Software", query: "Software Engineer" }],
   salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he", aiPrimary: "claude",
-  automation: { enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60 },
+  automation: { enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "" },
   quickSearch: { days: "14", market: "all", mode: "", areas: "relevant" },
   introDone: false,
   industries: [], lowTech: true, portals: { off: [], mine: [] },
@@ -122,7 +123,8 @@ function portalSettings(input: any): PortalSettings {
     const name = clean(p?.name, 60) || (url ? new URL(url).hostname.replace(/^www\./, "") : "");
     return /^own-[a-z0-9]{4,16}$/.test(id) && url ? [{ id, name, url, kind: (["page", "group", "link"] as const).find((k) => k === p?.kind) ?? "link" }] : [];
   });
-  const known = (id: string) => Boolean(portalById(id)) || mine.some((p) => p.id === id);
+  // A company the daily search found (discover.ts) can be switched off like any other.
+  const known = (id: string) => Boolean(portalById(id)) || mine.some((p) => p.id === id) || /^found-[a-z0-9-]{1,70}$/.test(id);
   const off = [...new Set((Array.isArray(input?.off) ? input.off : []).map(String))].filter(known);
   return { off, mine };
 }
@@ -180,6 +182,7 @@ export function validateSettings(input: any): Settings {
       maxPerDay: Math.min(wholeNumber(input?.automation?.maxPerDay, 1000) || 3, 10),
       runTimes: times.length ? [...new Set<string>(times)].sort().slice(0, 24) : ["09:00"],
       minScore: wholeNumber(input?.automation?.minScore, 100) || 60,
+      computer: /^[0-9a-f]{32}$/.test(String(input?.automation?.computer ?? "")) ? input.automation.computer : "",
     },
     // pick's first option is the one a missing or strange value gets; a market no longer chosen falls back to all.
     quickSearch: {
@@ -255,7 +258,8 @@ export function renderBlock(s: Settings) {
     `- **Industries wanted:** ${s.industries.map((id) => INDUSTRIES.find((i) => i.id === id)?.en).filter(Boolean).join(", ") || "any"}`,
     `- **Employers outside high-tech:** ${s.lowTech ? "wanted (health funds, hospitals, insurers, banks, government, academia and the like), and rank them like any other employer" : "not wanted, so skip them"}.`,
     "- **Read by the web interface itself:** the Israeli boards AllJobs, Drushim and JobMaster, and the employers on its portals page, are searched by the server's portals check in the same daily run, so don't search those here.",
-    `- **Also search with WebSearch** (sites the search tools don't cover; run each role with site:, in English, and in Hebrew too on a site in Hebrew): ${webPortals(s).map((p) => `site:${p.site}`).join(", ") || "none"}. Give the search tool the site's domain (without its path) as its domain filter too, WebSearch's allowed_domains: site: alone doesn't keep other sites out. Where the path names one company on a shared platform (jobs.smartrecruiters.com/Wix2), add the company's name to the query and keep only the hits under that path. On a site with jobs from every country, such as glassdoor.com or a recruiting platform (comeet.com, greenhouse.io, lever.co, ashbyhq.com, where companies keep their own job pages, most of them not on the portals page), add the market to the query, such as Israel or Tel Aviv. A search can find a page a year old, so keep a hit only when its page still shows the job open. For posts, add words like hiring, מגייסים or דרושים to the role; a post only counts when it names an employer and a way to apply.`,
+    `- **Also search with WebSearch** (sites the search tools don't cover; run each role with site:, in English, and in Hebrew too on a site in Hebrew): ${webPortals(s).filter((p) => !p.channel).map((p) => `site:${p.site}`).join(", ") || "none"}. Give the search tool the site's domain (without its path) as its domain filter too, WebSearch's allowed_domains: site: alone doesn't keep other sites out. Where the path names one company on a shared platform (jobs.smartrecruiters.com/Wix2), add the company's name to the query and keep only the hits under that path. On a site with jobs from every country, such as glassdoor.com or a recruiting platform (comeet.com, greenhouse.io, lever.co, ashbyhq.com, where companies keep their own job pages, most of them not on the portals page), add the market to the query, such as Israel or Tel Aviv. A search can find a page a year old, so keep a hit only when its page still shows the job open. For posts, add words like hiring, מגייסים or דרושים to the role; a post only counts when it names an employer and a way to apply.`,
+    `- **Also read with WebFetch** (public Telegram channels of job posts, each page its newest posts): ${webPortals(s).filter((p) => p.channel).map((p) => `https://${p.site}`).join(", ") || "none"}. Take the posts from the last 14 days that fit a role, in Hebrew, English or Russian; one counts only when it names an employer and a way to apply, and is stored by its own link (t.me/<channel>/<number>). A post that lists several jobs gives each its own entry, all by the post's link: links inside a post are never followed.`,
     `- **Student positions:** ${STUDENT_JOBS[s.studentJobs]}.`,
     `- **Salary expectations:** ${salaryLine(s)}.`,
     `- **Conversation language:** ${s.language === "en" ? "English" : "Hebrew"}. Talk to the candidate in this language. CVs and application material keep their own language rules.`,

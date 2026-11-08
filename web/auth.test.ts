@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import os from "node:os";
 import path from "node:path";
 import { NAME_RULE as SITE_NAME_RULE } from "../site/store";
-import { createAuth, SESSION_COOKIE, SESSION_MS } from "./auth";
+import { createAuth, REMEMBERED_COOKIE, rememberedCookie, rememberedOf, SESSION_COOKIE, SESSION_MS } from "./auth";
 import { commonPasswords, NAME_RULE, nameProblem, PASSWORD_MIN, passwordChecks, passwordError } from "./ui/account-rules";
 
 const cookie = (id: string, others = "job_token=abc") => `${others}; ${SESSION_COOKIE}=${id}`;
@@ -153,5 +153,38 @@ describe("the login", () => {
     rmSync(again);
     await createAuth(again).create("noa", "another-secret");
     expect(createAuth(again).check(cookie(was))).toBe(false);
+  });
+});
+
+describe("the logins the browser keeps to this computer's other accounts", () => {
+  const dana = "0123456789abcdef";
+  const noa = "fedcba9876543210".padEnd(32, "0");
+  const one = "f".repeat(32);
+  const two = "e".repeat(32);
+
+  test("are read from their own cookie, each an account's id and a login's id, and nothing else", () => {
+    const header = `job_token=abc; ${SESSION_COOKIE}=${one}; ${REMEMBERED_COOKIE}=${dana}.${one}_${noa}.${two}_nonsense_${dana.slice(1)}.${one}_${dana}.${one}x`;
+    expect([...rememberedOf(header)]).toEqual([[dana, one], [noa, two]]);
+    for (const none of [null, "", `job_token=abc; ${SESSION_COOKIE}=${one}`, `x${REMEMBERED_COOKIE}=${dana}.${one}`, `${REMEMBERED_COOKIE}=`]) {
+      expect(rememberedOf(none).size).toBe(0);
+    }
+  });
+
+  test("are written back so, and with none left the cookie goes", () => {
+    const kept = new Map([[dana, one], [noa, two]]);
+    const cookie = rememberedCookie(kept);
+    expect(cookie).toBe(`${REMEMBERED_COOKIE}=${dana}.${one}_${noa}.${two}; HttpOnly; SameSite=Strict; Path=/`);
+    expect(rememberedOf(cookie.split(";")[0])).toEqual(kept);
+    expect(rememberedCookie(new Map())).toBe(`${REMEMBERED_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`);
+  });
+
+  test("open their account only while the login is still its own", async () => {
+    const file = accountFile();
+    const id = await createAuth(file).create("dana", "a-long-secret");
+    const auth = createAuth(file);
+    expect(auth.holds(id)).toBe(true);
+    for (const wrong of ["", id.slice(1), "0".repeat(32)]) expect(auth.holds(wrong)).toBe(false);
+    auth.logout(cookie(id));
+    expect(createAuth(file).holds(id)).toBe(false);
   });
 });

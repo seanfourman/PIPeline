@@ -335,8 +335,8 @@ begin
 end;
 
 // What the program made beside its own files as it ran, packages bun put in and Python's caches, anywhere but the
-// user's folder: they go with it on removal, and then any folder left empty. A folder with anything else in it
-// stays.
+// user's folder and the other accounts' (users\, web/accounts.ts): they go with it on removal, and then any folder left
+// empty. A folder with anything else in it stays.
 procedure DeleteMade(const Dir: String);
 var
   Found: TFindRec;
@@ -350,7 +350,7 @@ begin
       begin
         if (Found.Name = 'node_modules') or (Found.Name = '__pycache__') then
           RemoveTree(Path)
-        else if CompareText(Path, ExpandConstant('{app}\user')) <> 0 then
+        else if (CompareText(Path, ExpandConstant('{app}\user')) <> 0) and (CompareText(Path, ExpandConstant('{app}\users')) <> 0) then
         begin
           DeleteMade(Path);
           RemoveDir(Path);

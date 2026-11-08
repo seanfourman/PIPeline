@@ -18,7 +18,7 @@ describe("the portals' settings", () => {
       industries: ["health", "bogus", "health"],
       lowTech: false,
       portals: {
-        off: ["clalit", "own-abcd1234", "nothing"],
+        off: ["clalit", "own-abcd1234", "nothing", "found-greenhouse-acme", "found-<script>"],
         mine: [
           { id: "own-abcd1234", name: "Acme", url: "https://careers.acme.co.il/jobs", kind: "page" },
           { id: "own-local1", name: "Here", url: "http://127.0.0.1:4174/api/state", kind: "page" },
@@ -34,7 +34,8 @@ describe("the portals' settings", () => {
       { id: "own-abcd1234", name: "Acme", url: "https://careers.acme.co.il/jobs", kind: "page" },
       { id: "own-nameless", name: "facebook.com", url: "https://www.facebook.com/groups/123", kind: "link" },
     ]);
-    expect(s.portals.off).toEqual(["clalit", "own-abcd1234"]);
+    // A company the daily search found can be switched off too.
+    expect(s.portals.off).toEqual(["clalit", "own-abcd1234", "found-greenhouse-acme"]);
   });
 
   test("settings saved before these existed get employers outside high-tech on", () => {
@@ -55,6 +56,9 @@ describe("the portals' settings", () => {
     // domain filter, since site: alone doesn't.
     expect(text).toContain("site:comeet.com/jobs, site:job-boards.greenhouse.io, site:jobs.lever.co, site:jobs.ashbyhq.com");
     expect(text).toContain("allowed_domains");
+    // The Telegram channels are read whole, not searched.
+    expect(text).toMatch(/Also read with WebFetch\*\* [^\n]*https:\/\/t\.me\/s\/hitechjobsjunior/);
+    expect(text).not.toContain("site:t.me");
   });
 });
 
@@ -112,10 +116,11 @@ describe("validateSettings", () => {
     expect(s.studentJobs).toBe("low");
     expect(s.fields).not.toContain("\n");
     // A settings file from before, with its one runAt, keeps it as the one run time.
-    expect(s.automation).toEqual({ enabled: false, email: "a@b.co", maxPerDay: 10, runTimes: ["07:30"], minScore: 60 });
-    const bad = validateSettings({ salaryMin: -5, salaryMax: "lots", studentJobs: "maybe", automation: { email: "nope", maxPerDay: "x", runAt: "25:00" } });
+    expect(s.automation).toEqual({ enabled: false, email: "a@b.co", maxPerDay: 10, runTimes: ["07:30"], minScore: 60, computer: "" });
+    expect(validateSettings({ automation: { computer: "0123456789abcdef0123456789abcdef" } }).automation.computer).toBe("0123456789abcdef0123456789abcdef");
+    const bad = validateSettings({ salaryMin: -5, salaryMax: "lots", studentJobs: "maybe", automation: { email: "nope", maxPerDay: "x", runAt: "25:00", computer: "../x" } });
     expect([bad.salaryMin, bad.salaryMax, bad.studentJobs]).toEqual([0, 0, "normal"]);
-    expect(bad.automation).toEqual({ enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60 });
+    expect(bad.automation).toEqual({ enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "" });
   });
 
   test("the daily run takes up to 24 run times, in order, each once", () => {

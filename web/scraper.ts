@@ -15,7 +15,8 @@ import path from "node:path";
 import { pageFetcher, readEmployer, readOwnPage, type Fetch, type Found } from "./boards";
 import { ChatbotError } from "./chatbots";
 import { classifyLocation, searchJobs } from "./data";
-import { employersToRead } from "./portals";
+import { discoverEmployers, foundPortals } from "./discover";
+import { employersToRead, portalOn } from "./portals";
 import { candidateContext, FATAL, PYTHON, runTool, type Ask, type Run, type Steps } from "./ranker";
 import { loadSettings, type Settings } from "./settings";
 import { APP_DIR } from "./user";
@@ -67,6 +68,7 @@ const WORDS = {
     cols: ["#", "התאמה", "תפקיד", "חברה", "מקום", "קישור"], open: "פתיחה", fits: { high: "גבוהה", medium: "בינונית", low: "נמוכה" } as Record<string, string>,
     next: "אפשר עכשיו לדרג אותן בדף המשרות השמורות, בלשונית \"פיפ מצא\".",
     portals: "בדיקת פורטלים", read: (n: number) => `קראתי את רשימות המשרות של ${n === 1 ? "מעסיק אחד" : `${n} מעסיקים`}.`, boards: "וחיפשתי את התפקידים ב-AllJobs, בדרושים וב-JobMaster.",
+    discovered: (names: string[]) => `מצאתי במערכות הגיוס ${names.length === 1 ? "חברה חדשה" : `${names.length} חברות חדשות`} עם משרות בישראל, ומעכשיו אקרא גם את המשרות שלהן: ${names.join(", ")}.`,
     none: "אין עכשיו פורטלים לקרוא: כולם כבויים, או שמעסיקים שמחוץ להייטק כבויים בהגדרות.",
   },
   en: {
@@ -77,6 +79,7 @@ const WORDS = {
     cols: ["#", "Fit", "Role", "Company", "Place", "Link"], open: "Open", fits: { high: "High", medium: "Medium", low: "Low" } as Record<string, string>,
     next: "You can rank them now on the saved jobs page, in the Pip found tab.",
     portals: "Portals check", read: (n: number) => `Read the job lists of ${n === 1 ? "one employer" : `${n} employers`}.`, boards: "Searched the roles on AllJobs, Drushim and JobMaster too.",
+    discovered: (names: string[]) => `Found ${names.length === 1 ? "a new company" : `${names.length} new companies`} with jobs in Israel on the recruiting platforms, and will read their jobs from now on: ${names.join(", ")}.`,
     none: "There are no portals to read right now: they're all switched off, or employers outside high-tech are off in the settings.",
   },
 };
@@ -230,15 +233,16 @@ const boardsOnly: Search = (role, settings) => searchJobs(role, "14", "all", set
 // user's own careers pages; with boards, the Israeli boards searched for every role as well. checks is where each
 // portal's result is kept. rest, for the daily run, is the days an employer whose last check found nothing, and
 // didn't fail, is left alone: most of those have no jobs open at all, and each is one more page from a site that is
-// read a page at a time.
-export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; boards?: boolean; search?: Search; checks?: string; rest?: number }) {
+// read a page at a time. With discover, the companies found on the recruiting platforms are read too, and the job
+// list's new boards looked into once the rest is done (discover.ts).
+export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; boards?: boolean; search?: Search; checks?: string; rest?: number; discover?: boolean }) {
   const { steps, signal, lang, run = runTool } = o;
   const settings = o.settings ?? loadSettings();
   const fetch = o.fetch ?? pageFetcher(run);
   const w = WORDS[lang];
   const today = o.today ?? new Date().toLocaleDateString("en-CA");
   if (!settings.roles.length) throw new ChatbotError("scrape_no_roles");
-  const employers = employersToRead(settings);
+  const employers = [...employersToRead(settings), ...(o.discover ? foundPortals().filter((p) => portalOn(p, settings)) : [])];
   const own = settings.portals.mine.filter((p) => p.kind === "page" && !settings.portals.off.includes(p.id));
   const israel = settings.markets.some((m) => m.code === "IL");
   if (!employers.length && !own.length && !(o.boards && israel)) return `## ${w.portals}\n\n${w.none}`;
@@ -287,7 +291,8 @@ export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fe
   for (const { h } of done.kept) if (h.portal_id && checks[h.portal_id]) checks[h.portal_id].kept++;
   mkdirSync(path.dirname(o.checks ?? CHECKS_FILE), { recursive: true });
   writeFileSync(o.checks ?? CHECKS_FILE, JSON.stringify(checks, null, 2));
+  const discovered = o.discover && !signal.aborted ? await discoverEmployers({ fetch, today, signal }).catch(() => []) : [];
   const head = [w.read(lists.length), o.boards && israel ? w.boards : ""].filter(Boolean).join(" ");
   const [title, line, ...rest] = report(lang, `## ${w.portals}`, done, failed, signal.aborted);
-  return [title, [head, line].join(" "), ...rest].join("\n\n");
+  return [title, [head, line].join(" "), ...(discovered.length ? [w.discovered(discovered.map((f) => f.name))] : []), ...rest].join("\n\n");
 }

@@ -136,6 +136,9 @@ python3 "$APP/tools/install_portal_clis.py" || say "(A job site's command line d
 python3 -m pip install --disable-pip-version-check --quiet $PYTHON_PACKAGES || fail "Python's packages didn't install."
 
 say "6/8 Pip, running from login on"
+# The server's log beside Pip rather than in user/, which opening another account moves aside (web/accounts.ts); it
+# stops with 75 to do that, and KeepAlive starts it again.
+mkdir -p "$APP/logs"
 put "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -151,8 +154,8 @@ put "$PLIST" <<EOF
   <key>AssociatedBundleIdentifiers</key><array><string>com.pip.open</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
-  <key>StandardOutPath</key><string>$APP/user/app/server.log</string>
-  <key>StandardErrorPath</key><string>$APP/user/app/server.log</string>
+  <key>StandardOutPath</key><string>$APP/logs/server.log</string>
+  <key>StandardErrorPath</key><string>$APP/logs/server.log</string>
 </dict></plist>
 EOF
 launchctl bootstrap "$GUI" "$PLIST" || fail "launchd didn't take Pip's service."

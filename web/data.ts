@@ -69,6 +69,8 @@ function seenJobs(areas: Area[]) {
     score: typeof j.rank_score === "number" ? j.rank_score : null,
     verdict: String(j.rank_verdict ?? ""),
     veto: j.location_verdict === "FAIL" || j.language_gate === "FAIL",
+    // Which check left it out: its place, or its language.
+    gate: j.location_verdict === "FAIL" ? "location" : j.language_gate === "FAIL" ? "language" : "",
     fit: String(j.fit ?? ""),
   }));
 }

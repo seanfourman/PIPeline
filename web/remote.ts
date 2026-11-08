@@ -5,19 +5,25 @@
 // An installed Pip (pairWith, its site) pairs as soon as it starts, before it has an account, and opens itself on the
 // site (openUrl); the account's name, once there is one, is what signing in there takes (claim). One run from the
 // repository links from the settings instead, by the account's name. Either way the key the site gives is kept,
-// sealed (vault.ts), in user/app/remote.json; turning it off from the settings leaves a note there that it is off.
+// sealed (vault.ts), with the computer's own files in users/remote.json (accounts.ts), since the link is the
+// computer's, whichever account is open; turning it off from the settings leaves a note there that it is off. The site
+// knows which account is open here (open), and passes along the requests the account's other computers make here
+// (sync.ts), marked as theirs.
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { APP_DIR } from "./user";
+import { REMOTE_FILE } from "./accounts";
 import { seal, unseal } from "./vault";
 
-const FILE = path.join(APP_DIR, "remote.json");
+const FILE = REMOTE_FILE;
 // Pieces small enough for the site's message limit once in base64 (site/relay.ts).
 const PIECE = 256 * 1024;
 const RETRY_MAX_MS = 30_000;
 // What of a phone's request reaches the handler: its type, and its session with this computer, nothing else. The
-// rest is what a request from this computer carries (server.ts's checks), since the site already let it through.
-const PASSED_HEADERS = ["content-type", "accept", "range"];
+// rest is what a request from this computer carries (server.ts's checks), since the site already let it through. A
+// request from another computer of the account carries which one and the account, which only the site sets.
+const PASSED_HEADERS = ["content-type", "accept", "range", "x-pip-peer", "x-pip-account"];
+// How long asking another computer of the account may take: a file can be big.
+const PEER_WAIT_MS = 5 * 60_000;
 
 export type RemoteState = "off" | "connecting" | "on";
 export type RemoteStatus = { linked: boolean; site: string; name: string; state: RemoteState; error: string };
@@ -100,6 +106,7 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
     const data = await res.json().catch(() => ({})) as { error?: string };
     if (!res.ok) throw new RemoteError(data.error ?? "remote_unreachable");
     save({ ...link, name });
+    send({ t: "open", name });
   }
   function start() {
     clearTimeout(timer);
@@ -188,6 +195,7 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
       // An account made while the site was out of reach takes its name there now; a name taken by then is said in
       // the settings, since signing in on the site doesn't work without it.
       const name = accountName();
+      send({ t: "open", name });
       if (name && link.name !== name) claim(name).catch((err) => { error = err instanceof RemoteError ? err.message : "remote_unreachable"; });
     };
     socket.onmessage = (e) => receive(e.data);
@@ -249,6 +257,36 @@ export function createRemote({ handle, port, localToken, file = FILE, defaultSit
       save({ site: origin, name, key: data.key });
       error = "";
       connect();
+    },
+    // The account's other computers, each with whether it is on; none when this computer isn't linked or the site
+    // doesn't answer.
+    async peers(account: string): Promise<{ id: string; online: boolean }[]> {
+      const link = read();
+      if (!link) return [];
+      const res = await fetch(`${link.site}/api/site/peers?account=${encodeURIComponent(account)}`, { headers: { Authorization: `Bearer ${link.key}` }, signal: AbortSignal.timeout(FREE_WAIT_MS) }).catch(() => null);
+      const data = await res?.json().catch(() => ({})) as { peers?: { id: string; online: boolean }[] } | undefined;
+      return res?.ok && Array.isArray(data?.peers) ? data.peers : [];
+    },
+    // Asks another computer of the account for its list of the account's files, or one of them (sync.ts).
+    async peer(account: string, to: string, what: "manifest" | "file", rel = ""): Promise<Response | null> {
+      const link = read();
+      if (!link) return null;
+      const query = new URLSearchParams({ account, to, what, ...(what === "file" ? { p: rel } : {}) });
+      return fetch(`${link.site}/api/site/peer?${query}`, { headers: { Authorization: `Bearer ${link.key}` }, signal: AbortSignal.timeout(PEER_WAIT_MS) }).catch(() => null);
+    },
+    // Joins an account that is on other computers: the answer of the one that checked the password, or why not
+    // (no_such_account, account_offline, bad_login, remote_busy, remote_unreachable).
+    async join(account: string, password: string): Promise<{ salt: string; box: string }> {
+      const link = read();
+      if (!link) throw new RemoteError("remote_unreachable");
+      const res = await fetch(`${link.site}/api/site/join`, {
+        method: "POST", headers: { Authorization: `Bearer ${link.key}`, "Content-Type": "application/json" }, body: JSON.stringify({ account, password }),
+        signal: AbortSignal.timeout(PEER_WAIT_MS),
+      }).catch(() => null);
+      if (!res) throw new RemoteError("remote_unreachable");
+      const data = await res.json().catch(() => ({})) as { salt?: string; box?: string; error?: string };
+      if (!res.ok || !data.salt || !data.box) throw new RemoteError(data.error ?? "remote_unreachable");
+      return { salt: data.salt, box: data.box };
     },
     // Gives the name back on the site, so it can be taken again, and stops; Pip opens here from then on.
     async unlink() {

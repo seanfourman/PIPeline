@@ -2,6 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { translate, type Lang } from "./i18n";
 import { api, copyText, desktopSystem, errorText, goTo, Icon, isComputer, macCommand, ROUTED, type ApiError } from "./kit";
+import { AccountDialog } from "./accounts";
 import { Pip, PipMark, type Mood } from "./pip";
 import { Apps } from "./views/apps";
 import { Chat } from "./views/chat";
@@ -28,6 +29,11 @@ export type AppState = {
   // The account's name on this computer (auth.ts), and the introduction's state: whether it is done, the name
   // employers see (user/profile.json), and the documents it put in user/documents/ (server.ts).
   account?: string;
+  // This computer's other accounts, by name, for the account menu; those of them this browser keeps a login to, which
+  // open with no password (auth.ts); and this computer's id, the one the daily run's computer is named by (accounts.ts).
+  accounts?: string[];
+  remembered?: string[];
+  computer?: string;
   intro?: { done: boolean; name: string; documents: { cv: string[]; linkedin: string[] } };
   // Phone access through the site (remote.ts): whether this computer is linked, where, as whom, and connected now.
   remote?: { linked: boolean; site: string; name: string; state: "off" | "connecting" | "on"; error: string };
@@ -55,6 +61,8 @@ type Ctx = {
   run: (prompt: string) => Promise<void>;
   draft: React.MutableRefObject<string>;
   logout: () => void;
+  // The login's board over the page, from the account menu: adding an account there is already, or making a new one.
+  addAccount: (how: "join" | "create") => void;
 };
 
 const AppContext = createContext<Ctx>(null as unknown as Ctx);
@@ -114,13 +122,12 @@ const SHOWN = 10;
 // Every page an address can open: the sidebar's, a CV or a letter in the editor, and the introduction.
 const PAGES = new Set([...NAV.map(([id]) => id), "cv", "letter", "welcome"]);
 
-// The sidebar. Language and theme live on the settings page; the foot is the account, with a button to log out. Beside
-// the logo, here only, a tag that says Pip is still in beta.
+// The sidebar. Language and theme live on the settings page; the foot is the account, with its menu (AccountMenu).
+// Beside the logo, here only, a tag that says Pip is still in beta.
 function Sidebar() {
-  const { s, t, view, logout } = useApp();
+  const { s, t, view } = useApp();
   const current = view === "cv" || view === "letter" ? "files" : view;
   const waiting = s.sessions.filter((x) => x.status === "waiting").length;
-  const name = String(s.settings.displayName ?? "").trim() || s.account || "";
   const more = NAV.slice(SHOWN);
   // A page's row, in the list or in More's menu; i, its place, is for the menu's rows coming in one after another.
   const row = ([id, icon]: [string, string], i: number) => (
@@ -143,29 +150,83 @@ function Sidebar() {
         {more.length > 0 && <More here={more.some(([id]) => id === current)}>{more.map(row)}</More>}
       </div>
       <a className="btn post" href="/chat/new" aria-label={t("chat.new")}><Icon name="plus" /><span>{t("chat.new")}</span></a>
-      <div className="account">
-        <span className="avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
-        <span className="account-name ellipsis">{name}</span>
-        <button type="button" className="account-out" onClick={logout} aria-label={t("login.logout")}><Icon name="logout" /></button>
-      </div>
+      <AccountMenu />
     </nav>
   );
 }
 
-// The More menu's gap from its button, and the least it keeps from the window's top and bottom.
+// A menu's gap from its button, and the least it keeps from the window's edges.
 const MORE_GAP = 6;
 const MORE_EDGE = 8;
 
 // More, at the end of the sidebar's list, as on a social site: a row like the others, three dots in a circle and the
-// word, that opens a round menu of the pages after the list's first SHOWN. The menu is as wide as the sidebar inside
-// its edges, and opens above More, over the rows before it; under it only where there is no room above (a phone's
-// top bar), as under it, it would lie over part of the main button. It pops out of More's middle and goes back into
-// it (styles.css). It is a popover, so it stands above everything, and a click outside, Escape, a page picked in it,
-// the page scrolling or the window changing size close it, as they do Select's list. Opened with the keys, its first
-// page takes the focus, the arrow keys go up and down it, and Tab out of either end closes it. While the page you
-// are on is in it, More is bold and its icon filled, as that page's own row would be.
+// word, that opens a round menu of the pages after the list's first SHOWN (PopMenu). While the page you are on is in
+// it, More is bold and its icon filled, as that page's own row would be.
 function More({ here, children }: { here: boolean; children: React.ReactNode }) {
   const { t } = useApp();
+  return (
+    <PopMenu className={`nav-more ${here ? "here" : ""}`} face={<><span className="nav-icon"><Icon name="more" filled={here} /></span><span className="nav-label">{t("nav.more")}</span></>}>
+      {children}
+    </PopMenu>
+  );
+}
+
+// The account at the sidebar's foot, as on a social site: one button, the letter, the name, the account's @name and
+// three dots, that opens More's menu itself (PopMenu), its rows as More's are, an icon and the words. This computer's
+// other accounts, each opened with its password, or straight away once this browser has been in it (AccountDialog);
+// adding an account there is already, and making a new one, both on the login's board (Login); and logging out of
+// this one. A new account is made only on the computer itself, not through the site (server.ts).
+function AccountMenu() {
+  const { s, t, logout, addAccount } = useApp();
+  const [dialog, setDialog] = useState<{ name: string; remembered: boolean } | null>(null);
+  const name = String(s.settings.displayName ?? "").trim() || s.account || "";
+  const others = s.accounts ?? [];
+  const here = ["127.0.0.1", "localhost"].includes(location.hostname);
+  const at = (i: number) => ({ "--i": i }) as React.CSSProperties;
+  const face = (
+    <>
+      <span className="avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
+      <span className="account-names">
+        <span className="account-name">{name}</span>
+        <bdi className="account-handle" dir="ltr">@{s.account ?? ""}</bdi>
+      </span>
+      <Icon name="dots" />
+    </>
+  );
+  return (
+    <>
+      <PopMenu className="account" label={t("account.menu")} face={face}>
+        {others.map((other, i) => (
+          <button key={other} type="button" style={at(i)} onClick={() => setDialog({ name: other, remembered: Boolean(s.remembered?.includes(other)) })}>
+            <span className="nav-icon"><span className="avatar" aria-hidden="true">{other.slice(0, 1).toUpperCase()}</span></span>
+            <span className="nav-label"><bdi dir="ltr">@{other}</bdi></span>
+          </button>
+        ))}
+        <button type="button" style={at(others.length)} onClick={() => addAccount("join")}>
+          <span className="nav-icon"><Icon name="login" /></span><span className="nav-label">{t("account.add")}</span>
+        </button>
+        {here && (
+          <button type="button" style={at(others.length + 1)} onClick={() => addAccount("create")}>
+            <span className="nav-icon"><Icon name="signup" /></span><span className="nav-label">{t("account.create")}</span>
+          </button>
+        )}
+        <button type="button" style={at(others.length + (here ? 2 : 1))} onClick={logout}>
+          <span className="nav-icon"><Icon name="logout" /></span><span className="nav-label">{t("account.logout")}</span>
+        </button>
+      </PopMenu>
+      {dialog && <AccountDialog name={dialog.name} remembered={dialog.remembered} onClose={() => setDialog(null)} />}
+    </>
+  );
+}
+
+// The menus that pop out of the sidebar: More's and the account's. Each is round and as wide as the sidebar inside its
+// edges, and opens above its button, over what is before it; under it only where there is no room above (a phone's top
+// bar), as under it, it would lie over part of the main button. It pops out of its button's middle and goes back into
+// it (styles.css). It is a popover, so it stands above everything, and a click outside, Escape, an item picked in it,
+// the page scrolling or the window changing size close it, as they do Select's list. Opened with the keys, its first
+// item takes the focus, the arrow keys go up and down it, and Tab out of either end closes it. face is what the button
+// shows, and label names one that shows only an icon.
+function PopMenu({ className, face, label, children }: { className: string; face: React.ReactNode; label?: string; children: React.ReactNode }) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -198,18 +259,19 @@ function More({ here, children }: { here: boolean; children: React.ReactNode }) 
     // Inside the sidebar's padding, and its border and scrollbar where it has them.
     const bar = side.getBoundingClientRect(), pad = getComputedStyle(side);
     const left = bar.left + side.clientLeft + parseFloat(pad.paddingLeft);
-    Object.assign(pop.style, { left: `${left}px`, width: `${side.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight)}px` });
+    pop.style.width = `${side.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight)}px`;
     pop.showPopover();
-    // Then, shown and with its height, above More or under it, growing from More's middle, before it is drawn.
+    // Then, shown and with its height, above its button or under it, growing from the button's middle, before it is
+    // drawn.
     const at = el.getBoundingClientRect(), height = pop.offsetHeight;
     const above = at.top - MORE_GAP - MORE_EDGE;
     const top = height <= above || above > innerHeight - at.bottom - MORE_GAP - MORE_EDGE ? at.top - MORE_GAP - height : at.bottom + MORE_GAP;
-    Object.assign(pop.style, { top: `${top}px`, transformOrigin: `${at.left + at.width / 2 - left}px ${at.top + at.height / 2 - top}px` });
-    if (keys) pop.querySelector("a")?.focus({ preventScroll: true });
+    Object.assign(pop.style, { left: `${left}px`, top: `${top}px`, transformOrigin: `${at.left + at.width / 2 - left}px ${at.top + at.height / 2 - top}px` });
+    if (keys) pop.querySelector<HTMLElement>("a, button")?.focus({ preventScroll: true });
   };
   const keys = (e: React.KeyboardEvent) => {
-    const links = [...(menu.current?.querySelectorAll("a") ?? [])];
-    const at = links.indexOf(document.activeElement as HTMLAnchorElement);
+    const links = [...(menu.current?.querySelectorAll<HTMLElement>("a, button") ?? [])];
+    const at = links.indexOf(document.activeElement as HTMLElement);
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       links[(at + (e.key === "ArrowDown" ? 1 : -1) + links.length) % links.length]?.focus();
@@ -224,17 +286,16 @@ function More({ here, children }: { here: boolean; children: React.ReactNode }) 
   return (
     <>
       <button
-        ref={button} type="button" className={`nav-more ${here ? "here" : ""}`} aria-expanded={open} aria-controls={`${id}-menu`}
+        ref={button} type="button" className={className} aria-label={label} aria-expanded={open} aria-controls={`${id}-menu`}
         onPointerDown={() => { wasOpen.current = open; }}
         onClick={(e) => { if (wasOpen.current) wasOpen.current = false; else show(e.detail === 0); }}
       >
-        <span className="nav-icon"><Icon name="more" filled={here} /></span>
-        <span className="nav-label">{t("nav.more")}</span>
+        {face}
       </button>
       {/* popover is not in React 18's types yet, so it goes in as a plain attribute. */}
       <div
         ref={menu} id={`${id}-menu`} {...{ popover: "auto" }} className="more-menu" onKeyDown={keys}
-        onClick={(e) => { if ((e.target as Element).closest("a")) menu.current?.hidePopover(); }}
+        onClick={(e) => { if ((e.target as Element).closest("a, button")) menu.current?.hidePopover(); }}
       >
         {children}
       </div>
@@ -254,8 +315,13 @@ export function companionLine(s: AppState, view: string, t: Ctx["t"]): { text: s
 // How long Pip takes to slide back behind the sidebar; matches peek-in in styles.css.
 const PEEK_IN_MS = 420;
 
-// The commands that run in the background once started there (run): the smart search.
-const BACKGROUND = ["/job-scraper"];
+// The commands that run in the background once started there (run): the smart search, and the ranking from the saved
+// jobs page; with what Pip says while each works, and once it is done or has stopped.
+const BACKGROUND: Record<string, { work: string; done: string; stopped: string }> = {
+  "/job-scraper": { work: "pip.peekWork", done: "pip.workDone", stopped: "pip.workStopped" },
+  "/rank": { work: "pip.peekRank", done: "pip.rankDone", stopped: "pip.rankStopped" },
+};
+const inBackground = (title: string) => Object.hasOwn(BACKGROUND, title);
 
 // What Pip says from behind the sidebar (PeekingPip): its words, his mood, and where a click on him goes, if
 // anywhere, with that said for screen readers. key changes with each new thing he says, which pops the bubble anew.
@@ -273,17 +339,18 @@ type Peek = { key: string; text: string; mood?: Mood; href?: string; label?: str
 function PeekingPip() {
   const { s, t, view, say, news, update } = useApp();
   const waiting = s.sessions.find((x) => x.status === "waiting");
-  const working = s.sessions.find((x) => x.status === "running" && BACKGROUND.includes(x.title));
+  const working = s.sessions.find((x) => x.status === "running" && inBackground(x.title));
   const session = view === "chat" ? undefined : waiting ?? working;
   const work = session === working;
+  const workLine = working ? BACKGROUND[working.title].work : "pip.peekWork";
   const now: Peek | null = update
     ? { key: update, text: t(update === "updating" ? "pip.updating" : "pip.updated"), mood: update === "updating" ? "work" : "happy" }
     : news
       ? { key: `news:${news.text}`, text: news.text, mood: news.mood }
       : session
         ? {
-          key: `${session.id}:${work}`, text: t(work ? "pip.peekWork" : "pip.peek"), mood: work ? "work" : undefined, href: `/chat/${session.id}`,
-          label: `${t(work ? "pip.peekWork" : "pip.peek")} ${t("pip.peekIn")} ${friendlyTitle(session.title, t)}`,
+          key: `${session.id}:${work}`, text: t(work ? workLine : "pip.peek"), mood: work ? "work" : undefined, href: `/chat/${session.id}`,
+          label: `${t(work ? workLine : "pip.peek")} ${t("pip.peekIn")} ${friendlyTitle(session.title, t)}`,
         }
         : null;
   const [kept, setKept] = useState<Peek | null>(null);
@@ -298,10 +365,11 @@ function PeekingPip() {
   const seen = useRef(new Set<string>());
   useEffect(() => {
     for (const x of s.sessions) {
-      if (!BACKGROUND.includes(x.title)) continue;
+      if (!inBackground(x.title)) continue;
       if (x.status === "running") seen.current.add(x.id);
       else if ((x.status === "idle" || x.status === "error") && seen.current.delete(x.id)) {
-        say(t(x.status === "idle" ? "pip.workDone" : "pip.workStopped"), x.status === "idle" ? "happy" : "confused");
+        const lines = BACKGROUND[x.title];
+        say(t(x.status === "idle" ? lines.done : lines.stopped), x.status === "idle" ? "happy" : "confused");
       }
     }
   }, [s.sessions]);
@@ -479,6 +547,8 @@ export function App() {
   const [site, setSite] = useState<SiteInfo | null>(null);
   // The forest run plays when the page opens, not after a logout.
   const [intro, setIntro] = useState(true);
+  // The login's board over everything while logged in, from the account menu (addAccount).
+  const [adding, setAdding] = useState<"" | "join" | "create">("");
   const [[view, arg], setRoute] = useState(readRoute);
   const [lang, setLangState] = useState<Lang>(() => (LANGUAGES_ON && stored("lang") === "en" ? "en" : "he"));
   const [theme, setTheme] = useState(() => (THEMES_ON ? stored("theme") ?? "" : "light"));
@@ -690,15 +760,18 @@ export function App() {
     logout: () => {
       api("logout", {}).catch(() => {}).finally(() => { setIntro(false); setLoaded(false); setS(EMPTY); setAuth("out"); });
     },
+    addAccount: setAdding,
   };
 
   return (
     <AppContext.Provider value={ctx}>
       {/* Not under Offline, where its forest would run unseen and its field take the focus. */}
       {auth === "out" && booted && !offline && <Login intro={intro} create={needsAccount} site={site} onDone={() => { setNeedsAccount(false); setRoute(readRoute()); setAuth("in"); }} />}
+      {/* The same board from the account menu, in place of the page until it opens the account or goes back. */}
+      {auth === "in" && adding && !offline && <Login intro={false} create={adding === "create"} join={adding === "join"} onBack={() => setAdding("")} onDone={() => setAdding("")} />}
       {welcome && <div className={`welcome-wrap ${booted ? "entering" : "waiting"}`}><Welcome /></div>}
       {/* Laid out but hidden until the state is in too, so the first thing shown is the real page; then it fades in. */}
-      {auth === "in" && !welcome && (
+      {auth === "in" && !welcome && !adding && (
         <div className={`shell ${booted && loaded ? "entering" : "waiting"}`} aria-busy={!(booted && loaded)}>
           <Sidebar />
           <main id="main" tabIndex={-1}><Screen /></main>

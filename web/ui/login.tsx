@@ -5,8 +5,12 @@
 // here before it reaches its computer: the site passes the sign-in on (site/server.ts), and once it is in, the page
 // loads again, now the computer's own. A computer that opens the site is sent to Pip on itself first ("pc"), which
 // knows from its own folder whether to begin with the introduction or the login; signing in to another computer from
-// there is a turn of the board away.
+// there is a turn of the board away. On a computer, the board also turns to signing in with an account that is on
+// another computer (joining), whose files then come here (accounts.tsx); and a login with the name of another account
+// on this computer opens that one. From the account menu, logged in, it is the same board that adds an account there is
+// already (join) or makes a new one beside this computer's (create), with a way back to the page instead (onBack).
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { waitForAccount } from "./accounts";
 import { commonPasswords, NAME_MAX, nameProblem, PASSWORD_MIN, passwordChecks } from "./account-rules";
 import { LANGUAGES_ON, SpeechTail, THEMES_ON, useApp } from "./app";
 import type { Lang } from "./i18n";
@@ -104,7 +108,7 @@ function ShortcutPicture() {
   );
 }
 
-export function Login({ onDone, intro, create = false, site = null }: { onDone: () => void; intro: boolean; create?: boolean; site?: SiteInfo | null }) {
+export function Login({ onDone, intro, create = false, join = false, onBack, site = null }: { onDone: () => void; intro: boolean; create?: boolean; join?: boolean; onBack?: () => void; site?: SiteInfo | null }) {
   const { t, lang, setLang, dark, toggleTheme } = useApp();
   const [shown, setShown] = useState(false);
   const [user, setUser] = useState("");
@@ -133,6 +137,11 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
   const [computer] = useState(isComputer);
   const [system] = useState(desktopSystem);
   const [view, setView] = useState<"pc" | "form">(site && computer ? "pc" : "form");
+  // Signing in with an account from another computer instead of making one here or logging in; and, once an account
+  // opens in place of this one, the words said while Pip starts again with it.
+  const [joining, setJoining] = useState(join);
+  const [moving, setMoving] = useState("");
+  const making = create && !joining;
   // Making the account: the common passwords once fetched, what the site said of each name asked about (free or
   // not), and which field is being typed in, which is what Pip speaks of.
   const [common, setCommon] = useState<Set<string> | null>(null);
@@ -141,14 +150,14 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
   useEffect(() => { if (create) loadCommon().then(setCommon); }, [create]);
   useEffect(() => {
     const name = user.trim();
-    if (!create || nameProblem(name).problem || free.has(name)) return;
+    if (!making || nameProblem(name).problem || free.has(name)) return;
     const timer = setTimeout(() => {
       api<{ free: boolean | null }>("account/name", { user: name }).then((r) => {
         if (typeof r.free === "boolean") setFree((known) => new Map(known).set(name, r.free as boolean));
       }, () => {});
     }, NAME_WAIT_MS);
     return () => clearTimeout(timer);
-  }, [user, create]);
+  }, [user, making]);
 
   // What Pip says while the account is made, as [kind, words]. Of the name: the first thing wrong with it, or once
   // the site has answered, that it is taken. Of the password: before anything is typed, the fewest characters it takes;
@@ -175,7 +184,7 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
   // with none, of the first thing that keeps the account from being made, and with nothing wrong, not at all. Not
   // while the board flips.
   const passwordWrong = password && !passwordGood ? passwordSays : null;
-  const says = !create || view !== "form" || flip ? null
+  const says = !making || view !== "form" || flip ? null
     : typing === "name" ? nameSays
     : typing === "password" ? passwordSays
     : typing === "repeat" ? repeatSays ?? passwordWrong
@@ -222,6 +231,11 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
     if (next === view || changing.current) return;
     turn(() => { setView(next); setError(""); });
   };
+  // On a computer: between this board's own way in and signing in with an account from another computer.
+  const toJoining = (next: boolean) => {
+    if (next === joining || changing.current || busy) return;
+    turn(() => { setJoining(next); setError(""); });
+  };
 
   const refuse = (text: string) => {
     setError(text);
@@ -233,7 +247,7 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy || view !== "form") return;
-    if (create) {
+    if (making) {
       if (named.problem) return refuse(t("errors.account_name"));
       if (free.get(user.trim()) === false) return refuse(t("errors.remote_name_taken"));
       if (!checks.long) return refuse(t("login.short", { n: PASSWORD_MIN }));
@@ -244,14 +258,21 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
     setBusy(true);
     setError("");
     try {
-      await api(create ? "account" : "login", { user, password });
+      const done = await api<{ switching?: string }>(joining ? "accounts/open" : making ? "account" : "login", { user, password });
       scene.current?.skip();
       scene.current?.react("right");
+      // Another account opening in place of this one: Pip starts again with it, and the page waits for it.
+      if (done?.switching) {
+        setMoving(t("account.switching", { name: done.switching }));
+        await waitForAccount();
+        return;
+      }
       setTimeout(site ? () => location.reload() : onDone, 1100);
     } catch (x) {
-      // The site can also say that the computer didn't answer, or that there were too many tries.
+      // The site can also say that the computer didn't answer, or that there were too many tries; joining, that the
+      // account's computers are off, or that there is no such account.
       const code = (x as ApiError).code;
-      refuse(create || code === "login_no_pc" || code === "remote_busy" ? errorText(x as ApiError, lang) : t("login.wrong"));
+      refuse(code !== "bad_login" && (making || joining || code === "login_no_pc" || code === "remote_busy") ? errorText(x as ApiError, lang) : t("login.wrong"));
     }
   };
 
@@ -272,7 +293,7 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
         </div>
       </header>
       <main className="login-stage">
-        <form ref={card} className={`login-card ${view === "pc" ? "pc" : create ? "create" : ""} ${shown ? "show" : ""} ${shake ? "shake" : ""} ${flip}`} onSubmit={submit} aria-hidden={!shown}>
+        <form ref={card} className={`login-card ${view === "pc" ? "pc" : making ? "create" : ""} ${shown ? "show" : ""} ${shake ? "shake" : ""} ${flip}`} onSubmit={submit} aria-hidden={!shown}>
           {view === "pc" ? (
             <>
               <ShortcutPicture />
@@ -290,23 +311,23 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
           ) : (
             <>
               {says && <PipSays key={says[0]} text={says[1]} card={card} />}
-              <h1>{t(create ? "login.createTitle" : "login.title")}</h1>
-              <p className="sub">{t(create ? "login.createSub" : site ? "login.siteSub" : "login.sub")}</p>
+              <h1>{t(joining ? "login.joinTitle" : create ? "login.createTitle" : "login.title")}</h1>
+              <p className="sub">{t(joining ? "login.joinSub" : create ? "login.createSub" : site ? "login.siteSub" : "login.sub")}</p>
               <Field label={t("login.user")}>
                 <input
                   ref={userBox} type="text" autoComplete="username" dir="ltr" value={user} onChange={(e) => setUser(e.target.value)} required
-                  onFocus={() => setTyping("name")} onBlur={() => setTyping("")} aria-describedby={create ? "login-say" : undefined}
+                  onFocus={() => setTyping("name")} onBlur={() => setTyping("")} aria-describedby={making ? "login-say" : undefined}
                 />
               </Field>
               <Field label={t("login.password")}>
                 {/* Pip covers its eyes while the password is typed. */}
                 <input
-                  type="password" autoComplete={create ? "new-password" : "current-password"} dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required
+                  type="password" autoComplete={making ? "new-password" : "current-password"} dir="ltr" value={password} onChange={(e) => setPassword(e.target.value)} required
                   onFocus={() => { scene.current?.cover(true); setTyping("password"); }} onBlur={() => { scene.current?.cover(false); setTyping(""); }}
-                  aria-describedby={create ? "login-say" : undefined}
+                  aria-describedby={making ? "login-say" : undefined}
                 />
               </Field>
-              {create && (
+              {making && (
                 <Field label={t("login.repeat")}>
                   <input
                     type="password" autoComplete="new-password" dir="ltr" value={repeat} onChange={(e) => setRepeat(e.target.value)} required
@@ -316,8 +337,16 @@ export function Login({ onDone, intro, create = false, site = null }: { onDone: 
                 </Field>
               )}
               {error && <p className="error-line" role="alert">{error}</p>}
-              <Btn kind="primary" type="submit" className="login-submit" disabled={busy}>{t(create ? "login.create" : "login.submit")}</Btn>
+              {(moving || (busy && joining)) && <p className="login-wait" role="status">{moving || t("login.joinBusy")}</p>}
+              <Btn kind="primary" type="submit" className="login-submit" disabled={busy}>{t(making ? "login.create" : "login.submit")}</Btn>
               {site && computer && <button type="button" className="login-switch" onClick={() => toView("pc")}>{t("login.pc.here")}</button>}
+              {!site && (onBack ? (
+                <button type="button" className="login-switch" onClick={onBack} disabled={busy}>{t("login.joinBack")}</button>
+              ) : (
+                <button type="button" className="login-switch" onClick={() => toJoining(!joining)} disabled={busy}>
+                  {t(joining ? "login.joinBack" : create ? "login.join" : "login.joinOther")}
+                </button>
+              ))}
             </>
           )}
         </form>

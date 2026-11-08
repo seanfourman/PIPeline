@@ -535,6 +535,44 @@ export function parseUnity(html: string): Posting[] {
   });
 }
 
+// The address of a recruiting platform board's list of jobs, "" for another kind of Read.
+const boardUrl = (read: Read) =>
+  "greenhouse" in read ? `https://boards-api.greenhouse.io/v1/boards/${read.greenhouse}/jobs`
+  : "lever" in read ? `https://api.lever.co/v0/postings/${read.lever}?mode=json`
+  : "workable" in read ? `https://apply.workable.com/api/v1/widget/accounts/${encodeURIComponent(read.workable)}`
+  : "ashby" in read ? `https://jobs.ashbyhq.com/${encodeURIComponent(read.ashby)}`
+  : "comeet" in read ? `https://www.comeet.com/jobs/${read.comeet}`
+  : "";
+
+// A recruiting platform's board read whole, for the list that grows by itself (discover.ts): every job on it with its
+// place, and the company's name as the board gives it (Lever's list has none: its board page's title, then).
+export async function readBoard(read: Read, o: { fetch: Fetch; signal?: AbortSignal }): Promise<{ name: string; postings: Posting[] }> {
+  const page = async (url: string) => {
+    const body = await o.fetch(url, o.signal);
+    if (body === null) throw new Error(`${new URL(url).host} did not answer`);
+    return body;
+  };
+  const url = boardUrl(read);
+  if (!url) throw new Error("not a recruiting platform's board");
+  const body = await page(url);
+  if ("greenhouse" in read) {
+    const about = JSON.parse(await page(`https://boards-api.greenhouse.io/v1/boards/${read.greenhouse}`));
+    return { name: String(about?.name ?? ""), postings: parseGreenhouse(body, read.greenhouse) };
+  }
+  if ("lever" in read) {
+    const title = (await page(`https://jobs.lever.co/${read.lever}`)).match(/<title>([^<]*)<\/title>/)?.[1] ?? "";
+    return { name: text(title), postings: parseLever(body) };
+  }
+  if ("workable" in read) return { name: String(JSON.parse(body)?.name ?? ""), postings: parseWorkable(body) };
+  if ("ashby" in read) {
+    const at = body.indexOf("window.__appData");
+    const data = at < 0 ? null : JSON.parse(jsonAt(body, body.indexOf("{", at)) || "null");
+    return { name: String(data?.organization?.name ?? ""), postings: parseAshby(body, read.ashby) };
+  }
+  const title = body.match(/<title>\s*(?:Job opportunities at|Jobs at)\s+([^<]+?)(?:\s+-\s+Careers[^<]*)?\s*<\/title>/i)?.[1] ?? "";
+  return { name: text(title), postings: parseComeet(body) };
+}
+
 // What a careers site is searched for: each role's title without its level, which big employers seldom put in a
 // title, up to eight.
 export const searchTerms = (roles: Role[]) =>
@@ -563,12 +601,12 @@ async function readCareers(read: Read, roles: Role[], o: { fetch: Fetch; signal?
     return all;
   };
   let found: Posting[];
-  if ("greenhouse" in read) found = parseGreenhouse(await page(`https://boards-api.greenhouse.io/v1/boards/${read.greenhouse}/jobs`), read.greenhouse);
+  if ("greenhouse" in read) found = parseGreenhouse(await page(boardUrl(read)), read.greenhouse);
   else if ("jobvite" in read) found = parseJobvite(await page(`https://jobs.jobvite.com/${read.jobvite}/jobs`), read.jobvite);
-  else if ("lever" in read) found = parseLever(await page(`https://api.lever.co/v0/postings/${read.lever}?mode=json`));
-  else if ("workable" in read) found = parseWorkable(await page(`https://apply.workable.com/api/v1/widget/accounts/${encodeURIComponent(read.workable)}`));
-  else if ("ashby" in read) found = parseAshby(await page(`https://jobs.ashbyhq.com/${encodeURIComponent(read.ashby)}`), read.ashby);
-  else if ("comeet" in read) found = parseComeet(await page(`https://www.comeet.com/jobs/${read.comeet}`));
+  else if ("lever" in read) found = parseLever(await page(boardUrl(read)));
+  else if ("workable" in read) found = parseWorkable(await page(boardUrl(read)));
+  else if ("ashby" in read) found = parseAshby(await page(boardUrl(read)), read.ashby);
+  else if ("comeet" in read) found = parseComeet(await page(boardUrl(read)));
   else if ("eightfold" in read) {
     const host = read.eightfold;
     found = await search((q) => `https://${host}/api/pcsx/search?domain=${host.split(".").slice(-2).join(".")}&query=${q}&location=Israel&start=0`, (b) => parseEightfold(b, host));

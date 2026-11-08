@@ -1,9 +1,9 @@
 // Shared building blocks. Text from postings and from the agent always goes in as text, never as HTML.
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  ArrowUp, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, ClipboardCheck, Cpu, createLucideIcon, Download, ExternalLink, Feather, FileText, Folder, Gauge,
-  Gem, LayoutGrid, Leaf, ListChecks, LogOut, MapPin, MessageCircle, Moon, Plus, RefreshCw, Search, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
-  Sparkles, Square, Sun, TriangleAlert, User, X, Zap,
+  ArrowUp, Bookmark, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, Gauge,
+  Gem, LayoutGrid, Leaf, ListChecks, LogIn, LogOut, MapPin, MessageCircle, Moon, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
+  Sparkles, Square, Sun, TriangleAlert, User, UserPlus, X, Zap,
   type LucideIcon,
 } from "lucide-react";
 import { translate, type Lang } from "./i18n";
@@ -207,8 +207,8 @@ const Office = createLucideIcon("building-front", [
 // Icons from Lucide, an open icon set (ISC licence); only these are bundled.
 const ICONS: Record<string, LucideIcon> = {
   home: House, jobs: Search, saved: Bookmark, apps: FileText, chat: MessageCircle, profile: User, settings: Settings,
-  rules: ListChecks, tools: LayoutGrid, files: Folder, more: CircleEllipsis, plus: Plus, sun: Sun, moon: Moon, logout: LogOut, filters: SlidersHorizontal,
-  ai: Sparkles, open: ExternalLink, apply: ClipboardCheck, pin: MapPin, close: X, onward: ChevronLeft, back: ChevronRight, down: ChevronDown, check: Check, find: Search,
+  rules: ListChecks, tools: LayoutGrid, files: Folder, more: CircleEllipsis, dots: Ellipsis, plus: Plus, sun: Sun, moon: Moon, login: LogIn, logout: LogOut, signup: UserPlus, filters: SlidersHorizontal,
+  ai: Sparkles, open: ExternalLink, apply: Send, pin: MapPin, close: X, onward: ChevronLeft, back: ChevronRight, down: ChevronDown, check: Check, find: Search,
   warn: TriangleAlert, send: ArrowUp, stop: Square, download: Download, file: FileText, portals: Office, refresh: RefreshCw, gauge: Gauge,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,
   "model-default": Cpu, "model-opus": Gem, "model-sonnet": Feather, "model-haiku": Leaf,
@@ -219,6 +219,17 @@ export const Icon = ({ name, filled = false }: { name: string; filled?: boolean 
   const Glyph = ICONS[name];
   return <Glyph className={`icon icon-${name}${filled ? " filled" : ""}`} aria-hidden="true" />;
 };
+
+// The AI's colours, as the sparkles have them on the jobs page (.ai-sky in styles.css): the forest rainbow in clouds
+// drifting over the sky's blue, behind whatever stands for the AI, a button or a round mark, and in its shape. orb is
+// for a small round one, with five small clouds about its middle.
+export function AiSky({ orb = false }: { orb?: boolean }) {
+  return (
+    <span className={`ai-sky ${orb ? "orb" : ""}`} aria-hidden="true">
+      {Array.from({ length: orb ? 5 : 7 }, (_, i) => <i key={i} />)}
+    </span>
+  );
+}
 
 // The roll of a round box's go button (the jobs search, the chat's box) in or out of its end; matches .seek-go's
 // transition in styles.css.

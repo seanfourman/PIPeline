@@ -56,8 +56,9 @@ function checkLine(check: Check | undefined, t: (key: string, params?: Record<st
 
 // on is the user's own choice, the switch; active is whether the system goes there now, which the settings can stop
 // too (the low-tech switch, the industries), and a row that isn't is faded.
+// how is how the system covers it, or, for a Telegram channel, that the daily run reads it.
 function Row({ name, url, how, on, active = on, toggle, status, note, remove }: {
-  name: string; url: string; how: How; on: boolean; active?: boolean; toggle?: () => void; status?: string; note?: string; remove?: () => void;
+  name: string; url: string; how: How | "channel"; on: boolean; active?: boolean; toggle?: () => void; status?: string; note?: string; remove?: () => void;
 }) {
   const { t } = useApp();
   return (
@@ -83,12 +84,14 @@ export function Portals() {
   const { s, t, lang, refresh, loaded, err, say } = useApp();
   const [draft, setDraft] = useState<any>(() => (loaded ? structuredClone(s.settings) : null));
   const [checks, setChecks] = useState<Record<string, Check>>({});
+  // The companies the daily search found on the recruiting platforms (discover.ts), read like the list's own.
+  const [found, setFound] = useState<Portal[]>([]);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState({ name: "", url: "", kind: "page" as OwnPortal["kind"] });
   const [badUrl, setBadUrl] = useState(false);
   useEffect(() => { if (!draft && loaded) setDraft(structuredClone(s.settings)); }, [loaded, s.settings]);
   useEffect(() => {
-    api("portals").then((r) => { setChecks(r.checks ?? {}); setBusy(Boolean(r.busy)); }).catch(() => {});
+    api("portals").then((r) => { setChecks(r.checks ?? {}); setFound(r.found ?? []); setBusy(Boolean(r.busy)); }).catch(() => {});
   }, []);
   const saving = useAutoSave(draft, async (next) => {
     await api("settings", { ...next, language: lang });
@@ -108,7 +111,7 @@ export function Portals() {
     const followed = p.how !== "link";
     const reason = p.lowTech && !picks.lowTech ? t("portals.lowTechIsOff") : p.kind === "employer" && picks.industries.length && !picks.industries.includes(p.industry) ? t("portals.notIndustry") : "";
     return (
-      <Row key={p.id} name={name(p)} url={p.url} how={p.how} on={!off.includes(p.id)} active={portalOn(p, picks)} toggle={followed ? toggle(p.id) : undefined}
+      <Row key={p.id} name={name(p)} url={p.url} how={p.channel ? "channel" : p.how} on={!off.includes(p.id)} active={portalOn(p, picks)} toggle={followed ? toggle(p.id) : undefined}
         status={p.how === "read" ? (reason || checkLine(checks[p.id], t)) : reason} note={p.note?.[lang]} />
     );
   };
@@ -142,7 +145,7 @@ export function Portals() {
   const community = PORTALS.filter((p) => p.kind === "community");
   const counts = {
     search: boards.filter((p) => p.how === "search" && portalOn(p, picks)).length,
-    read: employersToRead(picks).length + mine.filter((p) => p.kind === "page" && !off.includes(p.id)).length,
+    read: employersToRead(picks).length + found.filter((p) => portalOn(p, picks)).length + mine.filter((p) => p.kind === "page" && !off.includes(p.id)).length,
     web: webPortals(picks).length,
   };
   return (
@@ -186,6 +189,13 @@ export function Portals() {
             </div>
           );
         })}
+        {found.length > 0 && (
+          <div className="portal-group">
+            <h3 className="role-field-name">{t("portals.discovered")}</h3>
+            <p className="note">{t("portals.discoveredNote")}</p>
+            <ul className="portal-list tiles">{found.map(row)}</ul>
+          </div>
+        )}
       </Card>
 
       <Card className="stack">

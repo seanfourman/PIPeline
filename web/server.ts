@@ -1,15 +1,20 @@
 // Local web interface for the job-search workspace. Listens on this computer only.
 // First, so the user's folder is in place before any module below reads it.
+import "./switching";
 import "./upgrade";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createSession, createTaskSession, getSession, isAccess, listSessions, runTask, runUnattended } from "./agent";
-import { AccountError, clearedCookie, createAuth, sessionCookie } from "./auth";
+import { AccountError, clearedCookie, createAuth, rememberedCookie, rememberedOf, sessionCookie, sessionOf } from "./auth";
 import { buildInterface, watchInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
 import { askInOrder, ENGINE_NAMES, engineOrder } from "./ai";
 import { ChatbotError, checkKey, keyStatus, PROVIDERS, saveKey, type Provider } from "./chatbots";
 import { cliSignedIn, cliStatus, openLogin } from "./clis";
+import { accountFile, computerId, findLocal, localAccounts, readAccount, requestSwitch, USERS_DIR, type AccountFile, type LocalAccount } from "./accounts";
+import { foundPortals } from "./discover";
+import { answerFile, answerManifest, syncAccount } from "./sync";
+import { deriveKey, loadKey, openWith, saveKey, sealWith } from "./synckey";
 import { INDUSTRIES, PORTALS } from "./portals";
 import { rankJobs, type Steps } from "./ranker";
 import { readPortalChecks, scanPortals, scrapeJobs } from "./scraper";
@@ -23,7 +28,7 @@ import { loadSettings, REGION_PRESETS, saveSettings, syncWorkspace } from "./set
 import { joinWithTranscript, removeTranscript, saveTranscript, TRANSCRIPT, TranscriptError, transcriptInfo } from "./transcript";
 import { getUpload, saveUpload, UploadError } from "./uploads";
 import { nameProblem } from "./ui/account-rules";
-import { APP_DIR, cvFileName, listUserDocuments, profileReady, saveUserDocument, saveUserName, UserFileError, userProfile } from "./user";
+import { APP_DIR, cvFileName, listUserDocuments, profileReady, saveUserDocument, saveUserName, USER_DIR, UserFileError, userProfile } from "./user";
 
 const PORT = Number(process.env.JOB_WEB_PORT ?? 4174);
 const HOSTS = new Set([`127.0.0.1:${PORT}`, `localhost:${PORT}`]);
@@ -102,10 +107,10 @@ const askFor = (steps: Steps & { switched: (from: string, to: string, code: stri
 const language = () => (loadSettings().language === "en" ? "en" as const : "he" as const);
 
 const automation = createAutomation({
-  loadSettings, loadState, runSession: runUnattended, sendMail: (mail) => sendMail(mail),
+  loadSettings, loadState, runSession: runUnattended, sendMail: (mail) => sendMail(mail), computer: computerId(),
   // The daily run's portals check: the employers and the Israeli boards, which the run's agent doesn't search. An
   // employer that had nothing at its last check rests three days (scraper.ts).
-  scanPortals: (title, timeout) => runTask(title, (steps, signal) => scanPortals({ steps, signal, lang: language(), ask: askFor(steps), boards: true, rest: 3 }), timeout),
+  scanPortals: (title, timeout) => runTask(title, (steps, signal) => scanPortals({ steps, signal, lang: language(), ask: askFor(steps), boards: true, rest: 3, discover: true }), timeout),
 });
 // Only the address leaves the server. The password is written once and never read back.
 const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), next: automation.next(), mailUser: readMailAccount()?.user ?? "" });
@@ -116,6 +121,162 @@ let listBusy = "";
 
 const loggedIn = (id: string) => new Response(JSON.stringify({ ok: true }), { headers: { ...SECURITY_HEADERS, "Content-Type": "application/json", "Set-Cookie": sessionCookie(id) } });
 
+// ---------- the accounts: several on this computer, and each on several computers (accounts.ts, sync.ts) ----------
+
+const COMPUTER = computerId();
+// Starts Pip again, to open another account: the server stops with RESTART, and the launcher starts it again
+// (installer/launcher.cs), as launchd does on a Mac on any stop that isn't clean. Run by hand, it has to be started again
+// by hand (a server it started itself would go with it on Windows).
+const RESTART = 75;
+function restart() {
+  setTimeout(() => {
+    remote.stop();
+    if (process.env.PIP_LAUNCHER !== "1" && process.env.XPC_SERVICE_NAME !== "com.pip.server") console.log("Stopped to open another account: start Pip again to open it.");
+    process.exit(RESTART);
+  }, 300);
+}
+// Something a restart would cut short: a conversation, a search, a ranking or the daily run at work.
+const working = () => listBusy !== "" || automation.isRunning() || listSessions().some((x) => x.status === "running");
+// Logins to other accounts that failed, within a quarter of an hour; past ten, no more tries for a while.
+let accountFails: number[] = [];
+const accountTries = () => (accountFails = accountFails.filter((t) => Date.now() - t < 15 * 60_000)).length;
+
+// Opens another account on this computer with its password: checked, and a login made in its own folder (switchTo).
+async function openLocal(req: Request, other: LocalAccount, password: unknown): Promise<Response> {
+  const session = await createAuth(accountFile(other.dir)).login(other.name, password);
+  if (!session) {
+    accountFails.push(Date.now());
+    await Bun.sleep(400);
+    return json({ error: "bad_login" }, 401);
+  }
+  return switchTo(req, other, session);
+}
+
+// Opens another account on this computer in place of the open one, by a login of its own: one just made with its
+// password, or one this browser has already (rememberedOf). The browser takes the login along and keeps the open
+// account's own with the others it remembers, so going back takes no password either; the key the browser and the
+// launcher open this server with is kept in the account's folder too (each account's folder has one, user/app/token),
+// and Pip starts again with it.
+function switchTo(req: Request, other: LocalAccount, session: string): Response {
+  if (working()) return json({ error: "account_busy" }, 409);
+  writeFileSync(path.join(other.dir, "app", "token"), TOKEN);
+  requestSwitch(other.id);
+  restart();
+  const cookies = [sessionCookie(session)];
+  // Not through the site, which passes on only the login itself (remote.ts).
+  if (req.headers.get("x-pip-relayed") !== "1") cookies.push(rememberedCookie(remembering(req, other.id)));
+  return withCookies({ ok: true, switching: other.name }, 200, cookies);
+}
+
+// The logins this browser keeps to the other accounts once the account `next` is open: the open account's own among
+// them while it is good, next's out, and only accounts still on this computer.
+function remembering(req: Request, next: string) {
+  const cookie = req.headers.get("cookie");
+  const kept = rememberedOf(cookie);
+  const accounts = localAccounts();
+  const open = accounts.find((a) => a.open);
+  if (open?.id && auth.check(cookie)) kept.set(open.id, sessionOf(cookie));
+  const here = new Set(accounts.map((a) => a.id));
+  for (const id of [...kept.keys()]) if (id === next || !here.has(id)) kept.delete(id);
+  return kept;
+}
+
+const withCookies = (data: unknown, status: number, cookies: string[]) => {
+  const headers = new Headers({ ...SECURITY_HEADERS, "Content-Type": "application/json" });
+  for (const c of cookies) headers.append("Set-Cookie", c);
+  return new Response(JSON.stringify(data), { status, headers });
+};
+
+// An account that is on other computers, joined here: one of them checks the password through the site and gives what
+// the account is (its id, name, password's hash and salt), sealed with the account's key, which the password makes
+// here too; then everything the account has comes from them into its folder here (users/<id>/), and it is opened.
+async function joinAccount(req: Request, name: string, password: string): Promise<Response> {
+  if (working()) return json({ error: "account_busy" }, 409);
+  try {
+    const { salt, box } = await remote.join(name, password);
+    const key = deriveKey(password, salt);
+    const account = JSON.parse(openWith(key, Buffer.from(box, "base64")).toString("utf8")) as AccountFile;
+    if (!/^[0-9a-f]{16,32}$/.test(account.id ?? "") || typeof account.user !== "string" || typeof account.hash !== "string") throw new RemoteError("remote_unreachable");
+    const dir = path.join(USERS_DIR, account.id!);
+    mkdirSync(path.join(dir, "app"), { recursive: true });
+    writeFileSync(accountFile(dir), JSON.stringify({ user: account.user, hash: account.hash, id: account.id, salt: account.salt }));
+    saveKey(dir, key);
+    const got = await syncAccount({ dir, account: account.user, key, peers: remote, all: true });
+    if (!got.reached) throw new RemoteError("account_offline");
+    return openLocal(req, { id: account.id!, name: account.user, dir, open: false }, password);
+  } catch (err) {
+    const code = err instanceof RemoteError ? err.message : "remote_unreachable";
+    if (code === "bad_login" || code === "no_such_account") accountFails.push(Date.now());
+    return json({ error: code }, code === "bad_login" ? 401 : code === "no_such_account" ? 404 : code === "remote_busy" ? 429 : 503);
+  }
+}
+
+// A new account beside this computer's, from the account menu (logged in, on this computer itself, not through the
+// site): made as the first one is, its name taken on the site first, but in a folder of its own (users/<id>/), and
+// opened in place of the open one (switchTo).
+async function makeAnother(req: Request, body: Record<string, unknown>): Promise<Response> {
+  if (!auth.check(req.headers.get("cookie")) || req.headers.get("x-pip-relayed") === "1") return json({ error: "account_exists" }, 409);
+  if (working()) return json({ error: "account_busy" }, 409);
+  const name = String(body.user ?? "").trim();
+  const making = path.join(USERS_DIR, `making-${Date.now()}`);
+  const made = createAuth(accountFile(making));
+  try {
+    made.validate(name, body.password);
+    if (findLocal(name)) throw new AccountError("remote_name_taken");
+    await remote.claim(name).catch((err) => {
+      if (err instanceof RemoteError && err.message !== "remote_unreachable") throw new AccountError(err.message);
+    });
+    const session = await made.create(name, body.password);
+    const id = readAccount(making)?.id ?? "";
+    renameSync(making, path.join(USERS_DIR, id));
+    return switchTo(req, { id, name, dir: path.join(USERS_DIR, id), open: false }, session);
+  } catch (err) {
+    rmSync(making, { recursive: true, force: true });
+    if (err instanceof AccountError) return json({ error: err.message }, err.message === "remote_name_taken" ? 409 : 400);
+    throw err;
+  }
+}
+
+// A request from another computer of an account that is here (open or not), passed along by the site, which only it
+// marks so (remote.ts): this computer's list of the account's files, one of them, or joining the account, which takes
+// its password. What it answers is sealed with the account's key.
+async function peerRoutes(req: Request, url: URL): Promise<Response | null> {
+  if (!url.pathname.startsWith("/api/peer/")) return null;
+  if (req.headers.get("x-pip-relayed") !== "1" || !/^[0-9a-f]{32}$/.test(req.headers.get("x-pip-peer") ?? "")) return json({ error: "not_found" }, 404);
+  const local = findLocal(req.headers.get("x-pip-account") ?? "");
+  if (!local) return json({ error: "no_such_account" }, 404);
+  const what = url.pathname.slice("/api/peer/".length);
+  if (what === "join" && req.method === "POST") {
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    if (!(await createAuth(accountFile(local.dir)).verify(local.name, body.password))) {
+      await Bun.sleep(400);
+      return json({ error: "bad_login" }, 401);
+    }
+    const account = JSON.parse(readFileSync(accountFile(local.dir), "utf8")) as AccountFile;
+    const key = loadKey(local.dir) ?? deriveKey(String(body.password), account.salt!);
+    return json({ salt: account.salt, box: sealWith(key, JSON.stringify(account)).toString("base64") });
+  }
+  const key = loadKey(local.dir);
+  if (!key) return json({ error: "no_key" }, 409);
+  const sealed = (box: Buffer) => new Response(box, { headers: { ...SECURITY_HEADERS, "Content-Type": "application/octet-stream" } });
+  if (what === "manifest") return sealed(answerManifest(local.dir, key));
+  const file = what === "file" ? answerFile(local.dir, key, url.searchParams.get("p")) : null;
+  return file ? sealed(file) : json({ error: "not_found" }, 404);
+}
+
+// The open account kept alike with its other computers: soon after Pip starts, every quarter of an hour, and right
+// after a login, while this computer has the account's key.
+let syncing: Promise<void> | null = null;
+function syncNow() {
+  const name = auth.user();
+  const key = loadKey(USER_DIR);
+  if (!name || !key || syncing) return;
+  syncing = syncAccount({ dir: USER_DIR, account: name, key, peers: remote })
+    .then((r) => { if (r.pulled || r.removed) console.log(`Took ${r.pulled} newer files and ${r.removed} deletions from the account's other computers.`); })
+    .catch((err) => console.log(`Couldn't sync with the account's other computers: ${(err as Error)?.message ?? err}`))
+    .finally(() => { syncing = null; });
+}
+
 // The login form, and whether this browser is logged in; on the first visit, making the account instead. Everything
 // else in the API needs a login.
 async function loginRoutes(req: Request, url: URL): Promise<Response | null> {
@@ -123,15 +284,17 @@ async function loginRoutes(req: Request, url: URL): Promise<Response | null> {
     if (url.searchParams.get("active") === "1") usedAt = Date.now();
     return json({ loggedIn: auth.check(req.headers.get("cookie")), needsAccount: auth.needsAccount(), updating: Date.now() - updatingSince < UPDATING_MS });
   }
-  // While there is no account yet, whether a name typed for it is free on the site, asked by the board as it is typed:
-  // free true or false, or null when that can't be told (not paired, or the site out of reach).
+  // While there is no account yet, or logged in and making another (makeAnother), whether a name typed for it is free,
+  // asked by the board as it is typed: free true or false (one of this computer's accounts has it, or the site says
+  // so), or null when that can't be told (not paired, or the site out of reach).
   if (url.pathname === "/api/account/name" && req.method === "POST") {
-    if (!auth.needsAccount()) return json({ error: "account_exists" }, 409);
+    if (!auth.needsAccount() && !auth.check(req.headers.get("cookie"))) return json({ error: "account_exists" }, 409);
     const name = String((await req.json().catch(() => ({})) as Record<string, unknown>).user ?? "").trim();
-    return json({ free: nameProblem(name).problem ? null : await remote.free(name) });
+    return json({ free: nameProblem(name).problem ? null : findLocal(name) ? false : await remote.free(name) });
   }
   if (url.pathname === "/api/account" && req.method === "POST") {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    if (!auth.needsAccount()) return makeAnother(req, body);
     try {
       // Paired with its site before there was an account: the name is taken there first, for signing in there, once
       // the name and the password are good. With the site out of reach the account is made anyway, and takes the name
@@ -149,11 +312,41 @@ async function loginRoutes(req: Request, url: URL): Promise<Response | null> {
   if (url.pathname === "/api/login" && req.method === "POST") {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const id = await auth.login(body.user, body.password);
-    if (!id) {
-      await Bun.sleep(400);
-      return json({ error: "bad_login" }, 401);
+    if (id) {
+      syncNow();
+      return loggedIn(id);
     }
-    return loggedIn(id);
+    // Another account on this computer opens in place of this one; through the site, which asks the computer where it
+    // is open, it says it isn't open here.
+    const other = findLocal(String(body.user ?? ""));
+    if (other && !other.open) {
+      if (req.headers.get("x-pip-relayed") !== "1") return openLocal(req, other, body.password);
+      if (await createAuth(accountFile(other.dir)).verify(other.name, body.password)) return json({ error: "account_not_open" }, 409);
+    }
+    await Bun.sleep(400);
+    return json({ error: "bad_login" }, 401);
+  }
+  // Another account, by its name and password, from the account menu or the login (no login needed: its password is
+  // what lets it in): one on this computer opens in place of the open one; one on other computers joins this one first.
+  // With no password, one on this computer that this browser still has a login to opens with that; otherwise the
+  // password is asked for (password_needed), and a login of the browser's that is no longer good is forgotten.
+  if (url.pathname === "/api/accounts/open" && req.method === "POST") {
+    const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+    const name = String(body.user ?? "").trim();
+    const password = String(body.password ?? "");
+    if (!name) return json({ error: "bad_login" }, 400);
+    if (accountTries() >= 10) return json({ error: "remote_busy" }, 429);
+    if (name.toLowerCase() === auth.user().toLowerCase()) return json({ error: "account_here" }, 409);
+    const local = findLocal(name);
+    if (!password) {
+      const kept = rememberedOf(req.headers.get("cookie"));
+      const login = local ? kept.get(local.id) : undefined;
+      if (!local || !login) return json({ error: "password_needed" }, 401);
+      if (createAuth(accountFile(local.dir)).holds(login)) return switchTo(req, local, login);
+      kept.delete(local.id);
+      return withCookies({ error: "password_needed" }, 401, [rememberedCookie(kept)]);
+    }
+    return local ? openLocal(req, local, password) : joinAccount(req, name, password);
   }
   if (url.pathname === "/api/logout" && req.method === "POST") {
     auth.logout(req.headers.get("cookie"));
@@ -220,7 +413,13 @@ async function api(req: Request, url: URL): Promise<Response> {
       const settings = loadSettings();
       // The introduction shows until it is finished or put aside; someone set up before it was made never sees it.
       const intro = { done: settings.introDone || (profileReady() && settings.markets.length > 0), name: String(userProfile().name ?? ""), documents: listUserDocuments() };
-      return json({ ...loadState(settings), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), intro, remote: remote.status(), transcript: transcriptInfo() });
+      // The other accounts on this computer, for the account menu, those this browser keeps a login to (they open with
+      // no password), and this computer's id, which the daily run's is.
+      const others = localAccounts().filter((a) => !a.open);
+      const kept = rememberedOf(req.headers.get("cookie"));
+      const accounts = others.map((a) => a.name);
+      const remembered = others.filter((a) => kept.has(a.id)).map((a) => a.name);
+      return json({ ...loadState(settings), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), accounts, remembered, computer: COMPUTER, intro, remote: remote.status(), transcript: transcriptInfo() });
     }
     if (parts[0] === "profile" || parts[0] === "rules") return json(readDocument(parts[0]));
     if (parts[0] === "checks") return json(readChecks());
@@ -231,7 +430,7 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (parts[0] === "file") return json(readEditableFile(url.searchParams.get("path")));
     if (parts[0] === "automation") return json(automationStatus());
     // The portals page: every portal, the industries, and each one's last check.
-    if (parts[0] === "portals") return json({ portals: PORTALS, industries: INDUSTRIES, checks: readPortalChecks(), busy: listBusy === "portals" });
+    if (parts[0] === "portals") return json({ portals: PORTALS, industries: INDUSTRIES, checks: readPortalChecks(), found: foundPortals(), busy: listBusy === "portals" });
     if (parts[0] === "sessions" && parts[1] && parts[2] === "events") return eventStream(parts[1], req);
     if (parts[0] === "uploads" && parts[1]) {
       const upload = getUpload(parts[1]);
@@ -271,7 +470,11 @@ async function api(req: Request, url: URL): Promise<Response> {
       throw err;
     }
   }
-  if (parts[0] === "settings") return json(saveSettings(body, REPO));
+  // The daily run turned on runs on the computer it was turned on at, the account's others leave it to that one.
+  if (parts[0] === "settings") {
+    const daily = body?.automation?.enabled === true && !body.automation.computer ? { ...body, automation: { ...body.automation, computer: COMPUTER } } : body;
+    return json(saveSettings(daily, REPO));
+  }
   // The grade sheet, kept from the settings in its bytes as base64, or put away (transcript.ts).
   if (parts[0] === "transcript") {
     try {
@@ -380,7 +583,7 @@ async function api(req: Request, url: URL): Promise<Response> {
       const ask = askFor(steps);
       const work = job === "rank" ? rankJobs({ steps, signal, lang, ask })
         : job === "scrape" ? scrapeJobs({ steps, signal, lang, ask, settings })
-        : scanPortals({ steps, signal, lang, ask, settings });
+        : scanPortals({ steps, signal, lang, ask, settings, discover: true });
       return work.finally(() => { listBusy = ""; });
     });
     return json(session.summary());
@@ -498,6 +701,8 @@ async function handle(req: Request): Promise<Response> {
   if (refusal) return refusal;
   // A page of Pip open on this computer, asking as it does every few seconds (not one on the site, passed on).
   if ((url.pathname === "/api/me" || url.pathname === "/api/state") && req.headers.get("x-pip-relayed") !== "1") pageSeen = Date.now();
+  const peer = await peerRoutes(req, url);
+  if (peer) return peer;
   const login = await loginRoutes(req, url);
   if (login) return login;
   if (url.pathname.startsWith("/api/")) {
@@ -536,6 +741,8 @@ try {
 }
 
 remote.start();
+setTimeout(syncNow, 20_000);
+setInterval(syncNow, 15 * 60_000);
 console.log(`Job search interface: http://127.0.0.1:${server.port}`);
 console.log("Keep this window open while you use it.");
 if (!process.env.JOB_WEB_NO_BROWSER) openBrowser();

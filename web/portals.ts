@@ -45,6 +45,8 @@ export type Portal = {
   read?: Read;
   // For web: the site the agent searches with site:, and for a community, what it is.
   site?: string; note?: { he: string; en: string };
+  // A public Telegram channel, which the agent reads itself, its newest posts on its page (site), rather than searches.
+  channel?: boolean;
 };
 
 const ALLJOBS = (cid: number) => `https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=${cid}`;
@@ -81,6 +83,9 @@ const platform = (id: string, name: string, site: string): Portal => ({
   id, kind: "platform", how: "web", he: name, en: name, industry: "hightech", site,
   url: `https://www.google.com/search?q=${encodeURIComponent(`site:${site} Israel`)}`,
 });
+// A public Telegram channel of job posts, its page of newest posts what the agent reads and the page opens.
+const channel = (id: string, he: string, en: string, name: string): Portal =>
+  ({ id, kind: "community", how: "web", he, en, industry: "hightech", site: `t.me/s/${name}`, url: `https://t.me/s/${name}`, channel: true });
 // One whose site can't be read: only opened.
 const open = (id: string, industry: Industry, he: string, en: string, url: string): Portal =>
   ({ id, kind: "employer", how: "link", he, en, industry, lowTech: industry !== "defense", url });
@@ -127,6 +132,17 @@ export const PORTALS: Portal[] = [
   { id: "wa-junior-dev", kind: "community", how: "link", he: "וואטסאפ: פיתוח ג'וניור", en: "WhatsApp: junior development", industry: "hightech", url: "https://chat.whatsapp.com/FivKeyb8zpXA9kcYmUMLoH" },
   { id: "wa-students", kind: "community", how: "link", he: "וואטסאפ: סטודנטים והתמחות - פיתוח, QA, DevOps", en: "WhatsApp: student and intern - development, QA, DevOps", industry: "hightech", url: "https://chat.whatsapp.com/IkZFRecPQSJGyN4UcSVkgD" },
   { id: "tg-hireme", kind: "community", how: "link", he: "טלגרם: הבוט של HireMe", en: "Telegram: HireMe's bot", industry: "hightech", url: "https://t.me/Hireme_israelbot" },
+  // Public Telegram channels with job posts in Israel, each with posts in the week before November 8, 2026 but the last
+  // two (a month); groups, which have no public page, can only be opened.
+  channel("tg-junior", "טלגרם: משרות ג'וניור ללא ניסיון", "Telegram: junior jobs, no experience needed", "hitechjobsjunior"),
+  channel("tg-secret-junior", "טלגרם: Secret Junior Developer Jobs", "Telegram: Secret Junior Developer Jobs", "secretjuniordevelopers"),
+  channel("tg-hitech", "טלגרם: משרות הייטק", "Telegram: HiTech Jobs", "hitech_jobs_in_israel"),
+  channel("tg-israjobs", "טלגרם: HighTech Israel Jobs", "Telegram: HighTech Israel Jobs", "israjobs"),
+  channel("tg-olim", "טלגרם: משרות הייטק לעולים", "Telegram: high-tech jobs for olim", "hightechforolims"),
+  channel("tg-logon", "טלגרם: Log-On Software", "Telegram: Log-On Software", "LogOnSoftware"),
+  channel("tg-galilee", "טלגרם: הייטק בגליל ובגולן", "Telegram: Galilee-Golan Tech", "Tech_Galilee_Golan_Channel"),
+  channel("tg-public", "טלגרם: משרות ביטחון וממשל", "Telegram: defense and government jobs", "TheMisrot"),
+  channel("tg-gocode", "טלגרם: GoCode Jobs", "Telegram: GoCode Jobs", "gocodejobs"),
 
   // High-tech: the global companies' R&D in Israel, the Israeli tech companies, and Matrix, which hires for itself
   // and for the companies and ministries it works for. Each was looked up in November 2026 where it keeps its jobs,

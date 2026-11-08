@@ -45,6 +45,8 @@ export type Deps = {
   stateFile?: string;
   root?: string;
   now?: () => Date;
+  // This computer's id: the run waits for the computer the settings name, when they name another of the account's.
+  computer?: string;
 };
 
 // The email and the conversation titles follow the interface language.
@@ -236,7 +238,8 @@ export function createAutomation(deps: Deps) {
     tick: () => {
       const settings = deps.loadSettings();
       const state = read();
-      if (running || !isDue(settings, state.lastSlot ?? state.lastRunDate, now())) return;
+      const elsewhere = Boolean(settings.automation.computer && deps.computer && settings.automation.computer !== deps.computer);
+      if (running || elsewhere || !isDue(settings, state.lastSlot ?? state.lastRunDate, now())) return;
       // When the day's earlier runs used up its jobs, this one is marked done without a search that would spend
       // Claude's quota on CVs no run may draft today.
       if (leftToday(settings, state.runs, now()) <= 0) {

@@ -115,36 +115,40 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
     return new Response(res.body, { status: res.status, headers });
   };
 
-  // The app's sign-in, from a browser that isn't tied to a computer: the name finds the computer, which checks the
-  // password; its session cookie comes back to the browser with the computer's id, and from then on the browser is
+  // The app's sign-in, from a browser that isn't tied to a computer: the name finds the account's computers, the one
+  // where it is open asked first, which checks the password (one where another account is open says so, and the next
+  // is asked); its session cookie comes back to the browser with the computer's id, and from then on the browser is
   // passed along to it.
   async function signIn(req: Request, server: Server) {
     const body = await req.json().catch(() => ({})) as Record<string, unknown>;
     const typed = String(body.user ?? "").trim();
     const password = String(body.password ?? "");
     const ip = address(req, server);
-    const machine = store.named(typed);
-    const named = machine?.name ?? "";
-    if (tries(`ip:${ip}`).length >= ADDRESS_TRIES || (machine && tries(`name:${named.toLowerCase()}`).length >= NAME_TRIES)) return json({ error: "remote_busy" }, 429);
-    if (!machine) {
+    const named = store.account(typed) ?? "";
+    if (tries(`ip:${ip}`).length >= ADDRESS_TRIES || (named && tries(`name:${named.toLowerCase()}`).length >= NAME_TRIES)) return json({ error: "remote_busy" }, 429);
+    if (!named) {
       failed(`ip:${ip}`);
       return json({ error: "bad_login" }, 401);
     }
-    if (!relay.online(machine.id)) return json({ error: "login_no_pc" }, 503);
-    const res = await relay.forward(machine.id, {
-      method: "POST", path: "/api/login", headers: { "content-type": "application/json" },
-      body: new TextEncoder().encode(JSON.stringify({ user: named, password })),
-    }).catch(() => null);
-    await res?.body?.cancel().catch(() => {});
-    if (!res || (!res.ok && res.status !== 401)) return json({ error: "login_no_pc" }, 503);
-    if (!res.ok) {
-      failed(`ip:${ip}`, `name:${named.toLowerCase()}`);
-      return json({ error: "bad_login" }, 401);
+    const here = (id: string) => relay.openOn(id).toLowerCase() === named.toLowerCase();
+    const on = store.members(named).filter((id) => relay.online(id));
+    for (const id of [...on.filter(here), ...on.filter((id) => !here(id))]) {
+      const res = await relay.forward(id, {
+        method: "POST", path: "/api/login", headers: { "content-type": "application/json" },
+        body: new TextEncoder().encode(JSON.stringify({ user: named, password })),
+      }).catch(() => null);
+      await res?.body?.cancel().catch(() => {});
+      if (!res || res.status === 409 || (!res.ok && res.status !== 401)) continue;
+      if (!res.ok) {
+        failed(`ip:${ip}`, `name:${named.toLowerCase()}`);
+        return json({ error: "bad_login" }, 401);
+      }
+      const headers = new Headers({ ...SECURITY, "Content-Type": "application/json" });
+      for (const c of res.headers.getSetCookie()) headers.append("set-cookie", secure(req) && !/;\s*secure/i.test(c) ? `${c}; Secure` : c);
+      headers.append("set-cookie", cookie(req, COMPUTER_COOKIE, id));
+      return new Response(JSON.stringify({ ok: true }), { headers });
     }
-    const headers = new Headers({ ...SECURITY, "Content-Type": "application/json" });
-    for (const c of res.headers.getSetCookie()) headers.append("set-cookie", secure(req) && !/;\s*secure/i.test(c) ? `${c}; Secure` : c);
-    headers.append("set-cookie", cookie(req, COMPUTER_COOKIE, machine.id));
-    return new Response(JSON.stringify({ ok: true }), { headers });
+    return json({ error: "login_no_pc" }, 503);
   }
 
   const server = Bun.serve<Link, {}>({
@@ -193,8 +197,7 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
         failed(`free:${machine.id}`);
         const name = String((await req.json().catch(() => ({})) as any)?.name ?? "").trim();
         if (!NAME_RULE.test(name)) return json({ error: "remote_name" }, 400);
-        const other = store.named(name);
-        return json({ free: !other || other.id === machine.id });
+        return json({ free: store.members(name).every((id) => id === machine.id) });
       }
       if (url.pathname === "/api/site/code" && req.method === "POST") {
         const machine = store.byKey(bearer(req));
@@ -208,6 +211,52 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
         const machine = store.unlink(bearer(req));
         if (machine) relay.drop(machine.id);
         return json({ ok: Boolean(machine) });
+      }
+
+      // An account's computers keeping it alike (web/sync.ts): a computer of the account asks which others it is on,
+      // and asks one of them for its list of the account's files, or for one file, passed along that one's connection
+      // as a request from a peer. What comes back is sealed with the account's key, which the site hasn't.
+      if (url.pathname === "/api/site/peers" || url.pathname === "/api/site/peer") {
+        const machine = store.byKey(bearer(req));
+        if (!machine) return json({ error: "remote_unlinked" }, 401);
+        const account = url.searchParams.get("account") ?? "";
+        if (!store.isMember(account, machine.id)) return json({ error: "not_member" }, 403);
+        if (url.pathname === "/api/site/peers") {
+          return json({ peers: store.members(account).filter((id) => id !== machine.id).map((id) => ({ id, online: relay.online(id) })) });
+        }
+        const to = url.searchParams.get("to") ?? "";
+        const what = url.searchParams.get("what") ?? "";
+        if (!["manifest", "file"].includes(what) || !store.isMember(account, to)) return json({ error: "not_member" }, 403);
+        const query = what === "file" ? `?p=${encodeURIComponent(url.searchParams.get("p") ?? "")}` : "";
+        try {
+          return await relay.forward(to, { method: "GET", path: `/api/peer/${what}${query}`, headers: { "x-pip-peer": machine.id, "x-pip-account": account } }, req.signal);
+        } catch (err) {
+          return json({ error: err instanceof Offline ? "peer_offline" : "peer_no_answer" }, 503);
+        }
+      }
+      // A computer joining an account that is on other computers: one of them that is on checks the password (the one
+      // where the account is open, if any), and answers with what the new one needs, sealed with the account's key; then
+      // the new one is one of the account's computers.
+      if (url.pathname === "/api/site/join" && req.method === "POST") {
+        const machine = store.byKey(bearer(req));
+        if (!machine) return json({ error: "remote_unlinked" }, 401);
+        const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+        const account = store.account(String(body.account ?? "").trim()) ?? "";
+        if (tries(`join:${machine.id}`).length >= NAME_TRIES || (account && tries(`name:${account.toLowerCase()}`).length >= NAME_TRIES)) return json({ error: "remote_busy" }, 429);
+        const others = account ? store.members(account).filter((id) => id !== machine.id) : [];
+        if (!others.length) { failed(`join:${machine.id}`); return json({ error: "no_such_account" }, 404); }
+        const on = others.filter((id) => relay.online(id));
+        const to = on.find((id) => relay.openOn(id).toLowerCase() === account.toLowerCase()) ?? on[0];
+        if (!to) return json({ error: "account_offline" }, 503);
+        const res = await relay.forward(to, {
+          method: "POST", path: "/api/peer/join", headers: { "content-type": "application/json", "x-pip-peer": machine.id, "x-pip-account": account },
+          body: new TextEncoder().encode(JSON.stringify({ password: String(body.password ?? "") })),
+        }).catch(() => null);
+        const text = await res?.text().catch(() => "") ?? "";
+        if (res?.status === 401) { failed(`join:${machine.id}`, `name:${account.toLowerCase()}`); return json({ error: "bad_login" }, 401); }
+        if (!res?.ok) return json({ error: "account_offline" }, 503);
+        store.join(account, machine.id);
+        return new Response(text, { headers: { ...SECURITY, "Content-Type": "application/json" } });
       }
 
       // A browser. /pair/<code> ties it to the computer that asked for the code, once, as that computer's own; /login

@@ -124,6 +124,9 @@ company_research/*.json
 # the web interface's conversations and settings. Never commit it; each person who installs the app gets their
 # own, filled in by the introduction. Rooted, so templates/user/ (the clean starting files) stays in the repo.
 /user/
+# The other accounts on this computer and the computer's own files (web/accounts.ts), and the launcher's log.
+/users/
+/logs/
 
 # Where the local web interface kept its conversations and access token before user/app/
 web/data/

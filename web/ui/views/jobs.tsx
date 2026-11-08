@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { store, stored, useApp } from "../app";
-import { api, Badge, Btn, Card, External, goTo, Icon, Page, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
+import { store, stored, useApp, type AppState } from "../app";
+import { AiSky, api, goTo, Icon, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
@@ -23,34 +23,6 @@ function useSave() {
   const toggle = (job: Pick<Job, "url" | "title" | "company" | "location" | "date">) =>
     api("saved", { url: job.url, title: job.title, company: job.company, location: job.location, date: job.date, save: !urls.has(job.url) }).then(() => refresh()).catch(() => {});
   return { isSaved: (url: string) => urls.has(url), toggle };
-}
-
-// A job in a list: one Pip found, with the ranking's score when scored is set, or one the user saved.
-function JobRow({ job, scored }: { job: Job; scored?: boolean }) {
-  const { t, s, start } = useApp();
-  const { isSaved, toggle } = useSave();
-  const on = isSaved(job.url);
-  const showTier = Boolean(job.tier) && !(job.tier === "unknown" && !s.settings.areas?.length);
-  return (
-    <article className="job">
-      <div className="job-main">
-        {scored && <div className="score">{job.score ?? "–"}</div>}
-        <div>
-          <div className="job-title" dir="auto">{job.title}</div>
-          <div className="job-meta" dir="auto"><Spaced parts={[job.company, job.location, job.date].filter(Boolean)} /></div>
-          <div className="row">
-            {showTier && <Badge tone={TIER_TONE[job.tier] ?? ""}>{t(`tiers.${job.tier}`)}</Badge>}
-            {scored && job.verdict && <Badge>{job.verdict}</Badge>}
-          </div>
-        </div>
-      </div>
-      <div className="row job-actions">
-        {safeUrl(job.url) && <Btn className={`save-btn ${on ? "on" : ""}`} aria-pressed={on} onClick={() => toggle(job)}><Icon name="saved" filled={on} />{on ? t("jobs.savedOne") : t("jobs.save")}</Btn>}
-        <External url={job.url}>{t("jobs.open")}</External>
-        {safeUrl(job.url) && <Btn kind="primary" onClick={() => start(`/apply ${job.url}`)}>{t("jobs.apply")}</Btn>}
-      </div>
-    </article>
-  );
 }
 
 // How long ago a job was posted, in words: today, yesterday, so many days or weeks ago; past two months, the date.
@@ -77,28 +49,30 @@ function tint(name: string) {
   return `var(--sky-${(h % 6) + 1})`;
 }
 
-// A search result, as a plain row like a search engine's: the company's initial on a round tile, the title, the
-// company and place, chips for how long ago it was posted and its area, and three round buttons at its end, to
-// save it, open the posting and check it and apply; under the pointer, or reached by the keyboard, a button's
-// name floats over it. index is its place in the results, for rising in one after another.
-function ResultRow({ job, index }: { job: Job; index: number }) {
-  const { t, s, start } = useApp();
+// The company's initial on a round tile, in its forest colour, at the start of a job's row.
+function Initial({ name }: { name: string }) {
+  const initial = [...name.trim()].find((ch) => /[\p{L}\p{N}]/u.test(ch))?.toUpperCase() ?? "?";
+  return <span className="result-mark" aria-hidden="true" style={{ "--tint": tint(name) } as React.CSSProperties}>{initial}</span>;
+}
+
+// A job as a plain row, like a search engine's result: what leads it (the company's initial, or Pip's score), the
+// title, the company and place, chips, and three round buttons at its end, to save it, open the posting, and apply.
+// Applying is the AI's work: its paper plane is in its neighbours' grey, with the AI's colours as a soft light along
+// the inside of its rim (.apply-rim in styles.css). Under the pointer, or reached by the keyboard, a button's name
+// floats over it. index is its place in the list, for rising in one after another; faded, a job just taken off the
+// saved list, kept in its place.
+function JobRow({ job, index, lead, chips, faded = false }: { job: Job; index: number; lead: React.ReactNode; chips?: React.ReactNode; faded?: boolean }) {
+  const { t, start } = useApp();
   const { isSaved, toggle } = useSave();
   const on = isSaved(job.url);
-  const showTier = !(job.tier === "unknown" && !s.settings.areas?.length);
   const href = safeUrl(job.url);
-  const name = job.company || job.title || "?";
-  const initial = [...name.trim()].find((ch) => /[\p{L}\p{N}]/u.test(ch))?.toUpperCase() ?? "?";
   return (
-    <article className="result" style={{ "--i": Math.min(index, 12), "--tint": tint(name) } as React.CSSProperties}>
-      <span className="result-mark" aria-hidden="true">{initial}</span>
+    <article className={`result ${faded ? "faded" : ""}`} style={{ "--i": Math.min(index, 12) } as React.CSSProperties}>
+      {lead}
       <div className="result-text">
         <h3 className="result-title">{job.title}</h3>
         <p className="result-meta"><Spaced parts={[job.company, job.location].filter(Boolean)} /></p>
-        <div className="result-chips">
-          {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
-          {showTier && <span className={`result-chip ${TIER_TONE[job.tier] ?? ""}`}>{t(`tiers.${job.tier}`)}</span>}
-        </div>
+        <div className="result-chips">{chips}</div>
       </div>
       {href && (
         <div className="result-actions">
@@ -108,12 +82,24 @@ function ResultRow({ job, index }: { job: Job; index: number }) {
           <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}>
             <Icon name="open" /><span className="act-label" aria-hidden="true">{t("jobs.open")}</span>
           </a>
-          <button type="button" className="result-act primary" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}>
-            <Icon name="apply" /><span className="act-label" aria-hidden="true">{t("jobs.apply")}</span>
+          <button type="button" className="result-act apply" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}>
+            <span className="apply-rim" aria-hidden="true" /><Icon name="apply" /><span className="act-label" aria-hidden="true">{t("jobs.apply")}</span>
           </button>
         </div>
       )}
     </article>
+  );
+}
+
+// A search result: the company's initial, and chips for how long ago it was posted and its area.
+function ResultRow({ job, index }: { job: Job; index: number }) {
+  const { t, s } = useApp();
+  const showTier = !(job.tier === "unknown" && !s.settings.areas?.length);
+  return (
+    <JobRow job={job} index={index} lead={<Initial name={job.company || job.title || "?"} />} chips={<>
+      {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
+      {showTier && <span className={`result-chip ${TIER_TONE[job.tier] ?? ""}`}>{t(`tiers.${job.tier}`)}</span>}
+    </>} />
   );
 }
 
@@ -924,57 +910,293 @@ function Quick() {
 // foot.
 export const Jobs = () => <div className="page jobs-page"><Quick /></div>;
 
-// The saved jobs, a tab of their own in the sidebar, in two tabs: the jobs the user saved, and those Pip found, with
-// the ranking's scores. Each tab says how many it shows. The tab is in the address (/saved/found), so the home
-// page's links open Pip's; with nothing saved yet, Pip's opens first. Over Pip's list, while some of it waits to be
-// ranked, how many, and the button that ranks them.
-export function SavedJobs() {
-  const { s, t, arg, start, run, say, err } = useApp();
-  const found = pipFound(s.jobs);
-  const mine = s.saved ?? [];
-  const ai = MAKERS[useFirstAi()].name;
-  // What the ranking reads: the new ones, and those it couldn't read before. The server runs it (ranker.ts, by
-  // start in app.tsx) under a conversation of its own, which opens like any other; why it couldn't start shows here.
-  const waiting = s.jobs.filter((j) => j.status === "new" || j.status === "unreachable").length;
-  const [ranking, setRanking] = useState(false);
-  const [rankError, setRankError] = useState("");
-  const rank = () => {
-    setRanking(true);
-    setRankError("");
-    start("/rank").catch((e) => setRankError(err(e))).finally(() => setRanking(false));
-  };
-  const tab = arg === "mine" || arg === "found" ? arg : mine.length ? "mine" : "found";
-  const tabButton = (id: "mine" | "found", label: string) => (
-    <button type="button" role="tab" aria-selected={tab === id} onClick={() => goTo(`/saved/${id}`)}>{label}</button>
+// ---------- the saved jobs page ----------
+
+type Saved = AppState["saved"][number];
+// A job Pip found: gate is the check it failed, its place or its language, when the ranking left it out.
+type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string };
+
+// The most jobs one ranking reads (LIMIT in ranker.ts); the rest wait for the next.
+const RANK_AT_ONCE = 10;
+// The background runs the page waits on, by their conversations' titles (server.ts).
+const RANK = "/rank";
+const SMART = "/job-scraper";
+
+// Pip's bands for a score (BANDS in tools/rank_state.py): a strong fit from 75, a good one from 60, a fair one from
+// 45, and less below that.
+const bandOf = (score: number) => (score >= 75 ? "strong" : score >= 60 ? "good" : score >= 45 ? "fair" : "low");
+
+// The groups Pip's list is shown in, in this order: the strong fits; the good and fair ones; the rest that were
+// ranked; those still waiting to be ranked; and those the ranking left out, for their place or their language.
+const GROUPS = ["strong", "worth", "less", "waiting", "out"] as const;
+function groupOf(job: Found): (typeof GROUPS)[number] {
+  if (typeof job.score !== "number") return "waiting";
+  if (job.veto) return "out";
+  const band = bandOf(job.score);
+  return band === "strong" ? "strong" : band === "low" ? "less" : "worth";
+}
+
+// The ranking's score at the start of a job Pip found, on a round tile where a search result has the company's
+// initial: green for a strong or good fit, amber for a fair one, grey below, or when the ranking left the job out
+// (out). Not ranked yet, an empty ring with three dots, which rise in turn while the ranking runs (busy). fresh is a
+// score just come in while the page is open, which pops up.
+function Score({ score, busy = false, fresh = false, out = false }: { score: number | null; busy?: boolean; fresh?: boolean; out?: boolean }) {
+  const { t } = useApp();
+  if (score === null) return (
+    <span className={`result-mark score-mark wait ${busy ? "busy" : ""}`} role="img" aria-label={t("jobs.unscored")}><i /><i /><i /></span>
   );
   return (
-    <Page title={t("jobs.savedTitle")}>
-      <div className="segmented saved-tabs" role="tablist" aria-label={t("jobs.savedTitle")}>
-        {tabButton("mine", t("jobs.tabMine", { n: mine.length }))}
-        {tabButton("found", t("jobs.tabFound", { n: found.length }))}
+    <span className={`result-mark score-mark ${out ? "low" : bandOf(score)} ${fresh ? "fresh" : ""}`} role="img" aria-label={t("jobs.score", { n: score })}>
+      {score}
+    </span>
+  );
+}
+
+// Days from today to a date given as YYYY-MM-DD, or null without one.
+function daysTo(date: string | undefined) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date ?? "");
+  if (!m) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((new Date(+m[1], +m[2] - 1, +m[3]).getTime() - today.getTime()) / 86_400_000);
+}
+
+// What a job Pip found says in its chips: that it couldn't be opened, or why the ranking left it out; that it
+// closes within the week; how long ago it was posted; and its area.
+function FoundChips({ job }: { job: Found }) {
+  const { t, s } = useApp();
+  const days = daysTo(job.deadline);
+  const showTier = Boolean(job.tier) && !(job.tier === "unknown" && !s.settings.areas?.length);
+  return <>
+    {job.status === "unreachable" && <span className="result-chip warn">{t("jobs.flags.unreachable")}</span>}
+    {job.veto && (job.gate === "location" || job.gate === "language") && <span className="result-chip bad">{t(`jobs.flags.${job.gate}`)}</span>}
+    {days !== null && days >= 0 && days <= 7 && (
+      <span className="result-chip warn">{days === 0 ? t("jobs.flags.closesToday") : days === 1 ? t("jobs.flags.closesTomorrow") : t("jobs.flags.closesIn", { n: days })}</span>
+    )}
+    {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
+    {showTier && <span className={`result-chip ${TIER_TONE[job.tier] ?? ""}`}>{t(`tiers.${job.tier}`)}</span>}
+  </>;
+}
+
+// The scores seen on this visit, and those just come in (a job waiting that now has one), for a moment, so each
+// pops up as it lands. None the first time round, which is only what was there already.
+function useFreshScores(jobs: Found[]) {
+  const seen = useRef<Map<string, number | null>>();
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set());
+  const sign = jobs.map((j) => `${j.key}:${j.score ?? ""}`).join("|");
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = new Map(jobs.map((j) => [j.key, typeof j.score === "number" ? j.score : null]));
+    if (!before) return;
+    const landed = jobs.filter((j) => typeof j.score === "number" && before.has(j.key) && before.get(j.key) === null).map((j) => j.key);
+    if (!landed.length) return;
+    setFresh(new Set(landed));
+    const timer = setTimeout(() => setFresh(new Set()), 1600);
+    return () => clearTimeout(timer);
+  }, [sign]);
+  return fresh;
+}
+
+// The saved list as it shows while the page is open: a job taken off it stays where it was, faded, so the same
+// button saves it again; a job newly saved comes in at the top. Once the page is left, those taken off are gone.
+function useKeptList(list: Saved[]) {
+  const [shown, setShown] = useState(list);
+  const sign = list.map((j) => j.url).join("\n");
+  useEffect(() => {
+    setShown((old) => {
+      const now = new Map(list.map((j) => [j.url, j]));
+      const added = list.filter((j) => !old.some((o) => o.url === j.url));
+      return [...added, ...old.map((j) => now.get(j.url) ?? j)];
+    });
+  }, [sign]);
+  return shown;
+}
+
+// The ranking, over Pip's list while some of it waits to be ranked: a glass pill like the role buttons on the jobs
+// page, the sparkles' live colours in its round mark, how many new jobs it would rank and what that takes. It runs
+// in the background, in a conversation of its own, while Pip peeks out at work (app.tsx); meanwhile a ring turns
+// round the mark, the pill says so and opens that conversation, and the scores come in once it is done. While the
+// smart search runs the ranking waits for it, as the server has it (one of them writes the list at a time).
+function RankPill({ waiting, ranking, searching }: { waiting: number; ranking?: { id: string }; searching: boolean }) {
+  const { t, run, err } = useApp();
+  const ai = MAKERS[useFirstAi()].name;
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState("");
+  const busy = Boolean(ranking) || starting;
+  const rank = () => {
+    setStarting(true);
+    setError("");
+    run(RANK).catch((e) => setError(err(e))).finally(() => setStarting(false));
+  };
+  const title = busy ? t("jobs.rankRunning") : waiting === 1 ? t("jobs.rankNewOne") : t("jobs.rankNew", { n: waiting });
+  const note = busy ? t("jobs.rankRunningNote") : searching ? t("jobs.rankWaitSmart")
+    : waiting > RANK_AT_ONCE ? `${t("jobs.rankAtOnce", { max: RANK_AT_ONCE })} ${t("jobs.aiQuota", { ai })}` : t("jobs.aiQuota", { ai });
+  const inside = (
+    <>
+      <span className="rank-orb" aria-hidden="true"><AiSky orb />{busy && <span className="rank-ring" />}<Icon name="ai" /></span>
+      <span className="rank-text"><strong>{title}</strong><small>{note}</small></span>
+    </>
+  );
+  return (
+    <div className="rank-row" aria-live="polite">
+      {ranking
+        ? <a className="rank-pill busy" href={`/chat/${ranking.id}`} aria-label={`${title} ${t("jobs.rankWatch")}`}>{inside}</a>
+        : <button type="button" className={`rank-pill ${busy ? "busy" : ""}`} disabled={busy || searching} onClick={rank}>{inside}</button>}
+      {error && <small className="error-line" role="alert">{error}</small>}
+    </div>
+  );
+}
+
+// An empty list: Pip lying on top of what to do about it, as he lies on the search box on the jobs page, and under it
+// what the list waits for.
+function Empty({ title, text, after, children }: { title: string; text: string; after?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="saved-empty">
+      <div className="saved-empty-stage">
+        <PipLying className="saved-empty-pip" />
+        {children}
       </div>
-      {tab === "mine" ? (
-        mine.length ? <Card className="joblist">{mine.map((j) => <JobRow key={j.url} job={{ ...j, tier: "" }} />)}</Card>
-          : <Card className="empty">{t("jobs.mineEmpty")}</Card>
-      ) : found.length ? (
-        <>
-          {waiting > 0 && (
-            <div className="rank-bar">
-              <span className="action-art"><Icon name="gauge" /></span>
-              <span className="rank-bar-text">
-                <strong>{waiting === 1 ? t("jobs.rankOne") : t("jobs.rankMany", { n: waiting })}</strong>
-                <small>{t("jobs.rankBarNote", { ai })}</small>
-                {rankError && <small className="rank-error" role="alert">{rankError}</small>}
-              </span>
-              <Btn kind="primary" disabled={ranking} onClick={rank}>{t("jobs.rankNow")}</Btn>
-            </div>
-          )}
-          <p className="note">{t("jobs.priority")}</p>
-          <Card className="joblist">{found.map((j) => <JobRow key={j.key} job={j as Job} scored />)}</Card>
-        </>
-      ) : (
-        <Card className="empty">{t("jobs.foundEmpty")}<Btn kind="primary" onClick={() => run("/job-scraper").catch((e) => say(err(e), "worried"))}>{t("jobs.runSmart")}</Btn></Card>
-      )}
-    </Page>
+      <p><strong>{title}</strong>{text}</p>
+      {after}
+    </div>
+  );
+}
+
+// Nothing saved yet: the way to the search, where every job has a save button.
+function MineEmpty() {
+  const { t } = useApp();
+  return (
+    <Empty title={t("jobs.mineEmptyTitle")} text={t("jobs.mineEmpty")}>
+      <a className="seek-pill saved-empty-go" href="/jobs">{t("home.toJobs")}</a>
+    </Empty>
+  );
+}
+
+// Nothing found yet: the smart search, in the AI's colours, with what it takes under it. It runs in the background
+// (run in app.tsx); meanwhile the words say Pip is searching and the button says so too, with a light passing over it,
+// and takes no clicks. Why it couldn't start shows under it.
+function FoundEmpty({ searching }: { searching: boolean }) {
+  const { t, run, err } = useApp();
+  const ai = MAKERS[useFirstAi()].name;
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState("");
+  const busy = searching || starting;
+  const go = () => {
+    setStarting(true);
+    setError("");
+    run(SMART).catch((e) => setError(err(e))).finally(() => setStarting(false));
+  };
+  return (
+    <Empty
+      title={t(busy ? "jobs.smartRunningTitle" : "jobs.foundEmptyTitle")} text={t(busy ? "jobs.smartRunning" : "jobs.foundEmpty")}
+      after={<>
+        {!busy && <small className="saved-empty-note">{t("jobs.aiQuota", { ai })}</small>}
+        {error && <small className="error-line" role="alert">{error}</small>}
+      </>}
+    >
+      <button type="button" className={`ai-pill ${busy ? "busy" : ""}`} disabled={busy} onClick={go}>
+        <span className="ai-glow" aria-hidden="true" />
+        <AiSky />
+        <Icon name="ai" />
+        <span>{t(busy ? "jobs.smartRunningPill" : "jobs.runSmart")}</span>
+      </button>
+    </Empty>
+  );
+}
+
+// The jobs the user saved, newest first, each led by its company's initial and saying how long ago it was posted;
+// one taken off stays, faded, until the page is left.
+function MineList() {
+  const { s, t } = useApp();
+  const { isSaved } = useSave();
+  const shown = useKeptList(s.saved ?? []);
+  if (!shown.length) return <MineEmpty />;
+  return (
+    <div className="results">
+      {shown.map((job, i) => {
+        const off = !isSaved(job.url);
+        return (
+          <JobRow key={job.url} job={{ ...job, tier: "" }} index={i} faded={off} lead={<Initial name={job.company || job.title || "?"} />} chips={<>
+            {off && <span className="result-chip">{t("jobs.flags.removed")}</span>}
+            {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
+          </>} />
+        );
+      })}
+    </div>
+  );
+}
+
+// The jobs Pip found, in groups by how well they fit, each led by its score, best first; over them, while some
+// wait to be ranked, the ranking.
+function FoundList() {
+  const { s, t } = useApp();
+  const found = pipFound(s.jobs) as Found[];
+  // What the ranking reads: the new ones, and those it couldn't open before.
+  const waiting = s.jobs.filter((j) => j.status === "new" || j.status === "unreachable").length;
+  const ranking = s.sessions.find((x) => x.title === RANK && x.status === "running");
+  const searching = s.sessions.some((x) => x.title === SMART && x.status === "running");
+  const fresh = useFreshScores(found);
+  if (!found.length) return <FoundEmpty searching={searching} />;
+  const groups = GROUPS.map((g) => [g, found.filter((j) => groupOf(j) === g)] as const).filter(([, list]) => list.length > 0);
+  let index = 0;
+  return (
+    <>
+      {(waiting > 0 || ranking) && <RankPill waiting={waiting} ranking={ranking} searching={searching} />}
+      {groups.map(([group, list]) => (
+        <section key={group} className="saved-group" aria-labelledby={`saved-group-${group}`}>
+          <h2 id={`saved-group-${group}`} className="saved-group-head">
+            {t(`jobs.groups.${group}`)}<span className="saved-group-count">{list.length}</span>
+          </h2>
+          <div className="results">
+            {list.map((job) => (
+              <JobRow key={job.key} job={job} index={index++} chips={<FoundChips job={job} />}
+                lead={<Score score={typeof job.score === "number" ? job.score : null} busy={Boolean(ranking)} fresh={fresh.has(job.key)} out={group === "out"} />} />
+            ))}
+          </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
+// The saved jobs, a tab of their own in the sidebar, in the jobs page's look: the forest rainbow's moving sky behind
+// a question-sized title, and under it the two lists, the jobs the user saved and those Pip found, as two glass
+// buttons that say how many each has, the open one in ink; then the open list, as wide as the search's results. The
+// tab is in the address (/saved/found), so the home page's links open Pip's; with nothing saved yet, Pip's opens
+// first. The arrow keys go from one button to the other. Opened, a list's rows rise in.
+export function SavedJobs() {
+  const { s, t, arg } = useApp();
+  const mine = s.saved ?? [];
+  const found = pipFound(s.jobs);
+  const tab = arg === "mine" || arg === "found" ? arg : mine.length ? "mine" : "found";
+  const keys = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const other = tab === "mine" ? "found" : "mine";
+    goTo(`/saved/${other}`);
+    requestAnimationFrame(() => document.getElementById(`saved-tab-${other}`)?.focus());
+  };
+  const tabButton = (id: "mine" | "found", label: string, n: number) => (
+    <button
+      type="button" role="tab" id={`saved-tab-${id}`} aria-controls="saved-panel" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1}
+      className={`seek-pill saved-tab ${tab === id ? "on" : ""}`} onClick={() => goTo(`/saved/${id}`)}
+    >
+      {label}<span className="saved-count">{n}</span>
+    </button>
+  );
+  return (
+    <div className="page jobs-page saved-page">
+      <div className="saved-top">
+        <Sky />
+        <h1 className="saved-title">{t("jobs.savedTitle")}</h1>
+        <div className="saved-tabs" role="tablist" aria-label={t("jobs.savedTitle")} onKeyDown={keys}>
+          {tabButton("mine", t("jobs.tabMine"), mine.length)}
+          {tabButton("found", t("jobs.tabFound"), found.length)}
+        </div>
+      </div>
+      <div id="saved-panel" key={tab} role="tabpanel" aria-labelledby={`saved-tab-${tab}`} className="saved-panel">
+        {tab === "mine" ? <MineList /> : <FoundList />}
+      </div>
+    </div>
   );
 }

@@ -13,7 +13,7 @@ describe("the portals", () => {
       expect(INDUSTRY_IDS).toContain(p.industry);
       expect(p.url).toMatch(/^https:\/\/[^\s]+$/);
       if (p.how === "read") expect(p.read).toBeTruthy();
-      if (p.how === "web") expect(p.site).toMatch(/^[a-z0-9.-]+(\/[A-Za-z0-9.\/-]+)?$/);
+      if (p.how === "web") expect(p.site).toMatch(/^[a-z0-9.-]+(\/[\w.\/-]+)?$/);
     }
   });
 

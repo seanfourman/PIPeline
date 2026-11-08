@@ -1,8 +1,8 @@
 // Pip.exe, what Pip's shortcuts open (pip.iss): a program with no window of its own. Unless the program's server is
 // on already, it starts it on the Bun the installer brought in, unseen, with PATH as the system and the user have it
-// now (Python's and MiKTeX's installers add to it), and stays with it, keeping what it writes in user\app\server.log,
+// now (Python's and MiKTeX's installers add to it), and stays with it, keeping what it writes in logs\server.log,
 // with Pip's icon by the clock for as long as it runs: open Pip from it (a double click does too), or quit, which
-// stops the server. Opening Pip asks the server where, with the key it keeps (user\app\token), the only way in from a
+// stops the server. A server that stops to open another account (RESTART) is started again. Opening Pip asks the server where, with the key it keeps (user\app\token), the only way in from a
 // browser (/open in web/server.ts): straight on Pip's site (Site), which the server joins as soon as it starts, or on
 // this computer while the site is out of reach. With a page of Pip open in the browser already, its window comes to
 // the front instead of a second page opening, its tab picked first when another tab is in front of it, and if no
@@ -59,6 +59,8 @@ static class Launcher
     const long UPDATE_RETRY_MS = 6L * 60 * 60 * 1000;
     const int UPDATE_TELL_MS = 8000;
     const int STARTED_MS = 60000;
+    // What the server stops with to open another account (web/server.ts restart): it is started again.
+    const int RESTART = 75;
     static int updating;
 
     static int Main(string[] args)
@@ -92,6 +94,10 @@ static class Launcher
         }
 
         Directory.CreateDirectory(data);
+        // The server's log beside Pip, not in user\: opening another account moves user\ aside (web/accounts.ts), which
+        // Windows refuses while a file in it is open.
+        string logs = Path.Combine(app, "logs");
+        Directory.CreateDirectory(logs);
         ProcessStartInfo start = new ProcessStartInfo(bun, "run server.ts");
         start.WorkingDirectory = Path.Combine(app, "web");
         start.UseShellExecute = false;
@@ -104,24 +110,19 @@ static class Launcher
         start.EnvironmentVariables["PIP_SITE"] = site;
         // This opens the browser, once the server is up, so that a page open already comes up rather than a second.
         start.EnvironmentVariables["JOB_WEB_NO_BROWSER"] = "1";
-        using (StreamWriter log = new StreamWriter(Path.Combine(data, "server.log"), false))
+        // So the server stops with RESTART to open another account, rather than start its own new one.
+        start.EnvironmentVariables["PIP_LAUNCHER"] = "1";
+        using (StreamWriter log = new StreamWriter(Path.Combine(logs, "server.log"), false))
         {
             log.AutoFlush = true;
-            Process server = new Process();
-            server.StartInfo = start;
             DataReceivedEventHandler keep = delegate (object sender, DataReceivedEventArgs e)
             {
                 if (e.Data != null) lock (log) log.WriteLine(e.Data);
             };
-            server.OutputDataReceived += keep;
-            server.ErrorDataReceived += keep;
-            server.EnableRaisingEvents = true;
             Stopwatch running = Stopwatch.StartNew();
             bool quitting = false;
-            server.Start();
-            server.BeginOutputReadLine();
-            server.BeginErrorReadLine();
-            Updates(site, port, app, data, server);
+            Process server = Launch(start, keep);
+            Updates(site, port, app, data, () => server);
             if (!background)
             {
                 ThreadPool.QueueUserWorkItem(delegate
@@ -153,8 +154,24 @@ static class Launcher
                 tray.ContextMenu = menu;
                 tray.DoubleClick += open;
                 tray.Visible = true;
-                // The server stopping, by Quit or from outside, ends this with it, and the icon goes.
-                server.Exited += delegate { ui.Post(delegate { Application.ExitThread(); }, null); };
+                // The server stopping, by Quit or from outside, ends this with it, and the icon goes; one that stops to
+                // open another account is started again, and the icon stays.
+                EventHandler exited = null;
+                exited = delegate
+                {
+                    ui.Post(delegate
+                    {
+                        if (!quitting && server.ExitCode == RESTART)
+                        {
+                            server = Launch(start, keep);
+                            server.Exited += exited;
+                            running.Restart();
+                            return;
+                        }
+                        Application.ExitThread();
+                    }, null);
+                };
+                server.Exited += exited;
                 if (!server.HasExited) Application.Run();
                 tray.Visible = false;
             }
@@ -169,16 +186,31 @@ static class Launcher
         }
     }
 
+    // The server, its output kept in the log as it comes.
+    static Process Launch(ProcessStartInfo start, DataReceivedEventHandler keep)
+    {
+        Process server = new Process();
+        server.StartInfo = start;
+        server.OutputDataReceived += keep;
+        server.ErrorDataReceived += keep;
+        server.EnableRaisingEvents = true;
+        server.Start();
+        server.BeginOutputReadLine();
+        server.BeginErrorReadLine();
+        return server;
+    }
+
     // While the server runs, a look at the site a minute after it starts and then every few minutes (Update), on a
-    // thread of its own, until one starts an update.
-    static void Updates(string site, string port, string app, string data, Process server)
+    // thread of its own, until one starts an update. server is the one running now, which another account opening
+    // replaces.
+    static void Updates(string site, string port, string app, string data, Func<Process> server)
     {
         int every;
         if (!int.TryParse(Environment.GetEnvironmentVariable("PIP_UPDATE_EVERY_MS"), out every) || every <= 0) every = UPDATE_EVERY_MS;
         Thread checking = new Thread(delegate ()
         {
             Thread.Sleep(Math.Min(UPDATE_FIRST_MS, every));
-            while (!server.HasExited)
+            while (!server().HasExited || server().ExitCode == RESTART)
             {
                 try
                 {
