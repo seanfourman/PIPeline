@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { checkKey, keyStatus, openaiRequest, providerOf, readKeys, saveKey, streamReply, type Turn } from "./chatbots";
+import { checkKey, forgetKeys, keyStatus, openaiRequest, providerOf, readKeys, saveKey, streamReply, type Turn } from "./chatbots";
 import { getUpload, saveUpload } from "./uploads";
 
 const dir = mkdtempSync(path.join(os.tmpdir(), "chatbots-"));
@@ -29,6 +29,16 @@ describe("chatbots", () => {
     expect(providerOf("gemini-3.8-flash")).toBeNull();
     expect(providerOf("claude-opus-5-5")).toBeNull();
     expect(providerOf(undefined)).toBeNull();
+  });
+
+  test("forgets every saved key, the file and all, and minds no file to forget", () => {
+    const file = path.join(dir, "old", "ai-keys.json");
+    saveKey("openai", "sk-old-secret", file);
+    expect(existsSync(file)).toBe(true);
+    forgetKeys(file);
+    expect(existsSync(file)).toBe(false);
+    expect(keyStatus(file)).toEqual({ openai: false });
+    expect(() => forgetKeys(file)).not.toThrow();
   });
 
   test("keeps the key in its own file, says only whether it is there, and forgets one emptied", () => {

@@ -10,7 +10,7 @@ import { AccountError, clearedCookie, createAuth, openedByHand, rememberedCookie
 import { buildInterface, watchInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
 import { askInOrder, ENGINE_NAMES, engineOrder } from "./ai";
-import { ChatbotError, keyStatus, PROVIDERS, type Provider } from "./chatbots";
+import { ChatbotError, forgetKeys, keyStatus, PROVIDERS, type Provider } from "./chatbots";
 import { cliSignedIn, cliStatus, openLogin } from "./clis";
 import { accountFile, computerId, findLocal, localAccounts, readAccount, requestSwitch, USERS_DIR, type AccountFile, type LocalAccount } from "./accounts";
 import { foundPortals } from "./discover";
@@ -41,6 +41,8 @@ await buildInterface(path.join(PUBLIC, "build"));
 watchInterface(path.join(PUBLIC, "build"));
 // Whether Claude and ChatGPT are signed in, known before the first conversation asks.
 cliStatus().catch(() => {});
+// The API keys saved before there was no key to give (chatbots.ts forgetKeys), gone.
+try { forgetKeys(); } catch (err) { console.error("The old AI keys could not be removed:", err); }
 // The settings' block in the agent's files written afresh as the server starts (settings.ts), so what a new version
 // changed in it, such as the sites the daily run searches the web on, reaches the agent without the settings saved
 // again.

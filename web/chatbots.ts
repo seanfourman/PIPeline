@@ -2,7 +2,7 @@
 // signed in through Codex (clis.ts, codex.ts). They see what is written and attached and nothing else, no project
 // files, no web and no tools. The key is stored on this computer outside the project, sealed like the mail
 // password (vault.ts), and never sent back to the page.
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Upload } from "./uploads";
@@ -65,6 +65,12 @@ export const keyStatus = (file = KEYS_FILE) => {
 };
 
 // A key to keep, sealed, or an empty one to forget the provider's.
+// The keys saved before ChatGPT went through its account alone (Sean, 2026-11-09): the file goes, never read, when the
+// server starts, as nothing uses a key any more and nothing in the app could take one away.
+export function forgetKeys(file = KEYS_FILE) {
+  rmSync(file, { force: true });
+}
+
 export function saveKey(provider: Provider, key: string, file = KEYS_FILE) {
   const keys = sealedKeys(file);
   if (key) keys[provider] = seal(key); else delete keys[provider];
