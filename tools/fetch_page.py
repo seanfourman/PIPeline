@@ -24,7 +24,10 @@ Properties, each pinned by tests/test_fetch_page.py:
     system temp directory, so the file is asked for once rather than before
     every page; the gate still decides every path (robots_check.py).
   * Fetched content never lands in the repo. --out defaults to the system temp
-    directory and a path that resolves inside the repo root is refused.
+    directory and a path that resolves inside the repo root is refused. So is
+    one anywhere else outside the temp directory: the grant lets the agent pick
+    the path, and a page saved into a startup folder or Claude's own settings
+    would be a write nobody was asked about (path_guard.py).
   * Bounded: 45 s, 5 redirects, 10 MB - on both the curl and the urllib path,
     and the size cap is applied after Content-Encoding is undone.
 
@@ -63,6 +66,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import robots_check  # noqa: E402
 from page_decode import decode_page  # noqa: E402
+from path_guard import refused, temp_dirs  # noqa: E402
 from robots_check import BROWSER, gate  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -228,6 +232,14 @@ def main(argv=None) -> int:
         print(
             f"fetch_page: refusing to write inside the repo ({out}); fetched content is "
             "untrusted and belongs in the session scratchpad or the temp directory",
+            file=sys.stderr,
+        )
+        return 2
+    reason = refused(out, temp_dirs())
+    if reason:
+        print(
+            f"fetch_page: refusing --out {out}: {reason}; fetched content belongs in the session "
+            "scratchpad or the temp directory",
             file=sys.stderr,
         )
         return 2

@@ -54,6 +54,12 @@ without either the mode is guessed from the content, which is a fallback, not
 a documented path. Output: the verdict line, a `--- findings ---` block (JSON
 with --json), then `--- text ---` and the cleaned text, or `saved=<path>` when
 --out is given. Exit 0 whenever the input could be read; 2 when --in cannot.
+
+The grant in .claude/settings.json runs this with any arguments, so its paths
+are part of that grant (path_guard.py): --in reads a page or posting from the
+system temp directory (the session scratchpad) or user/documents/, never a key
+file elsewhere, and --out writes only in the temp directory, never over a
+script an allowed command runs. Exit 2 for a path outside them.
 """
 
 import argparse
@@ -65,6 +71,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from page_decode import decode_page  # noqa: E402
+from path_guard import ROOT, refused, temp_dirs  # noqa: E402
 
 EXCERPT = 120
 LINE_MAX = 200
@@ -500,6 +507,15 @@ def main(argv=None) -> int:
     parser.add_argument("--json", action="store_true", help="print findings as JSON")
     parser.set_defaults(mode="auto")
     args = parser.parse_args(argv)
+
+    for flag, path, inside in (
+        ("--in", args.infile, [*temp_dirs(), (ROOT / "user" / "documents").resolve()]),
+        ("--out", args.out, temp_dirs()),
+    ):
+        reason = None if path is None else refused(path, inside)
+        if reason:
+            print(f"posting_guard: refusing {flag} {path}: {reason}", file=sys.stderr)
+            return 2
 
     try:
         raw = _read_input(args.infile, args.mode)

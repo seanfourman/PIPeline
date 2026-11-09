@@ -206,6 +206,30 @@ class Candidates(RankStateCase):
         self.assertIn("not found", proc.stderr + proc.stdout)
 
 
+class StatePath(RankStateCase):
+    """.claude/settings.json runs this with any arguments, so --state, the file it writes back, stays in
+    user/job_scraper/ or the temp directory: anywhere else was an overwrite nobody was asked about."""
+
+    def run_on(self, *args):
+        return subprocess.run(
+            [sys.executable, str(TOOL), *args, "--today", TODAY], capture_output=True, text=True, encoding="utf-8",
+        )
+
+    def test_state_outside_the_job_list_and_temp_is_refused(self):
+        outside = Path(self.tmp.anchor) / "rank_state_outside" / "seen_jobs.json"
+        proc = self.run_on("apply", "--results", "[]", "--state", str(outside))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("must be inside", proc.stderr)
+        self.assertFalse(outside.exists())
+
+    def test_state_must_be_json(self):
+        script = self.tmp / "seen_jobs.py"
+        proc = self.run_on("sweep", "--write", "--state", str(script))
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("must name a .json file", proc.stderr)
+        self.assertFalse(script.exists())
+
+
 class Sweep(RankStateCase):
     def test_retires_past_deadlines_and_flags_the_closing_ones(self):
         self.write_state(

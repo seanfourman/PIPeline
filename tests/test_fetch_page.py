@@ -161,6 +161,23 @@ class SchemeAndPathGuards(FetchPageFixture):
         self.assertIn("inside the repo", err)
         self.assertFalse(inside.exists())
 
+    def test_refuses_out_outside_the_temp_directory_before_any_network(self):
+        # The grant lets the agent name --out, so a page saved into a startup folder or Claude's own settings
+        # would be a write nobody was asked about; "..", climbing out of the temp directory, is the same.
+        fetch_page.gate = lambda url: self.fail("gate must not run for a refused --out")
+        for outside in (Path(self.tmp.anchor) / "fetch_page_outside" / "page.html", self.tmp / ".." / ".." / "page.html"):
+            code, out, err = self.run_main(f"{self.base}/ok.html", "--out", str(outside))
+            self.assertEqual(code, 2, outside)
+            self.assertIn("must be inside", err)
+            self.assertFalse(outside.exists(), outside)
+
+    def test_refuses_out_naming_a_stream(self):
+        # On Windows "page.html::$DATA" is page.html itself, a way around a check on the name's end.
+        code, out, err = self.run_main(f"{self.base}/ok.html", "--out", f"{self.out}::$DATA")
+        self.assertEqual(code, 2)
+        self.assertIn("':'", err)
+        self.assertFalse(self.out.exists())
+
 
 class RobotsGate(FetchPageFixture):
     def test_refuses_when_robots_gate_denies(self):

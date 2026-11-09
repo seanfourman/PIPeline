@@ -35,6 +35,10 @@ Usage:
 
 Both subcommands print JSON on stdout. Exit 0 on success, 1 on a usage or
 state error, or on `apply` when any result could not be written.
+
+--state must be a .json file in user/job_scraper/ or the system temp
+directory: .claude/settings.json runs this tool with any arguments, so the file
+it writes back is part of that grant (path_guard.py).
 """
 
 import argparse
@@ -47,6 +51,9 @@ import unicodedata
 from datetime import date, datetime, timedelta, timezone
 from fractions import Fraction
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from path_guard import refused, temp_dirs  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 # The user's own job list and tracker, in user/ (never committed).
@@ -558,6 +565,9 @@ def main() -> int:
     app.set_defaults(func=cmd_apply)
 
     args = ap.parse_args()
+    reason = refused(args.state, [STATE.parent.resolve(), *temp_dirs()], suffix=".json")
+    if reason:
+        sys.exit(f"--state {args.state}: {reason}")
     return args.func(args)
 
 

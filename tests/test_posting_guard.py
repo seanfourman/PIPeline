@@ -478,6 +478,31 @@ class InputHandling(GuardFixture):
         self.assertNotIn("--- text ---", out)
         self.assertIn(f"saved={target}", out)
 
+    def test_out_outside_the_temp_directory_is_refused(self):
+        # The grant runs this with any arguments, so --out could otherwise put the agent's own text over a script
+        # an allowed command runs, or into a startup folder.
+        planted = REPO_ROOT / "tools" / "posting_guard_planted_by_test.py"
+        self.addCleanup(planted.unlink, missing_ok=True)
+        for target in (planted, Path(self.tmp.anchor) / "posting_guard_outside" / "clean.txt"):
+            code, out, err = self.run_main("--text", "--out", str(target), stdin_text="print('planted')")
+            self.assertEqual(code, 2, target)
+            self.assertIn("refusing --out", err)
+            self.assertFalse(target.exists(), target)
+
+    def test_out_naming_a_stream_is_refused(self):
+        # On Windows "clean.txt::$DATA" is clean.txt itself, a way around a check on the name's end.
+        target = self.tmp / "clean.txt"
+        code, out, err = self.run_main("--text", "--out", f"{target}::$DATA", stdin_text="Body text.")
+        self.assertEqual(code, 2)
+        self.assertFalse(target.exists())
+
+    def test_in_outside_temp_and_user_documents_is_refused(self):
+        # A key file elsewhere must not be read and printed, around the web app's own check on reads.
+        code, out, err = self.run_main("--in", posting_guard.__file__, "--text")
+        self.assertEqual(code, 2)
+        self.assertIn("refusing --in", err)
+        self.assertEqual(out, "")
+
     def test_json_findings_shape(self):
         code, out, err = self.run_main("--text", "--json", stdin_text="Plain.")
         f = self.findings_of(out)

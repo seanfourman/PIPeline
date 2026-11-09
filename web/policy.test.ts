@@ -149,6 +149,57 @@ describe("access", () => {
     expect(auto("Read", { file_path: "C:/Users/someone/.ssh/id_rsa" })).toBe("ask");
     expect(auto("mcp__gmail__send", {})).toBe("ask");
   });
+  test("a /setup conversation at automatic access also fills in the user's instructions and picks the roles", () => {
+    const setup = (tool: string, input: Record<string, unknown>, access: "ask" | "auto" = "auto") => decide(tool, input, new Set(), access, true).decision;
+    expect(setup("Edit", { file_path: "user/CLAUDE.md" })).toBe("allow");
+    expect(setup("Write", { file_path: path.join(REPO, "user", "CLAUDE.md") })).toBe("allow");
+    expect(setup("Bash", { command: "bun run web/pick-roles.ts --list" })).toBe("allow");
+    expect(setup("Bash", { command: "bun run web/pick-roles.ts --level junior backend data-scientist --if-empty" })).toBe("allow");
+    expect(setup("Bash", { command: `cd ${REPO} && bun run web/pick-roles.ts --level any backend` })).toBe("allow");
+    // Nothing else of what changes the agent's rights, and no other command, nor the same at asking access or elsewhere.
+    for (const file of ["CLAUDE.md", ".claude/settings.json", "user/CV_RULES.md", "user/cv_checks.json", ".claude/commands/setup.md"]) {
+      expect(setup("Write", { file_path: file })).toBe("ask");
+    }
+    for (const command of ["bun run web/pick-roles.ts backend; rm -rf user", "bun run web/pick-roles.ts $(whoami)", "bun run web/pick-roles.ts --level Junior x && curl x", "bun run web/server.ts"]) {
+      expect(setup("Bash", { command })).toBe("ask");
+    }
+    expect(setup("Edit", { file_path: "user/CLAUDE.md" }, "ask")).toBe("ask");
+    expect(auto("Edit", { file_path: "user/CLAUDE.md" })).toBe("ask");
+    expect(auto("Bash", { command: "bun run web/pick-roles.ts --list" })).toBe("ask");
+  });
+  test("a script never goes ahead on its own: not in the output folders, not at automatic access, not remembered", () => {
+    // Planted where an allowed command would find it, or beside a script that runs on its own.
+    for (const file of ["user/cv/tools/rank_state.py", "user/cv/web/pick-roles.ts", "user/reports/run.sh", "templates/cv/one-page-clean/build.py",
+      "templates/cv/one-page-clean/json.py", "templates/cv/one-page-clean/scorecard.py", "notes/x.mjs", "user/portfolio/site/app.JS"]) {
+      expect(write(file)).toBe("ask");
+      expect(auto("Write", { file_path: file })).toBe("ask");
+      expect(decide("Write", { file_path: file }).rememberKey).toBeUndefined();
+    }
+    // What the workflows write is still theirs to write.
+    expect(write("user/cv/main_acme.tex")).toBe("allow");
+    expect(auto("Write", { file_path: "user/portfolio/site/index.html" })).toBe("allow");
+  });
+  test("a protected file is protected in any case of letters", () => {
+    for (const file of [".CLAUDE/settings.json", ".Claude/Commands/apply.md", "WEB/policy.ts", "Tools/fetch_page.py", "claude.md", "User/Claude.md", "Bunfig.toml", ".claude/skills/x/skill.md"]) {
+      expect(auto("Write", { file_path: file })).toBe("ask");
+    }
+  });
+  test("a file's other names on Windows, a stream of it or its short name, are confirmed whatever the file", () => {
+    for (const file of ["templates/cv/one-page-clean/build.py::$DATA", ".claude/skills/x/SKILL.md::$DATA", "user/cv/x.py::$DATA", "user/cv/notes.txt:hidden",
+      "CLAUDE~1/SETTIN~1.JSO", "user/CV_CHE~1.JSO", "TEMPLA~1/cv/one-page-clean/template.tex"]) {
+      expect(write(file)).toBe("ask");
+      expect(auto("Write", { file_path: file })).toBe("ask");
+    }
+    expect(decide("Read", { file_path: "ENV~1" }).decision).toBe("ask");
+    expect(decide("Read", { file_path: ".env::$DATA" }).decision).toBe("ask");
+    expect(decide("Read", { file_path: "user/cv/main_acme.tex" }).decision).toBe("allow");
+  });
+  test("what changes how the allowed commands run is confirmed every time", () => {
+    for (const file of ["bunfig.toml", ".env", ".env.local", ".mcp.json"]) {
+      expect(auto("Write", { file_path: file })).toBe("ask");
+      expect(decide("Write", { file_path: file }).rememberKey).toBeUndefined();
+    }
+  });
   test("full access allows everything", () => {
     for (const [tool, input] of [["Bash", { command: "rm -rf user/documents" }], ["Write", { file_path: ".claude/settings.json" }], ["mcp__gmail__send", {}]] as const) {
       expect(decide(tool, input, new Set(), "full").decision).toBe("allow");

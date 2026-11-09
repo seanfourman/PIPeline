@@ -57,6 +57,9 @@ class Session {
 
   constructor(public id: string, public title: string, public model: string | undefined, public createdAt: number, private unattended = false, public access: Access = "ask", public plain = false, public agent: "claude" | "codex" = "claude") {}
 
+  // A /setup conversation, which may do a little more at automatic access (policy.ts, SETUP_FILES and PICK_ROLES).
+  get setup() { return /^\/setup\b/.test(this.title); }
+
   summary() {
     const engine = this.agent === "codex" ? ENGINE_NAMES.openai : this.engine;
     return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model, access: this.access, plain: this.plain, engine, agent: this.agent };
@@ -66,7 +69,7 @@ class Session {
   setAccess(access: Access) {
     this.access = access;
     for (const [requestId, request] of this.pending) {
-      if (!request.tool || decide(request.tool, request.input, this.remembered, access).decision !== "allow") continue;
+      if (!request.tool || decide(request.tool, request.input, this.remembered, access, this.setup).decision !== "allow") continue;
       this.pending.delete(requestId);
       request.resolve({ behavior: "allow", updatedInput: request.input });
       this.emit({ t: "resolved", requestId, code: "allowed" });
@@ -234,7 +237,10 @@ class Session {
         // conversations. Pip has its own ways of saying it needs the user (PeekingPip), so these keep quiet: Claude
         // Notifier stays silent in a session with CLAUDE_NOTIFIER_DISABLE set, and the editor's own sessions go on as
         // before.
-        env: { ...process.env, CLAUDE_NOTIFIER_DISABLE: "1" },
+        // Every command starts in the project, never where the one before it moved to: the commands allowed to run on
+        // their own name their scripts by a path in the project, which would otherwise be found under a folder the
+        // agent may write to.
+        env: { ...process.env, CLAUDE_NOTIFIER_DISABLE: "1", CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: "1" },
       },
     });
     this.consume().catch((err) => {
@@ -263,7 +269,7 @@ class Session {
     const requestId = crypto.randomUUID();
     if (tool !== "AskUserQuestion") {
       // An unattended run is always judged as one that asks, whatever was picked.
-      const verdict = decide(tool, input, this.remembered, this.unattended ? "ask" : this.access);
+      const verdict = decide(tool, input, this.remembered, this.unattended ? "ask" : this.access, this.setup);
       if (verdict.decision === "allow") return Promise.resolve({ behavior: "allow", updatedInput: input });
       if (this.unattended) return Promise.resolve(this.refuse(`${tool}: ${describeInput(tool, input).slice(0, 300)}`));
       this.emit({ t: "permission", requestId, tool, input: describeInput(tool, input), canRemember: Boolean(verdict.rememberKey) });

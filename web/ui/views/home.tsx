@@ -227,7 +227,7 @@ function Hero() {
         <p className="hero-hi">{settingsName ? t("home.hi", { name: settingsName }) : t("home.hiNoName")} {t("home.intro")}</p>
         <h1 dir="auto">{next.title}</h1>
         {/* Each sentence on a line of its own. */}
-        <p className="hero-text" dir="auto">{next.text.split(/(?<=[.!?])\s+/).map((line, i) => <span key={i} className="hero-line">{line}</span>)}</p>
+        <p className="hero-text" dir="auto">{next.text.split(/(?<=[.!?])\s+/).map((line: string, i: number) => <span key={i} className="hero-line">{line}</span>)}</p>
         <Btn kind="cta" onClick={next.run}>{next.label}</Btn>
       </div>
       <ol ref={list} className="stations" aria-label={t("home.journey")}>

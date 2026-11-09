@@ -195,7 +195,14 @@ export function Login({ onDone, intro, create = false, join = false, onBack, sit
       play: intro && !calm,
       calm,
       night: dark,
-      card: () => card.current?.getBoundingClientRect() ?? null,
+      // The form's box where the canvas has it, not the screen: a phone's browser moves the page under the screen as
+      // its keyboard opens, and the board drawn where the screen had the form would be left behind there, the fields
+      // over bare forest.
+      card: () => {
+        const box = card.current?.getBoundingClientRect();
+        const at = bg.current?.getBoundingClientRect();
+        return box && at ? new DOMRect(box.left - at.left, box.top - at.top, box.width, box.height) : null;
+      },
       shown: () => card.current?.classList.contains("show") ?? false,
       onCardShow: () => setShown(true),
       onSwap: setNightShown,
@@ -293,7 +300,9 @@ export function Login({ onDone, intro, create = false, join = false, onBack, sit
         </div>
       </header>
       <main className="login-stage">
-        <form ref={card} className={`login-card ${view === "pc" ? "pc" : making ? "create" : ""} ${shown ? "show" : ""} ${shake ? "shake" : ""} ${flip}`} onSubmit={submit} aria-hidden={!shown}>
+        {/* A phone's keyboard going away with the focus out of the form leaves the login where it was before it came. */}
+        <form ref={card} className={`login-card ${view === "pc" ? "pc" : making ? "create" : ""} ${shown ? "show" : ""} ${shake ? "shake" : ""} ${flip}`} onSubmit={submit} aria-hidden={!shown}
+          onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) e.currentTarget.closest(".login")?.scrollTo({ top: 0 }); }}>
           {view === "pc" ? (
             <>
               <ShortcutPicture />

@@ -71,7 +71,8 @@ const PLACE_PIN = ["..XXXXX..", ".XX...XX.", "XX..X..XX", "XX.XXX.XX", "XX..X..X
 const PLACE_X = ["XX...XX", "XXX.XXX", ".XXXXX.", "..XXX..", ".XXXXX.", "XXX.XXX", "XX...XX"];
 const PLACE_PLUS = ["..XX..", "..XX..", "XXXXXX", "XXXXXX", "..XX..", "..XX.."];
 
-export function MarketsEditor({ draft, update, title, bare = false }: { draft: any; update: Update; title: React.ReactNode; bare?: boolean }) {
+// quiet holds back the word that no country is chosen yet, for the introduction, until its way on was tried.
+export function MarketsEditor({ draft, update, title, bare = false, quiet = false }: { draft: any; update: Update; title: React.ReactNode; bare?: boolean; quiet?: boolean }) {
   const { t, lang } = useApp();
   const plus = bare ? <PixelArt className="place-plus" rows={PLACE_PLUS} /> : <Icon name="plus" />;
   const [country, setCountry] = useState("");
@@ -105,7 +106,7 @@ export function MarketsEditor({ draft, update, title, bare = false }: { draft: a
             </span>
           ))}
         </div>
-      ) : <p className="error-line">{t("settings.noMarket")}</p>}
+      ) : !quiet && <p className="error-line" role="alert">{t("settings.noMarket")}</p>}
       {full ? <p className="note" role="status">{t("settings.marketsFull", { n: MAX_MARKETS })}</p> : (
         <div className="add-row">
           <button type="button" className="add-go" aria-label={t("common.add")} disabled={!country} onClick={add}>{plus}</button>
@@ -277,14 +278,18 @@ export function AiKeys({ primary, onPrimary, bare = false }: { primary: string; 
     <Frame className={bare ? "stack ai-setup" : "stack"}>
       {!bare && <h2>{t("settings.ai.title")}</h2>}
       {!bare && <p className="note">{t("settings.ai.note")}</p>}
-      <div className="field">
-        <span className="field-label">{t("settings.ai.primary")}</span>
-        <div className={moved ? "segmented moved" : "segmented"} role="group" aria-label={t("settings.ai.primary")}>
-          {AI_IDS.map((id) => (
-            <button key={id} type="button" aria-pressed={first === id && connected(id)} disabled={!connected(id)} onClick={() => pick(id)}>{AI_NAMES[id]}</button>
-          ))}
+      {/* Which one goes first, once there is a choice: in the introduction only with both connected, for the board to
+          hold the rest without scrolling. */}
+      {(!bare || AI_IDS.filter(connected).length > 1) && (
+        <div className="field">
+          <span className="field-label">{t("settings.ai.primary")}</span>
+          <div className={moved ? "segmented moved" : "segmented"} role="group" aria-label={t("settings.ai.primary")}>
+            {AI_IDS.map((id) => (
+              <button key={id} type="button" aria-pressed={first === id && connected(id)} disabled={!connected(id)} onClick={() => pick(id)}>{AI_NAMES[id]}</button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <div className="ai-list">
         <div className="ai-row">
           <div className="ai-row-head"><strong>Claude</strong><span className={`ai-state ${logins.claude ? "on" : ""}`}>{t(logins.claude ? "settings.ai.on" : "settings.ai.off")}</span></div>

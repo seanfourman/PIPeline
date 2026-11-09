@@ -11,7 +11,8 @@ import { createPortal, flushSync } from "react-dom";
 import { useApp } from "../app";
 import { paintStill } from "../intro";
 import { jump, OFF_BOARD, type Point } from "../jump";
-import { api, Btn, Field, goTo, Spinner } from "../kit";
+// The kit's goTo opens another page of the site; Welcome's own goTo (useStepChange) goes to another step.
+import { api, Btn, Field, goTo as openPage, Spinner } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, PipSetsOff, pixelPath, type Mood } from "../pip";
 import { ENGLISH_NAME, englishOnly } from "../../names";
@@ -23,9 +24,9 @@ import { AiKeys, MarketsEditor, RUN_TIMES, RUN_TIMES_ADVISED } from "./settings"
 
 const STEPS = ["download", "hello", "name", "ai", "cv", "search", "mail", "done"] as const;
 type Step = (typeof STEPS)[number];
-// The steps with a wider board (the class on welcome-center): wide for the ones with the most on them, and the end's
-// as wide as its ticket.
-const WIDTH: Partial<Record<Step, "wide" | "ticket">> = { cv: "wide", search: "wide", mail: "wide", done: "ticket" };
+// The steps with a wider board (the class on welcome-center): wide for the ones with the most on them (the AI's, for
+// its two cards side by side), and the end's as wide as its ticket.
+const WIDTH: Partial<Record<Step, "wide" | "ticket">> = { ai: "wide", cv: "wide", search: "wide", mail: "wide", done: "ticket" };
 // What the server takes into the documents folder (user.ts).
 const DOC_ACCEPT = ".pdf,.docx,.doc,.txt,.md,.rtf";
 // Each half of the board's flip, as the login's (FLIP_MS in ui/login.tsx).
@@ -214,19 +215,36 @@ function PageBar({ page }: { page: React.RefObject<HTMLDivElement | null> }) {
 // The board's foot, on the wood under the page that scrolls (welcome-body), where each step puts its Actions.
 const Foot = createContext<HTMLElement | null>(null);
 
-// A step's buttons: back on the start side, then whatever moves on. They go in the board's foot, so they stay in
-// sight and nothing scrolls under them; a form's submit button there names its form (the form attribute).
-function Actions({ back, note, children }: { back?: () => void; note?: React.ReactNode; children?: React.ReactNode }) {
+// A step's buttons: back on the start side with another way beside it (note), whatever moves on at the end, and in
+// the middle what Pip is doing meanwhile (status, a StatusPlate). They go in the board's foot, so they stay in sight
+// and nothing scrolls under them; a form's submit button there names its form (the form attribute).
+function Actions({ back, note, status, children }: { back?: () => void; note?: React.ReactNode; status?: React.ReactNode; children?: React.ReactNode }) {
   const { t } = useApp();
   const foot = useContext(Foot);
   if (!foot) return null;
   return createPortal(
     <div className="welcome-actions">
-      {back && <button type="button" className="welcome-back" onClick={back}><PixelArt className="icon-back welcome-arrow" rows={BACK} />{t("welcome.back")}</button>}
-      {note}
+      <div className="welcome-aside">
+        {back && <button type="button" className="welcome-back" onClick={back}><PixelArt className="icon-back welcome-arrow" rows={BACK} />{t("welcome.back")}</button>}
+        {note}
+      </div>
+      {status}
       <div className="welcome-go">{children}</div>
     </div>,
     foot,
+  );
+}
+
+// A word on a dark plate on the foot's wood, as the steps' names under the board are: Pip at work while the user may
+// go on (busy, three blocks lighting in turn, as the computer's screen does while it waits), or waiting for the user
+// (ask) or stopped (stop), with a red "!" as the CV's step has on the track then.
+function StatusPlate({ kind, children }: { kind: "busy" | "ask" | "stop"; children: React.ReactNode }) {
+  return (
+    <p className={`welcome-status ${kind}`} role="status" dir="auto">
+      {kind === "busy" ? <span className="welcome-status-dots" aria-hidden="true"><i /><i /><i /></span>
+        : <span className="welcome-status-mark" aria-hidden="true">!</span>}
+      <span>{children}</span>
+    </p>
   );
 }
 
@@ -443,20 +461,34 @@ function ConversationBox({ id }: { id: string }) {
   );
 }
 
+// The introduction's /setup conversations work at automatic access: the profile's files, the user's instructions and
+// the roles are written without asking for each (policy.ts), everything else still asks. Sean asked for it, so that
+// the reading of the CV doesn't stop for every file while the introduction goes on (2026-11-09).
+const SETUP_ACCESS = "auto";
+
+// The newest /setup conversation, the one the CV step and the track are about.
+const latestSetup = (sessions: any[]) => sessions.filter((x) => /^\/setup\b/.test(x.title)).sort((a, b) => b.createdAt - a.createdAt)[0];
+
 // The CV and a LinkedIn PDF go into the documents folder, and the way on starts /setup reading them in the
 // background: the introduction goes on, Pip working on every step and the track marking this one until the profile
 // is saved, and the step shows the conversation when it is back to (it asks there what it needs). Without a CV the
-// red button interviews instead, here. The step opens on the files: the conversation shows while it goes, before
-// the profile is saved, or once the interview was started here (talk), until the files are asked for again. Shown,
-// it tells the board what it is (onConversation), for the words over it, and it can be made big (BigConversation).
-function CvStep({ next, back, onConversation }: { next: () => void; back: () => void; onConversation: (kind: string) => void }) {
+// red button interviews instead, here, or goes back to the interview already under way. The step opens on the
+// conversation while it goes, before the profile is saved, or once the interview was started here (talk), unless the
+// files were asked for in it (filesFor, the conversation's id, kept by Welcome so coming back to the step keeps
+// them). From the conversation the way to the files and the way on are always there, whatever it is doing, so the
+// step never holds anyone in it. Shown, it tells the board what it is (onConversation), for the words over it, and it
+// can be made big (ConversationBox).
+function CvStep({ next, back, onConversation, filesFor, onFiles }: {
+  next: () => void; back: () => void; onConversation: (kind: string) => void; filesFor: string; onFiles: (id: string) => void;
+}) {
   const { s, t, err, refresh } = useApp();
   const docs = s.intro?.documents ?? { cv: [], linkedin: [] };
-  const setup = s.sessions.filter((x) => /^\/setup\b/.test(x.title)).sort((a, b) => b.createdAt - a.createdAt)[0];
+  const setup = latestSetup(s.sessions);
   const working = setup?.status === "running" || setup?.status === "waiting";
   const [talk, setTalk] = useState(false);
-  const [again, setAgain] = useState(false);
-  const shown = Boolean(setup && !again && (talk || working || !s.profileReady));
+  // On the way on from the files: they stay on the board as it turns, rather than the reading that starts.
+  const [leaving, setLeaving] = useState(false);
+  const shown = Boolean(setup && !leaving && filesFor !== setup.id && (talk || working || !s.profileReady));
   const kind = !shown ? "" : /--interview\b/.test(setup!.title) ? "interview" : /--from-documents\b/.test(setup!.title) ? "reading" : "other";
   useEffect(() => { onConversation(kind); }, [kind, onConversation]);
   useEffect(() => () => onConversation(""), [onConversation]);
@@ -478,50 +510,54 @@ function CvStep({ next, back, onConversation }: { next: () => void; back: () => 
     }
     setBusy("");
   };
-  // On, with the files read meanwhile if there is something new to read; the files stay on the board as it turns.
+  // On, with the files read meanwhile when there is something to read that nothing reads yet: files added now, or
+  // files with no profile from them and no conversation at work. A conversation still at work is stopped first.
   const onward = async () => {
-    if (any && (!s.profileReady || added)) {
+    if (any && (added || (!s.profileReady && !working))) {
       setError("");
-      setAgain(true);
+      setLeaving(true);
       try {
-        await api("sessions", { prompt: "/setup --from-documents" });
+        if (setup && working) await api(`sessions/${setup.id}/interrupt`, {}).catch(() => {});
+        await api("sessions", { prompt: "/setup --from-documents", access: SETUP_ACCESS });
         await refresh();
       } catch (x) {
-        setAgain(false);
+        setLeaving(false);
         setError(err(x));
         return;
       }
     }
     next();
   };
-  const begin = async (prompt: string) => {
+  // The interview: the one under way goes on where it was (unless it stopped with an error, or the profile is saved
+  // and this is to make it again); otherwise a new one.
+  const interview = async () => {
+    if (setup && /--interview\b/.test(setup.title) && setup.status !== "error" && !s.profileReady) {
+      onFiles("");
+      setTalk(true);
+      return;
+    }
     setError("");
     try {
-      await api("sessions", { prompt });
+      await api("sessions", { prompt: "/setup --interview", access: SETUP_ACCESS });
       await refresh();
-      setAgain(false);
+      onFiles("");
       setTalk(true);
     } catch (x) {
       setError(err(x));
     }
   };
   if (setup && shown) {
-    // Back to the files: to start again when the conversation stopped before the profile was saved, or, with a
-    // profile saved already, to read a new CV, stopping this conversation first if it still goes.
-    const leave = async () => {
-      if (working) await api(`sessions/${setup.id}/interrupt`, {}).catch(() => {});
-      setAgain(true);
-      setTalk(false);
-    };
+    // In the middle of the foot, what the conversation is doing: reading at work (an interview at work shows it in
+    // the conversation itself), waiting for the user, or stopped before the profile was saved.
+    const plate = setup.status === "running" ? (kind === "reading" && <StatusPlate kind="busy">{t("welcome.cv.working")}</StatusPlate>)
+      : setup.status === "error" ? (!s.profileReady && <StatusPlate kind="stop">{t("welcome.cv.stuck")}</StatusPlate>)
+      : (setup.status === "waiting" || !s.profileReady) && <StatusPlate kind="ask">{t("welcome.cv.asks")}</StatusPlate>;
     return (
       <>
         <ConversationBox id={setup.id} />
-        <Actions back={back} note={(s.profileReady || !working) && <Btn className="welcome-other welcome-again" onClick={leave}>{t(s.profileReady ? "welcome.cv.newCv" : "welcome.cv.again")}</Btn>}>
-          {s.profileReady
-            ? <Btn kind="cta" onClick={next}>{t("welcome.next")}</Btn>
-            : working
-              ? <><span className="welcome-wait" role="status"><Spinner />{t("welcome.cv.working")}</span><Btn kind="cta" onClick={next}>{t("welcome.next")}</Btn></>
-              : <span className="welcome-wait" role="status">{t("welcome.cv.stuck")}</span>}
+        <Actions back={back} status={plate || undefined}
+          note={<Btn className="welcome-other welcome-again" onClick={() => { setTalk(false); onFiles(setup.id); }}>{t(s.profileReady ? "welcome.cv.newCv" : "welcome.cv.upload")}</Btn>}>
+          <Btn kind="cta" onClick={next}>{t("welcome.next")}</Btn>
         </Actions>
       </>
     );
@@ -530,15 +566,15 @@ function CvStep({ next, back, onConversation }: { next: () => void; back: () => 
     <>
       <div className="welcome-drops">
         <Drop label={t("welcome.cv.cv")} files={docs.cv} busy={busy === "cv"} onFiles={(f) => upload("cv", f)}
-          takes={<span className="welcome-kinds">{t("welcome.cv.kinds").split("|").map((k) => <span key={k}>{k}</span>)}</span>} />
+          takes={<span className="welcome-kinds">{t("welcome.cv.kinds").split("|").map((k: string) => <span key={k}>{k}</span>)}</span>} />
         <Drop label={t("welcome.cv.linkedin")} files={docs.linkedin} busy={busy === "linkedin"} onFiles={(f) => upload("linkedin", f)}
-          takes={<span className="welcome-path">{t("welcome.cv.linkedinSteps").split("|").map((step, i) => (
+          takes={<span className="welcome-path">{t("welcome.cv.linkedinSteps").split("|").map((step: string, i: number) => (
             <React.Fragment key={step}>{i > 0 && <PixelArt className="icon-onward" rows={ONWARD} />}<span>{step}</span></React.Fragment>
           ))}</span>} />
       </div>
       {error && <p className="error-line" role="alert" dir="auto">{error}</p>}
       {/* Without a CV file, the step's other way, a red button, starts the interview instead, straight away. */}
-      <Actions back={back} note={<Btn className="welcome-other" onClick={() => begin("/setup --interview")}>{t("welcome.cv.none")}</Btn>}>
+      <Actions back={back} note={<Btn className="welcome-other" onClick={interview}>{t("welcome.cv.none")}</Btn>}>
         <Btn kind="cta" disabled={!any && !s.profileReady} onClick={onward}>{t("welcome.next")}</Btn>
       </Actions>
     </>
@@ -548,7 +584,8 @@ function CvStep({ next, back, onConversation }: { next: () => void; back: () => 
 // Where to search, as on the settings screen, in tabs like a notebook's dividers: the markets, the level, the roles
 // from the ready-made list, and the industries, one at a time on a panel the open tab is joined to, each tab with its
 // picture and what is chosen on it so far. The way on and back go from tab to tab before they leave the step, which
-// needs a market and a role. /setup may have chosen roles already; they show here picked.
+// needs a market and a role: the way on from the last tab with one missing opens its tab instead, which says then
+// what is missing (tried), and not before. /setup may have chosen roles already; they show here picked.
 const SEARCH_TABS = ["places", "level", "roles", "industries"] as const;
 type SearchTab = (typeof SEARCH_TABS)[number];
 const TAB_PICTURES: Record<SearchTab, string[]> = {
@@ -635,7 +672,7 @@ const LISTED_ROLES = ROLE_FIELDS.flatMap((f) => f.roles);
 const namesOf = (r: ListedRole) => [r.title, r.he, r.en, r.hebrew ?? ""].map(plain);
 const fieldOf = (r: ListedRole) => ROLE_FIELDS.find((f) => f.roles.includes(r))!.id;
 
-function RolesPicker({ draft, update }: { draft: any; update: (fn: (d: any) => void) => void }) {
+function RolesPicker({ draft, update, missing = false }: { draft: any; update: (fn: (d: any) => void) => void; missing?: boolean }) {
   const { t, lang } = useApp();
   const roles: Role[] = draft.roles;
   const own = roles.filter((r) => !listedRole(r.id));
@@ -700,6 +737,7 @@ function RolesPicker({ draft, update }: { draft: any; update: (fn: (d: any) => v
             }} />
           <PixelArt className="role-find-icon" rows={FIND} />
         </label>
+        {missing && !roles.length && <p className="error-line" role="alert">{t("welcome.search.noRole")}</p>}
         <div className="role-grid" role="group" aria-label={words ? t("welcome.search.rolesFind") : index.find((f) => f.id === open)!.name}>
           {shown}
           {offer && (
@@ -740,7 +778,7 @@ const ALL_EMPLOYERS = Object.values(EMPLOYERS).reduce((a, b) => a + b, 0);
 const ALL_SAID = ALL_EMPLOYERS >= 100 ? `${Math.floor(ALL_EMPLOYERS / 100) * 100}+` : String(ALL_EMPLOYERS);
 const tilesLit = (d: any) => {
   const chosen: string[] = d.industries ?? [];
-  return TILES.map((i) => i.id).filter((id) => (!chosen.length || chosen.includes(id)) && (d.lowTech !== false || id === "defense"));
+  return TILES.map((i): string => i.id).filter((id) => (!chosen.length || chosen.includes(id)) && (d.lowTech !== false || id === "defense"));
 };
 // How long the tiles' wave lasts, coming in or turned over all at once: a step of 35ms between them (styles.css)
 // and the last one's hop.
@@ -802,6 +840,14 @@ function SearchStep({ next, back }: { next: () => void; back: () => void }) {
   const [tab, setTab] = useState<SearchTab>("places");
   const at = SEARCH_TABS.indexOf(tab);
   const last = at === SEARCH_TABS.length - 1;
+  const [tried, setTried] = useState(false);
+  const onward = () => {
+    if (!last) return setTab(SEARCH_TABS[at + 1]);
+    const missing = !draft.markets.length ? "places" : !draft.roles.length ? "roles" : null;
+    if (!missing) return next();
+    setTried(true);
+    setTab(missing);
+  };
   const count = (n: number | string, on: boolean) => <span className={`welcome-count ${on ? "on" : ""}`}>{n}</span>;
   const lit = tilesLit(draft).length;
   const status: Record<SearchTab, React.ReactNode> = {
@@ -821,7 +867,7 @@ function SearchStep({ next, back }: { next: () => void; back: () => void }) {
         ))}
       </div>
       <div key={tab} className="search-panel" id="search-panel" role="tabpanel" aria-labelledby={`search-tab-${tab}`}>
-        {tab === "places" && <MarketsEditor bare draft={draft} update={update} title={<h2 className="welcome-sub">{t("settings.markets")}</h2>} />}
+        {tab === "places" && <MarketsEditor bare quiet={!tried} draft={draft} update={update} title={<h2 className="welcome-sub">{t("settings.markets")}</h2>} />}
         {tab === "level" && (
           <>
             <div className="level-picks" role="group" aria-label={t("settings.seniority")}>
@@ -841,11 +887,11 @@ function SearchStep({ next, back }: { next: () => void; back: () => void }) {
             <LevelEffect roles={draft.roles} level={draft.seniority} />
           </>
         )}
-        {tab === "roles" && <RolesPicker draft={draft} update={update} />}
+        {tab === "roles" && <RolesPicker draft={draft} update={update} missing={tried} />}
         {tab === "industries" && <IndustryTiles draft={draft} update={update} />}
       </div>
       <Actions back={() => (at > 0 ? setTab(SEARCH_TABS[at - 1]) : back())} note={<SaveNote state={saving} />}>
-        <Btn kind="cta" disabled={last && (!draft.markets.length || !draft.roles.length)} onClick={() => (last ? next() : setTab(SEARCH_TABS[at + 1]))}>{t("welcome.next")}</Btn>
+        <Btn kind="cta" onClick={onward}>{t("welcome.next")}</Btn>
       </Actions>
     </>
   );
@@ -1186,10 +1232,11 @@ function PixelWords({ text }: { text: string }) {
 // The end's ticket for the road (Welcome, every step done), pinned to the board in the notebook page's place: the
 // title, then where Pip is headed, what is packed, who navigates and the postcard home, a line each with the points'
 // pictures, coming in one after another (--i) once he holds his bag open (ready), each tossing its picture into it
-// as it starts to (toss); on its stub, past the line it tears off along, when it leaves (or whenever wanted, with the
-// daily run off), with a barcode; then his paw stamped on it (stamped, once it has come down).
+// as it starts to (toss); on its stub, past the line it tears off along, when it leaves (the next daily run, or now
+// with the daily run off, as Pip sets off now), with a barcode; then his paw stamped on it (stamped, once it has come
+// down).
 function Ticket({ title, lines, leaves, ready, toss, stamped }: {
-  title: string; lines: TicketLine[]; leaves: { day: "now" | "today" | "tomorrow"; time: string } | null; ready: boolean;
+  title: string; lines: TicketLine[]; leaves: { day: "now" | "today" | "tomorrow"; time: string }; ready: boolean;
   toss: (picture: Element | null) => void; stamped: (paw: Element) => void;
 }) {
   const { t } = useApp();
@@ -1212,8 +1259,8 @@ function Ticket({ title, lines, leaves, ready, toss, stamped }: {
         <Sprite className="welcome-ticket-notch" rows={NOTCH.rows} colors={NOTCH.colors} />
         <Sprite className="welcome-ticket-notch bottom" rows={NOTCH.rows} colors={NOTCH.colors} />
         <span className="welcome-ticket-leaves">{t("welcome.done.ticket.leaves")}</span>
-        <strong dir="auto">{t(`welcome.done.ticket.${leaves?.day ?? "whenever"}`)}</strong>
-        {leaves && leaves.day !== "now" && <span className="welcome-ticket-time" role="img" aria-label={leaves.time}><Digits n={leaves.time} /></span>}
+        <strong dir="auto">{t(`welcome.done.ticket.${leaves.day}`)}</strong>
+        {leaves.day !== "now" && <span className="welcome-ticket-time" role="img" aria-label={leaves.time}><Digits n={leaves.time} /></span>}
         <PixelArt className="welcome-ticket-code" rows={BARCODE} />
       </div>
       <span className="welcome-paw" aria-hidden="true" onAnimationEnd={(e) => { if (e.animationName === "paw-down") stamped(e.currentTarget); }}>
@@ -1226,13 +1273,18 @@ function Ticket({ title, lines, leaves, ready, toss, stamped }: {
 export function Welcome() {
   const { s, t, lang, refresh } = useApp();
   const logins = s.aiLogins ?? {};
+  const setup = latestSetup(s.sessions);
+  const documents = s.intro?.documents ?? { cv: [], linkedin: [] };
+  // The CV's step is done once the profile is saved, or while Pip reads the files given him for it: the user's part is
+  // done then. A reading that waits for the user, or stopped, needs them again (the track's red mark).
+  const readingFiles = Boolean(setup && /--from-documents\b/.test(setup.title) && setup.status === "running" && documents.cv.length + documents.linkedin.length > 0);
   const done: Record<Step, boolean> = {
     // Pip's program is on this computer: it is what shows this.
     download: true,
     hello: Boolean(s.intro?.name),
     name: Boolean(s.intro?.name),
     ai: Boolean(logins.claude || logins.openai || s.aiKeys.openai),
-    cv: s.profileReady,
+    cv: s.profileReady || readingFiles,
     search: s.settings.markets?.length > 0 && s.settings.roles?.length > 0,
     mail: Boolean(s.settings.automation?.enabled),
     done: false,
@@ -1248,6 +1300,8 @@ export function Welcome() {
   const [foot, setFoot] = useState<HTMLDivElement | null>(null);
   // What the CV step's conversation is, while it shows one: the words over it are about it, not the files.
   const [cvTalk, setCvTalk] = useState("");
+  // The conversation the CV step's files were asked for in, so the step opens on them while that is the newest.
+  const [cvFiles, setCvFiles] = useState("");
   const go = (i: number) => goTo.to(STEPS[Math.max(0, Math.min(STEPS.length - 1, i))]);
   // When the next search is, for the end's ticket to say (automation.ts nextRun); none while the daily run is off.
   const [nextSearch, setNextSearch] = useState<{ day: "now" | "today" | "tomorrow"; time: string } | null>(null);
@@ -1267,7 +1321,7 @@ export function Welcome() {
   const finish = async () => {
     await api("intro/done", {}).catch(() => {});
     await refresh();
-    goTo("/", true);
+    openPage("/", true);
   };
   const almost = step === "done" && missing.length > 0;
   const ending = step === "done" && !almost;
@@ -1294,7 +1348,7 @@ export function Welcome() {
       }
       : { key: "mail", rows: point("mail"), label: tk("mail"), text: tk("mailOff"), quiet: true },
   ];
-  const leaves = mailOn ? nextSearch ?? nextFrom(hours) : null;
+  const leaves = mailOn ? nextSearch ?? nextFrom(hours) : { day: "now" as const, time: "" };
   // The ticket stamped: the board takes the blow, the forest's birds fly up out of the trees round it (those with
   // room on the screen), and a moment after Pip sets off.
   const stamped = (paw: Element) => {
@@ -1308,7 +1362,6 @@ export function Welcome() {
     }
     goTo.off(JUMP_AFTER_MS);
   };
-  const setup = s.sessions.filter((x) => /^\/setup\b/.test(x.title)).sort((a, b) => b.createdAt - a.createdAt)[0];
   // Pip reading the CV, in the background of the steps after it, until the profile is saved: working while /setup
   // runs, and otherwise waiting for the user (an approval, his questions, or a run that stopped).
   const reading: "" | "work" | "ask" = !setup || s.profileReady ? "" : setup.status === "running" ? "work" : "ask";
@@ -1319,7 +1372,7 @@ export function Welcome() {
     hello: <Actions><Btn kind="cta" autoFocus onClick={next}>{t("welcome.hello.go")}</Btn></Actions>,
     name: <NameStep next={next} back={back} />,
     ai: <AiStep next={next} back={back} />,
-    cv: <CvStep next={next} back={back} onConversation={setCvTalk} />,
+    cv: <CvStep next={next} back={back} onConversation={setCvTalk} filesFor={cvFiles} onFiles={setCvFiles} />,
     search: <SearchStep next={next} back={back} />,
     mail: <MailStep next={next} back={back} />,
     done: (
