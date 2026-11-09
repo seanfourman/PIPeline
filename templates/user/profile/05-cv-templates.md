@@ -4,6 +4,22 @@ framework_version: 1.4.8
 
 # CV Templates and Tailoring Guide
 
+<!-- BEGIN ACTIVE-TEMPLATE (managed by /add-template - do not edit by hand) -->
+> **Active template override: `one-page-clean`**
+>
+> A custom template is active. Where this block conflicts with the stock guidance below, this block wins. Structural advice below (tailoring, page-budget, cutting rules) still applies.
+>
+> - **Template skeleton:** `templates/cv/one-page-clean/template.tex` — use this as the structural reference instead of the stock template
+> - **Manifest:** `templates/cv/one-page-clean/TEMPLATE.md` — read this for style rules and known pitfalls before drafting
+> - **Source extension:** `.tex`
+> - **Compile command:** Build a CV with `python templates/cv/one-page-clean/build.py <company>_<role>`, run from the repository root. It refuses banned wording, compiles, verifies, and saves `user/documents/applications/<company>_<role>/<the user's name> - Resume.pdf`. Run one plain command per shell call, without `cd`, variables or `&&`, because anything else stops to ask the user for approval. This replaces the commands in the stock guidance below, including in `/apply`'s compile and cleanup steps
+> - **Fonts:** Set by `templates/cv/one-page-clean/onepage.sty`: Proxima Nova when installed, otherwise the bundled Figtree. Never change fonts, sizes or spacing in a tailored CV
+> - **Page limit:** exactly 1 page(s)
+> - **File name:** The CV sent to an employer is always named `<the user's name> - Resume.pdf`, with the name from `user/profile.json` (`Resume.pdf` when it has none), and the build command saves it. Give the user that path
+> - **Rules:** Every rule about what the CV says and what stops the build is in `user/CV_RULES.md`. It overrides the lengths, skills and bullet guidance below. The statements below are starting points and may be shorter than the summary length it requires
+> - **Output file:** `user/cv/main_<company>_<role>.tex`; the skeleton's `\usepackage` path already resolves from there
+<!-- END ACTIVE-TEMPLATE -->
+
 <!-- SETUP: Profile statements and section ordering are personalized by running /setup -->
 
 ## Template: LaTeX moderncv (Banking Style)
