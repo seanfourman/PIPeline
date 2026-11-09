@@ -103,7 +103,7 @@ Read only the reference files you do not yet have:
 **Resolve the active template (do this once, reuse everywhere below):** if `user/profile/05-cv-templates.md` or `user/profile/06-cover-letter-templates.md` opens with an `ACTIVE-TEMPLATE` managed block (inserted by `/add-template`), read its declared **source extension** and **compile command** — these override the stock `.tex`/lualatex (CV) and `.tex`/xelatex (cover letter) defaults for the rest of this workflow. Call these `<CV_EXT>`/`<CV_COMPILE>` and `<COVER_EXT>`/`<COVER_COMPILE>`; where no block is present, they default to `.tex`, the stock lualatex command, and the stock xelatex command respectively. Every `.tex` reference below is really `<CV_EXT>` or `<COVER_EXT>` — stock behavior is unchanged, this only matters when a custom template is active.
 
 Also read the most recent existing CV and cover letter files for concrete structural reference (one of each is enough):
-- Read any existing `user/cv/main_*<CV_EXT>` file as a structural reference
+- Read the most recent tailored CV (`user/cv/main_<company>_<role><CV_EXT>`) as a structural reference, or the active template's skeleton when there is none yet. The master CV (`user/cv/main_example.tex`) is a source of facts; its layout is a reference only when it is written in the active template
 - Read any existing `user/cover_letters/cover_*<COVER_EXT>` or `user/cover_letters/Cover_*<COVER_EXT>` file as a structural reference
 
 *The master candidate profile (`user/profile/01-candidate-profile.md`), the master CV (`user/cv/main_example.tex`), and user/CLAUDE.md's Candidate Profile section are the sole source of truth for facts; existing tailored CVs may be read for structure and phrasing only, never as a source of claims.*
@@ -263,16 +263,19 @@ Step 5 compiles both documents and checks the layout, so a line the pass made lo
 
 ### 5a. Compile
 
-Use `<CV_COMPILE>` and `<COVER_COMPILE>` resolved in Step 2 (the active template's declared compile command, or the stock defaults below if no custom template is active):
+Use `<CV_COMPILE>` and `<COVER_COMPILE>` resolved in Step 2 (the active template's declared compile command, or the stock defaults below if no custom template is active).
 
-```bash
-cd user/cv && lualatex -interaction=nonstopmode main_<company>_<role>.tex
-cd ../cover_letters && xelatex -interaction=nonstopmode cover_<company>_<role>.tex
-```
-
-- **Stock CV** uses **lualatex** — pdflatex fails on modern MiKTeX with fontawesome5 font-expansion errors. lualatex handles the same sources cleanly.
-- **Stock cover letter** uses **xelatex** — cover.cls requires fontspec.
-- **Custom template active:** run its declared `<CV_COMPILE>`/`<COVER_COMPILE>` command instead, substituting the actual filename for `<file>`. Never fall back to lualatex/xelatex when a custom template's compile command is a different toolchain (e.g. `typst compile`) — that command is what the manifest actually verified in `/add-template` Step 4.
+- **CV, one-page template** (`one-page-clean`, active for every new user): build it from the repository root, alone in its shell call:
+  ```bash
+  python3 templates/cv/one-page-clean/build.py <company>_<role>
+  ```
+  It refuses banned wording, compiles with lualatex, checks the page count and the date ranges, and saves the file that goes to the employer in `user/documents/applications/<company>_<role>/`. A refusal names what to rewrite: change the text, never the layout or the limits (`user/CV_RULES.md`).
+- **Stock cover letter** uses **xelatex** — cover.cls requires fontspec:
+  ```bash
+  cd user/cover_letters && xelatex -interaction=nonstopmode cover_<company>_<role>.tex
+  ```
+- **Stock moderncv CV** (only once `/add-template --use default` has removed the one-page block): `cd user/cv && lualatex -interaction=nonstopmode main_<company>_<role>.tex`. It uses **lualatex** because pdflatex fails on modern MiKTeX with fontawesome5 font-expansion errors.
+- **Another custom template:** run its declared `<CV_COMPILE>`/`<COVER_COMPILE>` command instead, substituting the actual filename for `<file>`. Never fall back to lualatex/xelatex when a custom template's compile command is a different toolchain (e.g. `typst compile`) — that command is what the manifest actually verified in `/add-template` Step 4.
 
 If either compile fails, fix the error and re-compile until clean.
 
@@ -281,13 +284,14 @@ If either compile fails, fix the error and re-compile until clean.
 **Measure first, then look.** A visual read catches gross breakage but cannot tell you that a page is 40% empty, and the failure below survives both a clean compile and a correct page count:
 
 ```bash
-python3 tools/verify_pdf.py user/cv/main_<company>_<role>.pdf --pages 2
+python3 tools/verify_pdf.py user/cv/main_<company>_<role>.pdf --pages 1
 python3 tools/verify_pdf.py user/cover_letters/cover_<company>_<role>.pdf --pages 1
-python3 tools/verify_layout.py user/cv/main_<company>_<role>.pdf
 python3 tools/verify_layout.py user/cover_letters/cover_<company>_<role>.pdf
 ```
 
-The two `--pages` lines are the page-count check: exactly 2 pages for the CV and exactly 1 for the cover letter (the hard limits in `user/profile/05-cv-templates.md` and `user/profile/06-cover-letter-templates.md`), exit 1 otherwise. With a custom template active, substitute its declared **Page limit** from the `ACTIVE-TEMPLATE` block. Nothing else runs this check - `verify_layout.py` deliberately leaves page count to it, and Step 5d's extraction call passes no `--pages` - so if these lines are skipped, the page budget is enforced by nothing but the visual read below.
+The two `--pages` lines are the page-count check: exactly 1 page for the CV (the one-page template's limit, in the `ACTIVE-TEMPLATE` block of `user/profile/05-cv-templates.md`) and exactly 1 for the cover letter (`user/profile/06-cover-letter-templates.md`), exit 1 otherwise. With another template active, substitute its declared **Page limit** from that block, and 2 for the stock moderncv CV once `/add-template --use default` has removed the block. `build.py` checks the CV's page count too; the line here keeps the check in the workflow whatever compiled the CV. Nothing else runs the cover letter's check - `verify_layout.py` deliberately leaves page count to it, and Step 5d's extraction call passes no `--pages` - so if these lines are skipped, its page budget is enforced by nothing but the visual read below.
+
+`verify_layout.py` measures the cover letter, and the CV too when the stock moderncv template is active (run it on `user/cv/main_<company>_<role>.pdf` then). It does not measure the one-page CV, whose geometry it is not calibrated for (`templates/cv/one-page-clean/TEMPLATE.md`, Known pitfalls).
 
 The layout script reports, per page, where the text starts and stops, bottom whitespace as a share of page height, and the largest vertical gap between lines. It exits 1 on: a hole over 100pt (~7 blank lines), a non-final page ending more than 25% early, body text colliding with the page-number footer, a final page more than 35% empty, and an entry header or section heading stranded at a page break. Page count is **not** checked here — that is `verify_pdf.py --pages`'s job, and the two `--pages` lines above run it.
 
@@ -301,9 +305,9 @@ Then read both PDFs via the Read tool and verify:
 
 **CV (`user/cv/main_<company>_<role>.pdf`):**
 - [ ] Exactly the active template's page limit: one page
-- [ ] No orphaned `\cventry` titles — a job/education title line must never sit alone at the bottom of page 1 with its bullets on page 2. This is the most common failure.
-- [ ] Section headings are not isolated at the top of page 2 with only 1-2 lines below
-- [ ] No awkward whitespace gaps
+- [ ] Every bullet and role line fits on its line: one that spills a word or two onto the next is rewritten shorter (`10-cv-best-practices.md` rule 23), and a company name in `\cvlink` cannot break across lines at all
+- [ ] No awkward whitespace gaps: a short page is spread with the larger gaps `TEMPLATE.md` describes, never by changing sizes or spacing
+- [ ] With the stock moderncv template: no orphaned `\cventry` titles (a job or education title alone at the bottom of page 1 with its bullets on page 2, that template's most common failure), and no section heading isolated at the top of page 2 with only 1-2 lines below
 
 **Cover letter (`user/cover_letters/cover_<company>_<role>.pdf`):**
 - [ ] Exactly 1 page
@@ -312,11 +316,19 @@ Then read both PDFs via the Read tool and verify:
 
 ### 5c. Iterate until clean
 
-If the layout has problems, edit the source files (`<CV_EXT>`/`<COVER_EXT>`) and recompile. Common fixes below are **LaTeX-specific** (stock templates, or a custom LaTeX template) — see `user/profile/05-cv-templates.md` and `user/profile/06-cover-letter-templates.md` for full details, and consult the active template's own manifest ("Known pitfalls") for a non-LaTeX toolchain:
+If the layout has problems, edit the source files (`<CV_EXT>`/`<COVER_EXT>`) and recompile.
 
-- **Orphaned CV entry title:** `\usepackage{needspace}` in preamble, then `\needspace{5\baselineskip}` immediately before the problematic `\cventry`
-- **CV spills to page 3 with only a trailing section:** `\enlargethispage{2-3\baselineskip}` before a late section
-- **Substantial content on page 3:** cut content using **relevance-weighted cutting** (see `user/profile/05-cv-templates.md` → "Relevance-weighted cutting"). Score each candidate line by (a) relevance to THIS posting's keywords and responsibilities, (b) uniqueness (is it duplicated elsewhere?), (c) narrative load (does the cover letter depend on it?). Cut the lowest-total-score line first, regardless of section. Do NOT mechanically apply a static section-based priority order — an older-role bullet that hits posting keywords is worth more than a recent-role bullet that does not.
+**The one-page CV** changes in its text only (`TEMPLATE.md`): never its sizes, spacing, colors or preamble, and never the limits in `user/cv_checks.json`.
+
+- **Over one page, or stopped by a limit:** cut using **relevance-weighted cutting** (see `user/profile/05-cv-templates.md` → "Relevance-weighted cutting"). Score each candidate line by (a) relevance to THIS posting's keywords and responsibilities, (b) uniqueness (is it duplicated elsewhere?), (c) narrative load (does the cover letter depend on it?). Cut or shorten the lowest-total-score line first, regardless of section. Do NOT mechanically apply a static section-based priority order — an older-role bullet that hits posting keywords is worth more than a recent-role bullet that does not.
+- **A line that spills a word or two:** rewrite it shorter.
+- **A short page:** pass larger gaps, as `TEMPLATE.md` shows: `\cvsection[45]{TITLE}` above a section and `\cvrolegap[35]` between roles.
+
+**LaTeX fixes for the stock moderncv CV and the cover letter** (or a custom LaTeX template) — see `user/profile/05-cv-templates.md` and `user/profile/06-cover-letter-templates.md` for full details, and consult the active template's own manifest ("Known pitfalls") for a non-LaTeX toolchain:
+
+- **Orphaned moderncv entry title:** `\usepackage{needspace}` in preamble, then `\needspace{5\baselineskip}` immediately before the problematic `\cventry`
+- **moderncv CV spills to page 3 with only a trailing section:** `\enlargethispage{2-3\baselineskip}` before a late section
+- **Substantial content on page 3 of a moderncv CV:** relevance-weighted cutting, as above.
 - **Cover letter itemize breaks compile or uses wrong font:** close `\lettercontent{}` before the list, wrap the list in `{\raggedright\fontspec[Path = OpenFonts/fonts/raleway/]{Raleway-Medium}\fontsize{11pt}{13pt}\selectfont \begin{itemize}...\end{itemize}\par}`
 - **Cover letter spills to 2 pages:** trim using the same relevance-weighted logic. First cut: sentences that restate what a bullet already said. Second cut: a bullet that does not hit posting keywords. Last resort: a bullet that does hit posting keywords. Never reduce geometry or line spacing.
 
@@ -370,7 +382,7 @@ Failures here are template-level problems: fix them in the `<CV_EXT>` source (e.
 
 ### 5e. Clean up build artifacts
 
-After the final clean compile (and after 5b-5d have passed), delete the intermediate files the compile command left behind. Keep the source (`<CV_EXT>`/`<COVER_EXT>`), the `.pdf`, and every template asset (`cover.cls`, `OpenFonts/`, a custom template's files).
+After the final clean compile (and after 5b-5d have passed), delete the intermediate files the compile command left behind. Keep the source (`<CV_EXT>`/`<COVER_EXT>`), the `.pdf`, and every template asset (`cover.cls`, `OpenFonts/`, a custom template's files). `build.py` compiles in a `build/` folder of its own and deletes it, so the one-page CV leaves nothing behind; the cover letter's compile does.
 
 - **Stock or custom LaTeX toolchain:**
   ```bash

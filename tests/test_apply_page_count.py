@@ -1,7 +1,8 @@
 """Guard for /apply Step 5b's page-count check.
 
-The 2-page CV and 1-page cover letter limits are the hard rules of
-05-cv-templates.md and 06-cover-letter-templates.md, and two places defer
+The 1-page CV (the one-page template's limit, declared in the ACTIVE-TEMPLATE
+block of 05-cv-templates.md) and the 1-page cover letter
+(06-cover-letter-templates.md) are hard rules, and two places defer
 their enforcement to `tools/verify_pdf.py --pages`: `verify_layout.py`'s
 docstring ("page count is verify_pdf.py's job, and CI runs it") and Step 5b's
 own prose, which used to say "Step 5d already runs it". Step 5d's only
@@ -10,6 +11,11 @@ the one rule with a mechanical check had zero runnable implementations in
 the workflow. These tests pin that the invocations exist where the prose says
 they do, with the counts the guides require, and that no step defers the
 check to another step that does not run it.
+
+The starter files a new user gets (templates/user/) must name the same
+one-page template, or Step 5b's limit contradicts the guide the drafter reads:
+the starter guide once lost its ACTIVE-TEMPLATE block and fell back to the
+two-page moderncv text.
 """
 import re
 import unittest
@@ -44,9 +50,9 @@ class ApplyRunsThePageCountCheck(unittest.TestCase):
         invocations = dict(page_count_invocations(self.step_5b))
         self.assertEqual(
             invocations.get("user/cv/main_<company>_<role>.pdf"),
-            "2",
-            "Step 5b must run verify_pdf.py --pages 2 on the CV - the hard "
-            "2-page limit has no other mechanical check",
+            "1",
+            "Step 5b must run verify_pdf.py --pages 1 on the CV - the one-page "
+            "template's limit, kept in the workflow whatever compiled the CV",
         )
         self.assertEqual(
             invocations.get("user/cover_letters/cover_<company>_<role>.pdf"),
@@ -79,6 +85,27 @@ class ApplyRunsThePageCountCheck(unittest.TestCase):
             "verify_layout.py defers page count to verify_pdf.py --pages, so "
             "/apply must actually invoke it",
         )
+
+
+STARTER = REPO / "templates" / "user"
+
+
+class StarterFilesNameTheOnePageTemplate(unittest.TestCase):
+    def test_the_starter_cv_guide_opens_with_the_one_page_block(self):
+        text = (STARTER / "profile" / "05-cv-templates.md").read_text(encoding="utf-8")
+        block = re.search(r"<!-- BEGIN ACTIVE-TEMPLATE.*?<!-- END ACTIVE-TEMPLATE -->", text, re.DOTALL)
+        self.assertIsNotNone(block, "a new user's 05-cv-templates.md must activate the one-page template Step 5b checks")
+        self.assertIn("`one-page-clean`", block.group(0))
+        self.assertIn("**Page limit:** exactly 1 page", block.group(0))
+        self.assertLess(
+            block.start(), text.index("## Template: LaTeX moderncv"),
+            "the block must open the guide, above the stock moderncv text it overrides",
+        )
+
+    def test_the_starter_checklist_asks_for_one_page(self):
+        text = (STARTER / "CLAUDE.md").read_text(encoding="utf-8")
+        self.assertIn("**CV is exactly 1 page**", text)
+        self.assertNotIn("exactly 2 pages", text)
 
 
 if __name__ == "__main__":

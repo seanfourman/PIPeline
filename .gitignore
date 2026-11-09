@@ -130,6 +130,9 @@ company_research/*.json
 # The other accounts on this computer and the computer's own files (web/accounts.ts), and the launcher's log.
 /users/
 /logs/
+# WhatsApp exports of job groups (links/chat*.txt): their members' names and phone numbers, kept on this computer
+# only. links/more.txt, a few links to careers pages, stays tracked.
+/links/chat*.txt
 
 # Where the local web interface kept its conversations and access token before user/app/
 web/data/
