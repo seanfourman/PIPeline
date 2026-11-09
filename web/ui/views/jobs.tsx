@@ -297,9 +297,9 @@ function useFewRoles() {
 const FAN_PITCH = 48;
 const FAN_PAD = 36;
 
-// The extra roles unfold from the + button along a curve, like a Dock stack. Only as many go down as fit above
-// the bottom of the window; the rest start another column beside it, further in, with a curve of its own. When
-// the columns would not fit across, the curve and the roles narrow. Keeping them mounted lets them fold back
+// The extra roles unfold from the + button along a curve, like a Dock stack, in one column. Only as many go down as
+// fit above the bottom of the window; when more are left, the last place says how many, and opens the list of every
+// role, in a menu like the search settings', rather than a second column. Keeping the fan mounted lets it fold back
 // into the button too; closed items are hidden from focus and assistive technology.
 function RoleSuggestions({ onPick }: { onPick: (query: string) => void }) {
   const { s, t, lang } = useApp();
@@ -307,11 +307,18 @@ function RoleSuggestions({ onPick }: { onPick: (query: string) => void }) {
   const few = useFewRoles();
   const extra = roles.slice(few);
   const [open, setOpen] = useState(false);
+  // The list of every role: open, fading away as the search settings' menu does (closing), or gone.
+  const [list, setList] = useState<"" | "open" | "closing">("");
+  const listOpen = list === "open";
+  const expanded = open || listOpen;
   const [room, setRoom] = useState({ width: 600, height: 400 });
   const stack = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const fan = useRef<HTMLDivElement>(null);
+  const rows = useRef<HTMLDivElement>(null);
+  const listTimer = useRef<ReturnType<typeof setTimeout>>();
   const id = useId();
+  const listId = useId();
 
   // The room under the button down to the window's bottom, and across to the window's far side.
   useLayoutEffect(() => {
@@ -326,51 +333,79 @@ function RoleSuggestions({ onPick }: { onPick: (query: string) => void }) {
     addEventListener("resize", fit);
     addEventListener("scroll", fit, true);
     return () => { removeEventListener("resize", fit); removeEventListener("scroll", fit, true); };
-  }, [open, lang, few]);
+  }, [open, listOpen, lang, few]);
 
-  const perColumn = Math.max(1, Math.floor((room.height - FAN_PAD + 8) / FAN_PITCH));
-  const columns = Array.from({ length: Math.ceil(extra.length / perColumn) }, (_, c) => extra.slice(c * perColumn, (c + 1) * perColumn));
-  // The bend is counted once, since the columns bend together; what is left across is shared between them.
+  // When they don't all fit down the window, the last place goes to the pill for the rest.
+  const fits = Math.max(1, Math.floor((room.height - FAN_PAD + 8) / FAN_PITCH));
+  const shown = extra.length > fits ? extra.slice(0, fits - 1) : extra;
+  const rest = extra.length - shown.length;
+  const length = shown.length + (rest > 0 ? 1 : 0);
   const curve = Math.round(Math.min(56, room.width * 0.12));
-  const widest = Math.max(72, Math.floor((room.width - curve - 14 - 12 * (columns.length - 1)) / Math.max(1, columns.length)));
-  // Every column bends the same way down its length, so a short last column just stops early.
-  const length = Math.min(perColumn, extra.length);
+  const widest = Math.max(72, Math.floor(room.width - curve - 14));
 
-  // A column beside the first folds back towards the button too: how far across it is from the button's end.
+  // The column folds back towards the button: how far across it is from the button's end.
   useLayoutEffect(() => {
     const button = trigger.current?.getBoundingClientRect();
-    if (!button) return;
-    for (const column of fan.current?.querySelectorAll<HTMLElement>(".role-fan-col") ?? []) {
-      const box = column.getBoundingClientRect();
-      column.style.setProperty("--fan-fold-x", `${Math.round(lang === "he" ? button.left - box.left : button.right - box.right)}px`);
-    }
-  }, [columns.length, perColumn, room, lang]);
+    const column = fan.current?.querySelector<HTMLElement>(".role-fan-col");
+    if (!button || !column) return;
+    const box = column.getBoundingClientRect();
+    column.style.setProperty("--fan-fold-x", `${Math.round(lang === "he" ? button.left - box.left : button.right - box.right)}px`);
+  }, [length, room, lang]);
+
+  useEffect(() => () => clearTimeout(listTimer.current), []);
+  // Everything closes: the fan folds back, and the list fades away first, unless motion is reduced.
+  const close = () => {
+    setOpen(false);
+    if (list !== "open") return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) { setList(""); return; }
+    setList("closing");
+    listTimer.current = setTimeout(() => setList(""), MENU_OUT_MS);
+  };
 
   useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => { if (!stack.current?.contains(e.target as Node)) setOpen(false); };
+    if (!expanded) return;
+    const away = (e: PointerEvent) => { if (!stack.current?.contains(e.target as Node)) close(); };
     const escape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { setOpen(false); trigger.current?.focus(); }
+      if (e.key === "Escape") { close(); trigger.current?.focus(); }
     };
     addEventListener("pointerdown", away);
     addEventListener("keydown", escape);
     return () => { removeEventListener("pointerdown", away); removeEventListener("keydown", escape); };
-  }, [open]);
+  }, [open, list]);
 
   const pick = (query: string) => {
-    setOpen(false);
+    close();
     trigger.current?.focus();
     onPick(query);
   };
-  // Up and down go through the roles in order, from one column into the next.
-  const navigate = (e: React.KeyboardEvent) => {
-    const buttons = Array.from(fan.current?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+  // The fan's last place opens the list in the fan's stead. Focus goes into it, since the place that opened it folds
+  // away: onto its first role when the keyboard opened it, and otherwise onto the list itself, which shows no ring.
+  const openList = (keyboard: boolean) => {
+    clearTimeout(listTimer.current);
+    setOpen(false);
+    setList("open");
+    requestAnimationFrame(() => (keyboard ? rows.current?.querySelector<HTMLButtonElement>("button") : rows.current)?.focus());
+  };
+  // Up and down go through the roles in order, in the fan or in the list (from the list itself, to its first or its
+  // last); Home and End go to the first and the last.
+  const navigate = (e: React.KeyboardEvent<HTMLElement>) => {
+    const buttons = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>("button"));
     const index = buttons.indexOf(e.target as HTMLButtonElement);
-    if (index < 0) return;
     const next = e.key === "Home" ? 0 : e.key === "End" ? buttons.length - 1
       : e.key === "ArrowDown" ? (index + 1) % buttons.length
-      : e.key === "ArrowUp" ? (index - 1 + buttons.length) % buttons.length : -1;
+      : e.key === "ArrowUp" ? (index < 0 ? buttons.length - 1 : (index - 1 + buttons.length) % buttons.length) : -1;
     if (next >= 0) { e.preventDefault(); buttons[next]?.focus(); }
+  };
+  // A place in the fan: how far it bends and tilts, where it folds back to, and when it moves in its turn.
+  const fanItem = (row: number) => {
+    const progress = (row + 1) / length;
+    return {
+      "--fan-x": `${Math.round(progress * progress * curve)}px`,
+      "--fan-angle": `${(progress * 12).toFixed(1)}deg`,
+      "--fan-fold": `${-row * FAN_PITCH - 30}px`,
+      "--fan-in": `${Math.min(row, 12) * 25}ms`,
+      "--fan-out": `${Math.min(length - row - 1, 12) * 18}ms`,
+    } as React.CSSProperties;
   };
 
   return (
@@ -381,11 +416,11 @@ function RoleSuggestions({ onPick }: { onPick: (query: string) => void }) {
         </button>
       ))}
       {extra.length > 0 && (
-        <div className="role-stack" data-open={open} ref={stack}
-          onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false); }}>
-          <button ref={trigger} type="button" className="seek-pill seek-pill-more" aria-expanded={open} aria-controls={id}
-            aria-label={t(open ? "jobs.closeRoles" : "jobs.moreRoles", { n: extra.length })}
-            onClick={() => setOpen(!open)}
+        <div className="role-stack" data-open={open} data-list={listOpen} ref={stack}
+          onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) close(); }}>
+          <button ref={trigger} type="button" className="seek-pill seek-pill-more" aria-expanded={expanded} aria-controls={id}
+            aria-label={t(expanded ? "jobs.closeRoles" : "jobs.moreRoles", { n: extra.length })}
+            onClick={() => (expanded ? close() : setOpen(true))}
             onKeyDown={(e) => {
               if (e.key !== "ArrowDown") return;
               e.preventDefault();
@@ -396,28 +431,36 @@ function RoleSuggestions({ onPick }: { onPick: (query: string) => void }) {
           </button>
           <div id={id} ref={fan} className="role-fan" role="group" aria-label={t("jobs.otherRoles")} aria-hidden={!open}
             style={{ "--fan-curve": `${curve}px`, "--fan-widest": `${widest}px` } as React.CSSProperties} onKeyDown={navigate}>
-            {columns.map((column, c) => (
-              <div key={c} className="role-fan-col">
-                {column.map((role, row) => {
-                  const i = c * perColumn + row;
-                  const progress = (row + 1) / length;
-                  const style = {
-                    "--fan-x": `${Math.round(progress * progress * curve)}px`,
-                    "--fan-angle": `${(progress * 12).toFixed(1)}deg`,
-                    "--fan-fold": `${-row * FAN_PITCH - 30}px`,
-                    "--fan-in": `${Math.min(i, 12) * 25}ms`,
-                    "--fan-out": `${Math.min(extra.length - i - 1, 12) * 18}ms`,
-                  } as React.CSSProperties;
-                  return (
-                    <button key={role.query} type="button" className="seek-pill role-fan-item" style={style}
-                      tabIndex={open ? 0 : -1} onClick={() => pick(role.query)}>
+            <div className="role-fan-col">
+              {shown.map((role, row) => (
+                <button key={role.query} type="button" className="seek-pill role-fan-item" style={fanItem(row)}
+                  tabIndex={open ? 0 : -1} onClick={() => pick(role.query)}>
+                  <span className="role-label" dir="auto">{roleLabel(role, lang)}</span>
+                </button>
+              ))}
+              {rest > 0 && (
+                <button type="button" className="seek-pill role-fan-item role-fan-rest" style={fanItem(shown.length)}
+                  tabIndex={open ? 0 : -1} aria-expanded={listOpen} aria-controls={listId} onClick={(e) => openList(e.detail === 0)}>
+                  <Icon name="dots" /><span className="role-label">{t("jobs.moreRoles", { n: rest })}</span>
+                </button>
+              )}
+            </div>
+          </div>
+          {list && (
+            <div id={listId} className={`seek-panel role-list${list === "closing" ? " closing" : ""}`} role="group" aria-label={t("jobs.allRoles")}
+              style={{ "--room": `${room.height}px` } as React.CSSProperties}>
+              <div className="role-list-scroll">
+                <div ref={rows} className="role-list-rows" tabIndex={-1} onKeyDown={navigate}>
+                  {roles.map((role) => (
+                    <button key={role.query} type="button" className="role-list-row" onClick={() => pick(role.query)}>
                       <span className="role-label" dir="auto">{roleLabel(role, lang)}</span>
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
+                {listOpen && <ThinBar target={rows} />}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -846,7 +889,10 @@ function Quick() {
               <button type="button" className="smart-go" data-label={t("jobs.aiGo")} aria-label={t("jobs.aiGo")} autoFocus aria-describedby={askNote}
                 disabled={starting} onClick={smart}>{t("jobs.aiGo")}</button>
             ) : (
-              <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}><Icon name="filters" /></button>
+              // The search settings, with their name floating over them under the pointer, as the sparkles' does.
+              <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}>
+                <Icon name="filters" /><span className="act-label" aria-hidden="true">{t("jobs.menuTip")}</span>
+              </button>
             )}
             {/* The sparkles, their colours drifting in clouds as the sky's do (styles.css), with their name floating
                 over them under the pointer, as a result's buttons have, until first pressed (tip), and their circle

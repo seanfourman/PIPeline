@@ -761,7 +761,7 @@ textarea { resize: vertical; width: 100%; }
 :root[dir="rtl"] :is(.seek-box, .composer-box) { --out: -1; }
 .seek-tools { display: flex; align-items: center; gap: 6px; align-self: stretch; margin-block: -7px; margin-inline-end: -8px; }
 .seek-icon, .seek-go, .seek-ai { display: grid; place-items: center; flex: none; width: 44px; height: 44px; border: 0; border-radius: 50%; cursor: pointer; }
-.seek-icon { background: none; color: var(--ink-2); transition: background-color 0.2s ease, color 0.2s ease; }
+.seek-icon { position: relative; background: none; color: var(--ink-2); transition: background-color 0.2s ease, color 0.2s ease; }
 .seek-icon:hover, .seek-icon[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
 .seek-go-slot {
   position: relative; flex: none; align-self: stretch; width: 8px; margin-inline-start: -6px; overflow: hidden; pointer-events: none;
@@ -1007,8 +1007,8 @@ textarea { resize: vertical; width: 100%; }
 .seek-tools > .seek-icon { animation: icon-in 0.2s ease-out; }
 @keyframes icon-in { from { opacity: 0; } }
 /* The first roles stay in a straight row. The + releases the rest down an inward-curving fan, without moving
-   the search box, in more than one column when they don't all fit down the window. Each glass label unfolds
-   from the trigger, then folds back in the opposite order. */
+   the search box, in one column; when they don't all fit down the window, its last place opens the list of every
+   role. Each glass label unfolds from the trigger, then folds back in the opposite order. */
 .seek-pills { position: relative; z-index: 4; display: flex; justify-content: center; gap: 8px; max-width: 100%; padding-top: 4px; }
 .seek-pill {
   position: relative; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -1043,12 +1043,10 @@ textarea { resize: vertical; width: 100%; }
 :root[dir="rtl"] .role-stack { --fan-side: 1; }
 .seek-pill-more { white-space: nowrap; }
 .seek-pill-more .icon { flex: none; width: 16px; height: 16px; transition: rotate 0.3s ease; }
-.role-stack[data-open="true"] .seek-pill-more .icon { rotate: 45deg; }
-/* The fan: columns side by side, the first under the button and the next ones further in (row-reverse puts the
-   first at the inline end), with no scrolling: jobs.tsx puts in each column only what fits above the window's
-   bottom. Every column bends by the same amount on the same row, so the columns move in together and one gap
-   keeps them apart; only the innermost needs room for its bend (--fan-curve). Roles are no wider than
-   --fan-widest, so all the columns fit across. */
+.role-stack:is([data-open="true"], [data-list="true"]) .seek-pill-more .icon { rotate: 45deg; }
+/* The fan: one column under the button, with no scrolling: jobs.tsx puts in it only what fits above the window's
+   bottom, the last place then saying how many are left (.role-fan-rest). It needs room for its bend (--fan-curve),
+   and its roles are no wider than --fan-widest, so it fits across. */
 .role-fan {
   position: absolute; z-index: 6; top: calc(100% + 8px); inset-inline-end: 0; width: max-content;
   display: flex; flex-direction: row-reverse; align-items: flex-start; gap: 12px;
@@ -1073,6 +1071,19 @@ textarea { resize: vertical; width: 100%; }
 /* Under the pointer a role in the fan keeps its tilt, and comes up over its neighbours. */
 .role-stack[data-open="true"] .role-fan-item:hover,
 .role-stack[data-open="true"] .role-fan-item:focus-visible { z-index: 1; }
+.role-fan-rest .icon { flex: none; width: 16px; height: 16px; }
+/* The list of every role: the search settings' menu (.seek-panel), opened under the + in the fan's place, and no
+   lower than the window's bottom (--room, from jobs.tsx), past which its roles scroll with the slim bar. */
+.seek-panel.role-list { top: calc(100% + 8px); inset-inline-end: 0; width: min(300px, calc(100vw - 32px)); max-height: max(160px, var(--room, 360px)); gap: 0; padding: 8px; }
+.role-list-scroll { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.role-list-rows { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; scrollbar-width: none; outline: none; }
+.role-list-scroll:has(> .thin-bar) .role-list-rows { padding-inline-end: 12px; }
+.role-list-row {
+  display: flex; flex: none; align-items: center; width: 100%; padding: 9px 12px; border: 0; border-radius: 10px; background: none;
+  color: var(--ink); font: inherit; font-size: 15px; text-align: start; cursor: pointer; transition: background-color 0.2s ease;
+}
+.role-list-row:hover { background: var(--hover); }
+.role-list-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
 .seek-note { color: var(--ink-2); text-align: center; }
 /* While it searches: in the middle of the page (the jobs page fills the window), Pip's head mark in grey,
    breathing, inside a thin grey ring that turns. Nothing is written; its label is for screen readers. It fades in
@@ -1200,11 +1211,11 @@ textarea { resize: vertical; width: 100%; }
   content: ""; position: absolute; top: calc(100% - 4px); left: 50%; width: 8px; height: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
   background: var(--surface); translate: -50% 0; rotate: 45deg;
 }
-:is(.result-act, .seek-ai, .voice-go, .voice-lang):is(:hover, :focus-visible) .act-label {
+:is(.result-act, .seek-ai, .seek-icon, .voice-go, .voice-lang):is(:hover, :focus-visible) .act-label {
   opacity: 1; translate: -50% 0; scale: 1; transition-delay: 0.25s; transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
 }
-/* The sparkles' goes as they are pressed: what they open says it all. */
-.seek-ai[aria-expanded="true"] .act-label { opacity: 0; transition-delay: 0s; }
+/* The sparkles' and the search settings' go as they are pressed: what they open says it all. */
+:is(.seek-ai, .seek-icon)[aria-expanded="true"] .act-label { opacity: 0; transition-delay: 0s; }
 /* The space between values side by side (Spaced in kit.tsx). */
 .spaced-gap { display: inline-block; width: 0.8em; }
 /* A row with no chips has no room kept for them. */

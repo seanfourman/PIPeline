@@ -233,7 +233,7 @@ const he = {
     startTitle: "בואו נמצא משרות", startText: "החיפוש המהיר לא צורך מכסת AI. החיפוש החכם גם מסנן ושומר.", startLabel: "לחיפוש משרות",
   },
   jobs: {
-    prompt: "מה מחפשים היום?", menu: "איפה ואיך לחפש", whereTitle: "איפה מחפשים", whereMarkets: "מדינות וערים", ai: "חיפוש חכם עם {ai}", moreRoles: "עוד {n}", closeRoles: "סגירת התפקידים הנוספים", otherRoles: "תפקידים נוספים",
+    prompt: "מה מחפשים היום?", menu: "איפה ואיך לחפש", menuTip: "הגדרות חיפוש", whereTitle: "איפה מחפשים", whereMarkets: "מדינות וערים", ai: "חיפוש חכם עם {ai}", moreRoles: "עוד {n}", closeRoles: "סגירת התפקידים הנוספים", otherRoles: "תפקידים נוספים", allRoles: "כל התפקידים",
     noMarket: "עוד לא נבחר איפה לחפש.", hidden: "מוסתר: {names}", change: "שינוי",
     aiAsk: "להתחיל חיפוש חכם?", aiGo: "אישור", aiTip: "חיפוש חכם",
     aiAskMany: "{n} תפקידים בכל האתרים.", aiAskOne: "התפקיד שלך בכל האתרים.", aiQuota: "זה צורך מהמכסה שלך ב-{ai}.",
@@ -787,7 +787,7 @@ const en: Dict = {
     startTitle: "Let's find jobs", startText: "Quick search uses none of your AI allowance. Smart search also filters and saves.", startLabel: "Search for jobs",
   },
   jobs: {
-    prompt: "What are we looking for today?", menu: "Where and how to search", whereTitle: "Where we search", whereMarkets: "Countries and cities", ai: "Smart search with {ai}", moreRoles: "{n} more", closeRoles: "Close additional roles", otherRoles: "Additional roles",
+    prompt: "What are we looking for today?", menu: "Where and how to search", menuTip: "Search settings", whereTitle: "Where we search", whereMarkets: "Countries and cities", ai: "Smart search with {ai}", moreRoles: "{n} more", closeRoles: "Close additional roles", otherRoles: "Additional roles", allRoles: "All roles",
     noMarket: "You haven't chosen where to search yet.", hidden: "Hidden: {names}", change: "Change",
     aiAsk: "Start a smart search?", aiGo: "Confirm", aiTip: "Smart search",
     aiAskMany: "{n} roles on every site.", aiAskOne: "Your role on every site.", aiQuota: "This takes from your {ai} allowance.",
