@@ -5,7 +5,7 @@
 // ranking, the smart search, applying and plain chat; the conversations' agents are agent.ts's and codex.ts's.
 import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync } from "node:fs";
-import { ChatbotError, readKeys, streamReply, type Turn } from "./chatbots";
+import { ChatbotError, type Turn } from "./chatbots";
 import { askCli, cliSignedIn } from "./clis";
 
 export type Engine = "claude" | "openai";
@@ -15,7 +15,8 @@ export const ENGINE_NAMES: Record<Engine, string> = { claude: "Claude", openai: 
 export const ENGINE_MODELS: Record<Exclude<Engine, "claude">, string> = { openai: "gpt-6-astra" };
 
 // Whether ChatGPT can answer: signed in with the account, or with a key saved.
-export const connectedEngines = (keys = readKeys(), logins = cliSignedIn()) => ({ openai: Boolean(logins.openai || keys.openai) });
+// ChatGPT through the account signed in here (Codex), as Claude through its own; there is no key to use instead.
+export const connectedEngines = (logins = cliSignedIn()) => ({ openai: Boolean(logins.openai) });
 
 // The primary first, then the rest in their fixed order, leaving out those not connected.
 export function engineOrder(primary: string, has: Partial<Record<Engine, unknown>> = connectedEngines()): Engine[] {
@@ -71,17 +72,13 @@ async function askClaude(system: string, turns: Turn[], signal: AbortSignal, onT
   return answer;
 }
 
-// The account's own login first, as Claude's; the key when there is none. A whole answer arrives at once there.
+// The account's own login, as Claude's; a whole answer arrives at once there. Not signed in, it says so.
 export const askEngine: Ask = async (engine, system, turns, signal, onText) => {
   if (engine === "claude") return askClaude(system, turns, signal, onText);
-  if (cliSignedIn()[engine]) {
-    const text = await askCli(engine, system, turns, signal);
-    if (text) onText(text);
-    return text;
-  }
-  const key = readKeys()[engine];
-  if (!key) throw new ChatbotError("ai_no_key");
-  return streamReply({ model: ENGINE_MODELS[engine], key, system, turns, signal, onText });
+  if (!cliSignedIn()[engine]) throw new ChatbotError("openai_login");
+  const text = await askCli(engine, system, turns, signal);
+  if (text) onText(text);
+  return text;
 };
 
 // The answer from the first in the order that gives one. Each that fails is reported (onSwitch) and dropped from

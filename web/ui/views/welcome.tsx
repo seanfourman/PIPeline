@@ -355,7 +355,7 @@ function NameStep({ next, back }: { next: () => void; back: () => void }) {
 function AiStep({ next, back }: { next: () => void; back: () => void }) {
   const { s, t, refresh } = useApp();
   const logins = s.aiLogins ?? {};
-  const any = Boolean(logins.claude || logins.openai || s.aiKeys.openai);
+  const any = Boolean(logins.claude || logins.openai);
   const primary = async (id: string) => {
     await api("settings", { ...s.settings, aiPrimary: id }).catch(() => {});
     await refresh();
@@ -510,8 +510,10 @@ function CvStep({ next, back, onConversation, filesFor, onFiles }: {
     }
     setBusy("");
   };
-  // On, with the files read meanwhile when there is something to read that nothing reads yet: files added now, or
-  // files with no profile from them and no conversation at work. A conversation still at work is stopped first.
+  // On, when there is something to read that nothing reads yet (files added now, or files with no profile from them
+  // and no conversation at work): the reading starts here, in sight, the step showing its conversation, so that one
+  // that can't start (no AI signed in that works) shows at once and not behind the next steps; from there the way on
+  // goes on while it reads. A conversation still at work is stopped first. Nothing to read, it goes on at once.
   const onward = async () => {
     if (any && (added || (!s.profileReady && !working))) {
       setError("");
@@ -520,11 +522,13 @@ function CvStep({ next, back, onConversation, filesFor, onFiles }: {
         if (setup && working) await api(`sessions/${setup.id}/interrupt`, {}).catch(() => {});
         await api("sessions", { prompt: "/setup --from-documents", access: SETUP_ACCESS });
         await refresh();
+        onFiles("");
+        setAdded(false);
       } catch (x) {
-        setLeaving(false);
         setError(err(x));
-        return;
       }
+      setLeaving(false);
+      return;
     }
     next();
   };
@@ -1283,7 +1287,7 @@ export function Welcome() {
     download: true,
     hello: Boolean(s.intro?.name),
     name: Boolean(s.intro?.name),
-    ai: Boolean(logins.claude || logins.openai || s.aiKeys.openai),
+    ai: Boolean(logins.claude || logins.openai),
     cv: s.profileReady || readingFiles,
     search: s.settings.markets?.length > 0 && s.settings.roles?.length > 0,
     mail: Boolean(s.settings.automation?.enabled),
@@ -1334,7 +1338,7 @@ export function Welcome() {
   const roles: string[] = (s.settings.roles ?? []).map((r: Role) => r.label);
   const hours: string[] = s.settings.automation?.runTimes ?? [];
   const mailOn = Boolean(s.settings.automation?.enabled);
-  const ai = s.settings.aiPrimary === "openai" || (!logins.claude && (logins.openai || s.aiKeys.openai)) ? "ChatGPT" : "Claude";
+  const ai = s.settings.aiPrimary === "openai" || (!logins.claude && logins.openai) ? "ChatGPT" : "Claude";
   const tk = (key: string, vars?: Record<string, string | number>) => String(t(`welcome.done.ticket.${key}`, vars));
   const ticket: TicketLine[] = !ending ? [] : [
     { key: "search", rows: FIND, label: tk("search"), text: roles.length > 2 ? tk("more", { list: roles.slice(0, 2).join(", "), n: roles.length - 2 }) : roles.join(", ") },

@@ -3032,6 +3032,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 /* Claude's sign-in refused (ClaudeLogin in chat.tsx): what happened, and under it the way to sign in again. */
 .chat-login { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .chat-login .error-line, .chat-login .note { margin: 0; }
+.chat-login-ways { display: flex; flex-wrap: wrap; gap: 8px; }
 .welcome-convo .composer { width: calc(100% - 28px); padding-bottom: 14px; }
 /* Its bar, as a window's: what it is, in bold pixel letters, and at its end the way to make it big or small again,
    the word and then its icon. */

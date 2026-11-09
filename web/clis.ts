@@ -36,25 +36,29 @@ async function run(argv: string[], options: { cwd?: string; stdin?: string; sign
 // The last that was found, for what can't wait for a check (ai.ts).
 export const cliSignedIn = () => signedIn;
 
-// Claude's sign-in refused by its server while Claude Code still says it is signed in, as when a session ran out and
-// could not be renewed (agent.ts): Claude counts as signed out, for the settings and the introduction to offer the
-// sign-in again, until the sign-in is opened again here.
-let claudeRefused = false;
-export function claudeLoginRefused() {
-  claudeRefused = true;
-  signedIn = { ...signedIn, claude: false };
+// A sign-in refused by its AI's server while its tool still says it is signed in, as when a login ran out and could
+// not be renewed (agent.ts): that AI counts as signed out, for the settings, the introduction and the choice of agent,
+// until its sign-in is opened again here.
+const refused: Record<Login, boolean> = { claude: false, openai: false };
+export function loginRefused(which: Login) {
+  refused[which] = true;
+  signedIn = { ...signedIn, [which]: false };
 }
+// What Codex says when ChatGPT's login is refused: an expired or revoked one, or none.
+export const CODEX_LOGIN_FAILED = /refresh token|sign in again|log ?in again|not logged in|unauthori[sz]ed|\b401\b|failed to authenticate|authentication (failed|error)/i;
 
 // Each says so itself: Claude Code as JSON, of which only whether it is signed in is read, and Codex in words.
-export async function cliStatus(): Promise<Record<Login, boolean>> {
-  if (Date.now() - checked < STATUS_MS) return signedIn;
+// fresh asks again even within STATUS_MS, for a choice that can't go on an answer a moment old (a new conversation).
+export async function cliStatus(fresh = false): Promise<Record<Login, boolean>> {
+  if (!fresh && Date.now() - checked < STATUS_MS) return signedIn;
   checked = Date.now();
   const [claude, codex] = await Promise.all([
     existsSync(CLAUDE) ? run([CLAUDE, "auth", "status"], { ms: 20_000 }).catch(() => null) : null,
     existsSync(EXE) ? run([EXE, "login", "status"], { ms: 20_000 }).catch(() => null) : null,
   ]);
   const claudeIn = (() => { try { return JSON.parse(claude?.out ?? "").loggedIn === true; } catch { return false; } })();
-  signedIn = { claude: claudeIn && !claudeRefused, openai: Boolean(codex && codex.code === 0 && /logged in/i.test(codex.out + codex.err)) };
+  const codexIn = Boolean(codex && codex.code === 0 && /logged in/i.test(codex.out + codex.err));
+  signedIn = { claude: claudeIn && !refused.claude, openai: codexIn && !refused.openai };
   return signedIn;
 }
 
@@ -64,7 +68,7 @@ export function openLogin(which: Login) {
   const [exe, title, argv] = which === "claude" ? [CLAUDE, "Claude", ["auth", "login"]] : [EXE, "Codex", ["login"]];
   if (!existsSync(exe)) throw new ChatbotError("ai_cli_missing");
   checked = 0;
-  if (which === "claude") claudeRefused = false;
+  refused[which] = false;
   if (process.platform === "win32") Bun.spawn(["cmd", "/c", "start", title, exe, ...argv], { stdout: "ignore", stderr: "ignore" });
   // On a Mac, in a Terminal window: the command quoted for the shell, then as AppleScript's text.
   else if (process.platform === "darwin") {

@@ -20,7 +20,7 @@ export const MAKERS: Record<string, { name: string; company: string }> = { claud
 export function useFirstAi() {
   const { s } = useApp();
   const primary = String(s.settings.aiPrimary ?? "claude");
-  return primary !== "claude" && (s.aiKeys[primary] || s.aiLogins?.[primary]) ? primary : "claude";
+  return primary !== "claude" && s.aiLogins?.[primary] ? primary : "claude";
 }
 // The commands a new conversation offers as a start; one that needs more, a link or a company, goes into the box
 // to finish there.
@@ -405,22 +405,32 @@ function Files({ files }: { files: Doc[] }) {
 type Item = { kind: "tools"; key: string; tools: Ev[] } | { kind: "event"; key: string; ev: Ev };
 
 // bare: inside another page (the introduction's), which has its own heading, so no header of its own.
-// Claude's sign-in refused before it could answer (agent.ts), or its server's words for it in a conversation from
-// before Pip knew it: what happened, and the way to sign in again, Claude Code's own window on the computer
-// (clis.ts openLogin). After it, a message goes on with the conversation.
+// An AI that couldn't start (agent.ts): its sign-in refused (claude_login, openai_login, or Claude's server's words
+// in a conversation from before Pip knew them), or the one chosen not signed in at all (no_agent). The AI it is about
+// is the one that failed, or else the one chosen first in the settings; what to do is sign in to it, in a window of
+// its own on the computer (clis.ts openLogin). Once it is signed in, the next message starts the conversation again
+// (agent.ts send), and the block says so instead.
 const CLAUDE_REFUSED = /^Failed to authenticate\b/;
-function ClaudeLogin() {
-  const { t, err } = useApp();
+type Login = "claude" | "openai";
+const LOGIN_NAMES: Record<Login, string> = { claude: "Claude", openai: "ChatGPT" };
+function AgentLogin({ code }: { code: "claude_login" | "openai_login" | "no_agent" }) {
+  const { s, t, err } = useApp();
+  const chosen: Login = s.settings?.aiPrimary === "openai" ? "openai" : "claude";
+  const which: Login = code === "openai_login" ? "openai" : code === "claude_login" && chosen === "claude" ? "claude" : chosen;
+  const expired = (code === "claude_login" && which === "claude") || code === "openai_login";
+  const ready = Boolean(s.aiLogins?.[which]);
+  const name = LOGIN_NAMES[which];
   const [opened, setOpened] = useState(false);
   const [error, setError] = useState("");
   const open = () => {
     setError("");
-    api("ai-login", { provider: "claude" }).then(() => setOpened(true), (x) => setError(err(x)));
+    api("ai-login", { provider: which }).then(() => setOpened(true), (x) => setError(err(x)));
   };
   return (
     <div className="chat-login" role="alert">
-      <p className="error-line" dir="auto">{t("chat.errors.claude_login")}</p>
-      {opened ? <p className="note" dir="auto">{t("chat.loginOpened")}</p> : <Btn onClick={open}>{t("chat.loginAgain")}</Btn>}
+      <p className={ready ? "note" : "error-line"} dir="auto">{t(ready ? "chat.errors.agent_ready" : expired ? "chat.errors.login_expired" : "chat.errors.no_agent", { name })}</p>
+      {!ready && (opened ? <p className="note" dir="auto">{t("chat.loginOpened")}</p>
+        : <div className="chat-login-ways"><Btn kind="primary" onClick={open}>{t(expired ? "chat.loginAgain" : "chat.loginTo", { name })}</Btn></div>)}
       {error && <p className="error-line" dir="auto">{error}</p>}
     </div>
   );
@@ -518,12 +528,12 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
           {e.text && <div className="msg-bubble" dir="auto">{e.text}</div>}
         </div>
       );
-      case "text": return CLAUDE_REFUSED.test(e.text) ? <ClaudeLogin key={key} />
+      case "text": return CLAUDE_REFUSED.test(e.text) ? <AgentLogin key={key} code="claude_login" />
         : <div key={key} className="msg-pip"><Pip mood="idle" className="msg-avatar" /><Markdown src={e.text} className="md msg-text" /></div>;
       case "permission": return resolved.has(e.requestId) ? settled(e) : <Permission key={key} ev={e} sessionId={id} />;
       case "question": return resolved.has(e.requestId) ? settled(e) : <Question key={key} ev={e} sessionId={id} />;
       case "result": return <p key={key} className="done-line">{e.ok ? t("chat.done") : t("chat.doneError")}{e.cost >= 0.01 ? t("chat.cost", { cost: e.cost.toFixed(2) }) : ""}</p>;
-      case "error": return e.code === "claude_login" ? <ClaudeLogin key={key} />
+      case "error": return e.code === "claude_login" || e.code === "openai_login" || e.code === "no_agent" ? <AgentLogin key={key} code={e.code} />
         : <p key={key} className="error-line" role="alert" dir="auto">{e.code ? t(`chat.errors.${e.code}`, { detail: e.text ?? "" }) : e.text}</p>;
       case "switched": return <p key={key} className="switched-line" dir="auto"><Icon name="warn" />{t("chat.switched", { from: e.from, to: e.to })}</p>;
       default: return null;

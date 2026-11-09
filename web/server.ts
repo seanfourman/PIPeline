@@ -10,7 +10,7 @@ import { AccountError, clearedCookie, createAuth, openedByHand, rememberedCookie
 import { buildInterface, watchInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
 import { askInOrder, ENGINE_NAMES, engineOrder } from "./ai";
-import { ChatbotError, checkKey, keyStatus, PROVIDERS, saveKey as saveAiKey, type Provider } from "./chatbots";
+import { ChatbotError, keyStatus, PROVIDERS, type Provider } from "./chatbots";
 import { cliSignedIn, cliStatus, openLogin } from "./clis";
 import { accountFile, computerId, findLocal, localAccounts, readAccount, requestSwitch, USERS_DIR, type AccountFile, type LocalAccount } from "./accounts";
 import { foundPortals } from "./discover";
@@ -602,18 +602,6 @@ async function api(req: Request, url: URL): Promise<Response> {
     try { openLogin(provider); } catch (err) { if (err instanceof ChatbotError) throw new EditError(err.code); throw err; }
     return json({ ok: true });
   }
-  // A key for ChatGPT, kept only once OpenAI takes it; an empty one forgets it. Like the mail
-  // password, it is written once and never read back.
-  if (parts[0] === "ai-keys") {
-    const provider = String(body.provider) as Provider;
-    if (!PROVIDERS.includes(provider)) return json({ error: "not found" }, 404);
-    const key = String(body.key ?? "").trim();
-    if (key) {
-      try { await checkKey(provider, key); } catch (err) { if (err instanceof ChatbotError) throw new EditError(err.code); throw err; }
-    }
-    saveAiKey(provider, key);
-    return json(keyStatus());
-  }
   // The new jobs ranked (ranker.ts), or the smart search and save (scraper.ts), by the settings' AI, the next
   // connected one taking over from one that fails for the rest of the run, and the server doing everything else.
   // One run of each at a time, since two would pick the same jobs; and while one writes the list, the other waits.
@@ -643,6 +631,9 @@ async function api(req: Request, url: URL): Promise<Response> {
     // agent, so the server does it with it (applier.ts).
     const applying = prompt.match(/^\/apply\s+([\s\S]+)$/)?.[1]?.trim();
     const settings = loadSettings();
+    // The sign-in of the AI chosen first, asked again now when the last answer said it isn't there: one answer that
+    // failed by chance would send the whole conversation to the other AI.
+    if (!cliSignedIn()[settings.aiPrimary === "openai" ? "openai" : "claude"]) await cliStatus(true).catch(() => {});
     const order = engineOrder(settings.aiPrimary);
     if (applying && !uploads.length && order[0] !== "claude" && !cliSignedIn().openai) {
       const lang = settings.language === "en" ? "en" : "he";

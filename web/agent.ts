@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from "node:path";
 import { askInOrder, ENGINE_NAMES, engineOrder, type Engine } from "./ai";
 import { CHAT_SYSTEM, ChatbotError, providerOf, type Turn } from "./chatbots";
-import { claudeLoginRefused, cliSignedIn } from "./clis";
+import { CODEX_LOGIN_FAILED, cliSignedIn, loginRefused } from "./clis";
 import { CodexAgent } from "./codex";
 import { documentPaths } from "./data";
 import { ACCESS, createPolicy, REPO, type Access } from "./policy";
@@ -107,11 +107,11 @@ class Session {
   // line with where the file is, as Claude gets it (uploads.ts); its requests come to authorize, like Claude's.
   private sendToAgent(text: string, uploads: (Upload & { file: string })[]) {
     const hooks = {
-      emit: (e: AgentEvent, keep?: boolean) => this.emit(e, keep),
+      emit: (e: AgentEvent, keep?: boolean) => (e.t === "error" && !e.code ? this.codexError(String(e.text ?? "")) : this.emit(e, keep)),
       authorize: (tool: string, input: Record<string, unknown>, signal: AbortSignal) => this.authorize(tool, input, signal),
       thread: (threadId: string) => { this.agentThreadId = threadId; this.scheduleSave(); },
       done: (ok: boolean, error?: string) => {
-        if (error && !ok) this.emit({ t: "error", text: error.slice(0, 300) });
+        if (error && !ok) this.codexError(error);
         this.emit({ t: "result", ok });
         this.setStatus(ok ? "idle" : "error");
         clearTimeout(this.idleTimer);
@@ -125,15 +125,42 @@ class Session {
     clearTimeout(this.idleTimer);
     this.setStatus("running");
     this.external.send(said, images.map((u) => u.file)).catch((err) => {
-      this.emit({ t: "error", code: "codex_failed", text: String(err?.message ?? err).slice(0, 300) });
+      const text = String(err?.message ?? err);
+      if (CODEX_LOGIN_FAILED.test(text)) this.codexError(text);
+      else this.emit({ t: "error", code: "codex_failed", text: text.slice(0, 300) });
       this.setStatus("error");
     });
   }
 
+  // An error from ChatGPT's agent: its sign-in refused (a login that ran out) said as what to do about it, once a
+  // turn, ChatGPT then counting as signed out until signed in again (clis.ts); anything else in its own words.
+  private codexError(text: string) {
+    if (!CODEX_LOGIN_FAILED.test(text)) return this.emit({ t: "error", text: text.slice(0, 300) });
+    loginRefused("openai");
+    const lastUser = this.events.findLastIndex((e) => e.t === "user");
+    if (!this.events.slice(lastUser).some((e) => e.t === "error" && e.code === "openai_login")) this.emit({ t: "error", code: "openai_login" });
+  }
+
   // A message, with the files attached to it, if any: the chat keeps what they were, Claude gets them (uploads.ts).
+  // A conversation whose AI never got to work (no sign-in that held, no_agent or claude_login) starts again from its
+  // first message, with what was attached to it, on the agent that can work now (pickAgent), the new message after
+  // it; with none, it says again what to sign in to.
   send(text: string, uploads: (Upload & { file: string })[] = []) {
+    const again = !this.plain && !this.unattended && this.events.some((e) => e.t === "user") && !this.events.some((e) => WORKED.has(e.t));
     this.emit({ t: "user", text, ...(uploads.length ? { files: uploads.map(({ id, name, kind, size }) => ({ id, name, kind, size })) } : {}) });
     if (this.plain) { if (!this.replying) this.answer(); return; }
+    if (again) {
+      const picked = pickAgent();
+      if (!picked.usable) return this.refuseStart();
+      const first: AgentEvent = this.events.find((e) => e.t === "user") ?? { t: "user" };
+      const attached = ((first.files as { id: string }[] | undefined) ?? []).map((f) => getUpload(f.id)).filter((u) => u !== null);
+      this.close();
+      this.claudeId = undefined;
+      this.agentThreadId = undefined;
+      this.agent = picked.agent;
+      text = [String(first.text ?? ""), text].filter(Boolean).join("\n\n");
+      uploads = [...attached, ...uploads];
+    }
     if (this.agent !== "claude") return this.sendToAgent(text, uploads);
     this.inbox.push(uploads.length ? attachmentContent(text, uploads) : text);
     clearTimeout(this.idleTimer);
@@ -250,6 +277,18 @@ class Session {
     }).finally(() => { this.closed = true; this.wake?.(); });
   }
 
+  // No AI here that can work as an agent (none signed in with an account, or Claude's sign-in refused): the message is
+  // kept, and the conversation says what to sign in to; the next message starts it again (send).
+  cannotStart(text: string, uploads: (Upload & { file: string })[] = []) {
+    this.emit({ t: "user", text, ...(uploads.length ? { files: uploads.map(({ id, name, kind, size }) => ({ id, name, kind, size })) } : {}) });
+    this.refuseStart();
+  }
+  private refuseStart() {
+    this.emit({ t: "error", code: "no_agent" });
+    this.emit({ t: "result", ok: false });
+    this.setStatus("error");
+  }
+
   // Claude's sign-in refused while ChatGPT's account is signed in here: the conversation goes on with ChatGPT's own
   // agent (Codex) from the message Claude never got to, commands too, with what was attached to it and a line saying
   // so. Not in an unattended run, and not once a tool has run since the message, whose steps would run again.
@@ -364,7 +403,7 @@ class Session {
         // Claude's sign-in refused before it could answer (a session that ran out, a sign-out elsewhere): said as what
         // to do about it rather than in its server's words, and Claude counts as signed out until signed in again.
         if (message.error === "authentication_failed" && !parent) {
-          claudeLoginRefused();
+          loginRefused("claude");
           if (this.toCodex()) return;
           this.emit({ t: "error", code: "claude_login" });
           continue;
@@ -476,18 +515,34 @@ export const isAccess = (a: unknown): a is Access => ACCESS.includes(a as Access
 // A new conversation, by the settings' first connected AI: Claude's agent; ChatGPT's as a whole agent too, through
 // Codex, when its account is signed in; otherwise, on a key alone, a plain one, with a command still going to
 // Claude, which needs the tools. An unattended run is always Claude's.
+// What shows a conversation's AI got to work: its words, a tool, or something it asked.
+const WORKED = new Set(["text", "tool", "permission", "question"]);
+
+// The agent for a command or for work in the project, as the settings and the sign-ins here stand. ChatGPT chosen
+// first: its own agent (Codex), never Claude in its place, as Claude is not who was chosen, and a sign-in Pip has
+// found for it may be one left from long ago. Claude chosen: Claude, or ChatGPT's agent while Claude isn't signed in
+// (never was, or its sign-in was refused) and ChatGPT's account is. usable: whether it can work now, as far as the
+// sign-ins say.
+function pickAgent() {
+  const signed = cliSignedIn();
+  if (loadSettings().aiPrimary === "openai") return { agent: "codex" as const, usable: signed.openai };
+  const agent: "claude" | "codex" = !signed.claude && signed.openai ? "codex" : "claude";
+  return { agent, usable: agent === "codex" || signed.claude };
+}
+
 export function createSession(prompt: string, model?: string, options: { title?: string; unattended?: boolean; access?: Access; uploads?: (Upload & { file: string })[] } = {}) {
   const title = (options.title ?? (prompt || options.uploads?.map((u) => u.name).join(", ") || "")).replace(/\s+/g, " ").trim().slice(0, 70);
   const access = options.unattended ? "ask" : options.access ?? "ask";
-  const first = options.unattended ? "claude" : engineOrder(loadSettings().aiPrimary)[0];
-  // The agent, for a command or for work in the project: ChatGPT's own (Codex) when its account is signed in here and
-  // it comes first, or Claude isn't signed in (never was, or its sign-in was refused); otherwise Claude.
-  const signed = cliSignedIn();
-  const agent = !options.unattended && signed.openai && (first === "openai" || !signed.claude) ? "codex" : "claude";
-  const plain = agent === "claude" && first !== "claude" && !prompt.trim().startsWith("/");
-  const session = new Session(crypto.randomUUID(), title, !plain && agent === "claude" && MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended, access, plain, agent);
+  const order = engineOrder(loadSettings().aiPrimary);
+  const first = options.unattended ? "claude" : order[0];
+  // An unattended run is Claude's. Plain: ChatGPT first with no agent of its own here (a key alone), or no agent that
+  // can work at all while another AI can still answer; never a command, which needs an agent.
+  const picked = options.unattended ? { agent: "claude" as const, usable: true } : pickAgent();
+  const plain = !prompt.trim().startsWith("/") && picked.agent === "claude" && (first !== "claude" || (!picked.usable && order.length > 1));
+  const session = new Session(crypto.randomUUID(), title, !plain && picked.agent === "claude" && MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended, access, plain, picked.agent);
   sessions.set(session.id, session);
-  session.send(prompt, options.uploads);
+  if (!plain && !picked.usable) session.cannotStart(prompt, options.uploads);
+  else session.send(prompt, options.uploads);
   return session;
 }
 

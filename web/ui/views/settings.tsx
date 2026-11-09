@@ -6,7 +6,7 @@ import { SaveNote, useAutoSave } from "../autosave";
 import { Select } from "../select";
 import { fromList, listedRole, matchListed, ROLE_FIELDS, roleQuery } from "../../roles";
 import { readBase64 } from "./chat";
-import { PixelArt, Tick } from "./home";
+import { PixelArt } from "./home";
 import { IndustryPicker } from "./portals";
 
 const COUNTRY_CODES = "AD AE AF AG AL AM AO AR AT AU AZ BA BB BD BE BF BG BH BJ BN BO BR BS BT BW BY BZ CA CD CF CG CH CI CL CM CN CO CR CU CV CY CZ DE DJ DK DM DO DZ EC EE EG ER ES ET FI FJ FR GA GB GD GE GH GM GN GQ GR GT GW GY HK HN HR HT HU ID IE IL IN IQ IR IS IT JM JO JP KE KG KH KR KW KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MG MK ML MM MN MR MT MU MV MW MX MY MZ NA NE NG NI NL NO NP NZ OM PA PE PG PH PK PL PR PS PT PY QA RO RS RU RW SA SC SD SE SG SI SK SL SN SO SR SV SY SZ TD TG TH TJ TM TN TR TT TW TZ UA UG US UY UZ VE VN YE ZA ZM ZW".split(" ");
@@ -221,10 +221,7 @@ function Runner() {
   );
 }
 
-const AI_PROVIDERS = [{ id: "openai", name: "ChatGPT", keys: "https://platform.openai.com/api-keys" }];
-// Where to get a key, inside the introduction's board: a key and the arrow out to another site, in its pixels.
-const KEY = [".XX.....", "X..XXXXX", "X..X.X.X", ".XX....."];
-const OUT = [".XXX", "..XX", ".X.X", "X..."];
+const AI_PROVIDERS = [{ id: "openai", name: "ChatGPT" }];
 const AI_IDS = ["claude", "openai"];
 const AI_NAMES: Record<string, string> = { claude: "Claude", openai: "ChatGPT" };
 
@@ -237,7 +234,7 @@ const AI_NAMES: Record<string, string> = { claude: "Claude", openai: "ChatGPT" }
 export function AiKeys({ primary, onPrimary, bare = false }: { primary: string; onPrimary: (id: string) => void | Promise<void>; bare?: boolean }) {
   const { s, t, err, refresh } = useApp();
   const logins = (s.aiLogins ?? {}) as Record<string, boolean>;
-  const connected = (id: string) => Boolean(s.aiKeys[id] || logins[id]);
+  const connected = (id: string) => Boolean(logins[id]);
   // A pick shows at once, while it is saved; then the saved one shows, as it was if the save failed. moved: a pick
   // has moved the switch, and from then on the introduction's board plays its landing (styles.css), never as the
   // step comes in.
@@ -250,30 +247,12 @@ export function AiKeys({ primary, onPrimary, bare = false }: { primary: string; 
     setPicked(id);
     Promise.resolve(onPrimary(id)).finally(() => setPicked(""));
   };
-  const [typed, setTyped] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState("");
   const [status, setStatus] = useState<[string, boolean]>(["", false]);
-  const keep = async (provider: (typeof AI_PROVIDERS)[number], key: string) => {
-    if (busy) return;
-    setBusy(provider.id);
-    setStatus(key ? [t("settings.ai.checking"), false] : ["", false]);
-    try {
-      await api("ai-keys", { provider: provider.id, key });
-      await refresh();
-      setTyped((cur) => ({ ...cur, [provider.id]: "" }));
-      setStatus([t(key ? "settings.ai.savedNote" : "settings.ai.removed", { name: provider.name }), false]);
-    } catch (e) {
-      setStatus([err(e), true]);
-    }
-    setBusy("");
-  };
   const signIn = (p: { id: string; name: string }) => {
     setStatus([t("settings.ai.signingIn", { name: p.name }), false]);
     api("ai-login", { provider: p.id }).catch((e) => setStatus([err(e), true]));
   };
   const Frame = bare ? "div" : Card;
-  // The mark of a saved key: the board's pixel tick inside the introduction, the site's check elsewhere.
-  const Mark = () => (bare ? <Tick /> : <Icon name="check" />);
   return (
     <Frame className={bare ? "stack ai-setup" : "stack"}>
       {!bare && <h2>{t("settings.ai.title")}</h2>}
@@ -297,9 +276,8 @@ export function AiKeys({ primary, onPrimary, bare = false }: { primary: string; 
             ? <p className="note">{t("settings.ai.claude")}</p>
             : <div className="ai-sign-in"><Btn onClick={() => signIn({ id: "claude", name: "Claude" })}>{t("settings.ai.signIn")}</Btn><small className="note">{t("settings.ai.claudeHow")}</small></div>}
         </div>
+        {/* ChatGPT, through the account only (Codex): there is no key to paste (Sean, 2026-11-09). */}
         {AI_PROVIDERS.map((p) => {
-          const value = typed[p.id] ?? "";
-          const save = () => { if (value.trim()) keep(p, value.trim()); };
           return (
             <div key={p.id} className="ai-row">
               <div className="ai-row-head">
@@ -309,27 +287,6 @@ export function AiKeys({ primary, onPrimary, bare = false }: { primary: string; 
               {logins[p.id]
                 ? <p className="note">{t(`settings.ai.${p.id}Login`)}</p>
                 : <div className="ai-sign-in"><Btn onClick={() => signIn(p)}>{t("settings.ai.signIn")}</Btn><small className="note">{t(`settings.ai.${p.id}How`)}</small></div>}
-              {/* The other way, a key, folded until opened and marked not recommended, since OpenAI bills every use
-                  of it; inside, why, whether one is saved, and only then is there a key to remove. */}
-              <details className="ai-key">
-                <summary>{t("settings.ai.orKey")}<span className="result-chip bad">{t("settings.ai.notAdvised")}</span></summary>
-                <p className="note ai-key-why">{t("settings.ai.notAdvisedWhy")}</p>
-                {s.aiKeys[p.id] && (
-                  <div className="key-saved-row">
-                    <span className="key-saved"><Mark />{t("settings.ai.keyOn")}</span>
-                    <Btn kind="danger" disabled={Boolean(busy)} onClick={() => keep(p, "")}>{t("settings.ai.removeKey")}</Btn>
-                  </div>
-                )}
-                <div className="key-row">
-                  {/* Empty, the box takes the page's direction, so the hint starts on the page's side. */}
-                  <input type="password" dir={value ? "ltr" : undefined} autoComplete="off" spellCheck={false} aria-label={t(`settings.ai.${p.id}`)}
-                    placeholder={t(s.aiKeys[p.id] ? "settings.ai.replace" : "settings.ai.paste")} value={value} disabled={busy === p.id}
-                    onChange={(e) => setTyped((cur) => ({ ...cur, [p.id]: e.target.value }))} onBlur={save} onKeyDown={(e) => { if (e.key === "Enter") save(); }} />
-                </div>
-                {bare
-                  ? <External url={p.keys} className="key-link"><PixelArt className="key-icon" rows={KEY} />{t("settings.ai.get")}<PixelArt className="key-out" rows={OUT} /></External>
-                  : <External url={p.keys} className="key-link">{t("settings.ai.get")}<Icon name="open" /></External>}
-              </details>
             </div>
           );
         })}
