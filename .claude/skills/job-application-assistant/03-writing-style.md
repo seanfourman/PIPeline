@@ -16,6 +16,7 @@ framework_version: 1.2.0
    - **Flag it:** Combining academic + industry experience into a single claim that implies it was all industry; describing work using the posting's specific terminology when the actual work was adjacent but not the same.
    - **Never:** Claiming experience the candidate doesn't have; implying they worked in a domain they haven't.
    When a bullet falls in the "flag it" zone, present it to the user after drafting with: "This bullet is a stretch because X. Keep, soften, or drop?" If the evaluation experience match score is below 50, warn before proceeding to drafting that extensive reframing would be needed.
+7. **The humanizer pass before anything is final.** Apply `.claude/skills/humanizer/SKILL.md` in its embedded mode to every cover letter, application-form answer and CV text this guide covers (`/apply` Step 4b says what it changes and what stays). It finds what makes text read as AI-written, such as not-X-but-Y contrasts, one-line closers, forced threes, inflated words and bold labels, and rewrites it without changing a fact. This guide and `user/CV_RULES.md` win where they differ.
 
 ## Tone
 - **Warm but direct.** Friendly and approachable, but confident without arrogance.
@@ -81,7 +82,7 @@ The cover letter is **not a CV repetition**. It should be forward-looking:
 - No begging or over-enthusiasm
 
 ## Bullet Point Style
-- Start with action verb or bold category label
+- Start with an action verb, not a bold label and a colon (the humanizer counts a bold label on every bullet as an AI tell)
 - Be specific: numbers, tools, outcomes
 - Vary the structure (not every bullet starts the same way)
 

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { allowedCommands, applyJob, checkSource, draftingSystem, folderName, parseEvaluation, portalFor, sourceFrom, sourceHost } from "./applier";
+import { allowedCommands, applyJob, checkSource, draftingSystem, folderName, parseEvaluation, portalFor, reviewSystem, sourceFrom, sourceHost } from "./applier";
 import { recordDraft } from "./edit";
 import type { Run } from "./ranker";
 
@@ -33,6 +33,19 @@ describe("applier", () => {
     const system = draftingSystem((rel) => (rel.endsWith("10-cv-best-practices.md") ? guide : ""), "");
     expect(system).toContain("Use the posting's job title");
     expect(system).not.toContain("XYZ formula");
+  });
+
+  test("the CV's second pass gets the humanizer's patterns, not its frontmatter or how it answers", () => {
+    const guide = "---\nname: humanizer\nlicense: MIT\n---\n\n# Humanizer\n\n## How to work\n\n### What to return\n\nThe draft, a critique and the final rewrite.\n\n## A. Staging instead of stating\n\n### 1. Not X but Y\n";
+    const system = reviewSystem("THE WRITER'S RULES", (rel) => (rel.endsWith("humanizer/SKILL.md") ? guide : ""));
+    expect(system).toContain("Not X but Y");
+    expect(system).toContain("How to work");
+    expect(system).toContain("THE WRITER'S RULES");
+    expect(system).not.toContain("name: humanizer");
+    expect(system).not.toContain("a critique and the final rewrite");
+    const without = reviewSystem("THE WRITER'S RULES", () => { throw new Error("no such file"); });
+    expect(without).not.toContain("# The humanizer");
+    expect(without).toContain("THE WRITER'S RULES");
   });
 
   test("lets a CV use only the template's commands and its one package line", () => {

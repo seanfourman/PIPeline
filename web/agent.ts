@@ -35,6 +35,10 @@ class Session {
   status: Status = "idle";
   claudeId?: string;
   cost = 0;
+  // Whether Claude is paid for by use here: through an API key (signing in with an Anthropic Console account makes
+  // one too), not a Claude plan. Only then does a run's end say what it cost: on a plan, the SDK's figure is list
+  // price, not a bill. Unknown for a conversation saved before this was kept.
+  metered?: boolean;
   private subscribers = new Set<(e: AgentEvent) => void>();
   private pending = new Map<string, Pending>();
   private remembered = new Set<string>();
@@ -93,7 +97,7 @@ class Session {
   }
 
   save() {
-    writeFileSync(path.join(DATA, `${this.id}.json`), JSON.stringify({ ...this.summary(), claudeId: this.claudeId, agentThreadId: this.agentThreadId, events: this.events }));
+    writeFileSync(path.join(DATA, `${this.id}.json`), JSON.stringify({ ...this.summary(), claudeId: this.claudeId, agentThreadId: this.agentThreadId, metered: this.metered, events: this.events }));
   }
 
   // ChatGPT's turn in a conversation it works in as an agent: what was attached goes in as pictures it sees, or as a
@@ -225,6 +229,12 @@ class Session {
         disallowedTools: ["PowerShell"],
         includePartialMessages: true,
         canUseTool: (tool, input, { signal }) => this.authorize(tool, input, signal),
+        // The user's own settings come along (their skills and instructions), and with them any hooks they added for
+        // Claude in their editor, such as Claude Notifier's sounds, which would sound for every one of Pip's
+        // conversations. Pip has its own ways of saying it needs the user (PeekingPip), so these keep quiet: Claude
+        // Notifier stays silent in a session with CLAUDE_NOTIFIER_DISABLE set, and the editor's own sessions go on as
+        // before.
+        env: { ...process.env, CLAUDE_NOTIFIER_DISABLE: "1" },
       },
     });
     this.consume().catch((err) => {
@@ -318,7 +328,12 @@ class Session {
       if (message.session_id) this.claudeId = message.session_id;
       const parent = (message as { parent_tool_use_id?: string | null }).parent_tool_use_id ?? null;
 
-      if (message.type === "stream_event" && !parent) {
+      // Each turn starts by saying where its credential came from: "none" (once "oauth") is no API key, which here
+      // is the sign-in to a Claude plan; a key is named by where it came from.
+      if (message.type === "system" && message.subtype === "init") {
+        const source: string | undefined = message.apiKeySource;
+        this.metered = Boolean(source) && source !== "none" && source !== "oauth";
+      } else if (message.type === "stream_event" && !parent) {
         const event = message.event as { type: string; delta?: { type: string; text?: string } };
         if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
           this.emit({ t: "delta", text: event.delta.text }, false);
@@ -337,7 +352,7 @@ class Session {
         this.cost += message.total_cost_usd ?? 0;
         const ok = message.subtype === "success" && !message.is_error;
         if (!ok && this.handOver()) return;
-        this.emit({ t: "result", ok, cost: message.total_cost_usd, durationMs: message.duration_ms });
+        this.emit({ t: "result", ok, ...(this.metered ? { cost: message.total_cost_usd } : {}), durationMs: message.duration_ms });
         this.setStatus(ok ? "idle" : "error");
         this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
       }
@@ -409,6 +424,10 @@ for (const name of readdirSync(DATA)) {
     session.claudeId = saved.claudeId;
     session.agentThreadId = typeof saved.agentThreadId === "string" ? saved.agentThreadId : undefined;
     session.cost = saved.cost ?? 0;
+    session.metered = typeof saved.metered === "boolean" ? saved.metered : undefined;
+    // Saved before conversations knew how they were paid for: their ends showed the SDK's dollar figure, which on a
+    // Claude plan is no bill, so it goes. On a key, that figure is all that is lost.
+    if (session.metered === undefined) for (const e of session.events) if (e.t === "result") delete e.cost;
     session.status = saved.status === "running" || saved.status === "waiting" ? "error" : saved.status;
     const settled = new Set(session.events.filter((e) => e.t === "resolved").map((e) => e.requestId));
     for (const e of [...session.events]) {

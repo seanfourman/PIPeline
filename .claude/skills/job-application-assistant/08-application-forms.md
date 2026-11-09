@@ -82,6 +82,7 @@ Include:
 - [ ] Every factual claim traces to the union of `user/profile/01-candidate-profile.md`, the master CV (`user/cv/main_example.tex`), and `user/CLAUDE.md`'s Candidate Profile section
 - [ ] No claim contradicts the CV or cover letter submitted for the same role
 - [ ] Ownership scoped correctly on contributory work
+- [ ] The humanizer pass (`.claude/skills/humanizer/SKILL.md`, embedded mode) ran on every field before the counts were measured, with every fact unchanged
 - [ ] Word and character counts measured, not estimated
 - [ ] In-progress qualifications described as in progress
 - [ ] `NOTE TO SELF` blocks clearly marked as internal

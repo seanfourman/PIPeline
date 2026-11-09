@@ -36,12 +36,14 @@ When the user provides a job posting (URL or text), follow this workflow:
 - Follow the rules in Part 1 of `10-cv-best-practices.md` and run its final check before saving; `user/CV_RULES.md` wins where they differ
 - Create `user/cv/main_<company>_<role>.tex` with tailored content
 - Adjust: profile statement, skills section, experience bullet emphasis, section order
+- Before saving, give the prose the humanizer pass (`.claude/skills/humanizer/SKILL.md`); `/apply` Step 4b says what it changes and what stays
 
 ### Step 3: Write Cover Letter
 - Follow the writing style rules in `03-writing-style.md` (critical: no em-dashes, no cliches)
 - Follow the template structure in `user/profile/06-cover-letter-templates.md`
 - Create `user/cover_letters/cover_<company>_<role>.tex`
 - Ensure the letter connects specific experience to the role requirements
+- Before saving, give the letter the humanizer pass, as for the CV
 
 ### Step 3b: Record the Application
 - Run this once both documents exist. A CV or cover letter drafted alone is not yet an application.
@@ -53,6 +55,7 @@ When the user provides a job posting (URL or text), follow this workflow:
 - Prepare STAR-format answers for likely questions
 - Identify role-specific talking points
 - Draft questions the candidate should ask the interviewer
+- Give the prepared answers the humanizer pass, so they sound like the candidate talking, with every fact unchanged
 
 ---
 
@@ -70,6 +73,7 @@ When the user provides a job posting (URL or text), follow this workflow:
 | `08-application-forms.md` | Portal free-text fields: self-introduction, project entries, character-limited pitches |
 | `09-web-research.md` | Fetching postings and company pages: trust boundary, the WebFetch 403 fallback, escalation order, claim verification |
 | `10-cv-best-practices.md` | What makes a CV work: the rules for each section of the CV and a final check |
+| `.claude/skills/humanizer/SKILL.md` | The humanizer pass: finds what makes finished text read as AI-written and rewrites it without changing a fact |
 | `cv-research/` | The evidence behind each of those rules, one file per section of the CV, with sources: recruiters, hiring systems, studies and the largest employers |
 
 ---

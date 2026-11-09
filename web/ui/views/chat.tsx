@@ -6,6 +6,7 @@ import { friendlyTitle, useApp } from "../app";
 import { api, Btn, Icon, Markdown, ThinBar, useGoSlot } from "../kit";
 import { Pip } from "../pip";
 import { Select } from "../select";
+import { useVoiceTyping, VoiceGlow, VoiceTypingButton } from "../voice";
 
 type Ev = Record<string, any> & { t: string };
 type Access = "ask" | "auto" | "full";
@@ -93,14 +94,17 @@ function Threads({ id, onPick }: { id: string; onPick: () => void }) {
 // again. Enter sends and Shift+Enter starts a new line; empty, it takes the page's direction, so the hint starts
 // on the page's side. Images and files come in by the +, by pasting, or dropped on the box; each is sent up as
 // it comes and shows over the words, with a mark while it goes up and an × to take it off. onSend gets their ids.
-// Under it, warn is a warning and hint a quieter line.
-function Composer({ text, setText, onSend, onStop, working = false, placeholder, tools, warn, hint, input, autoFocus }: {
+// Under it, warn is a warning and hint a quieter line. glow: the shape of voice typing's glow behind it, a halo
+// round a box in the middle of the page or rising behind one at its foot (VoiceGlow).
+function Composer({ text, setText, onSend, onStop, working = false, placeholder, tools, warn, hint, input, autoFocus, glow = "rise" }: {
   text: string; setText: (v: string) => void; onSend: (files: string[]) => void; onStop?: () => void; working?: boolean; placeholder: string;
   tools?: React.ReactNode; warn?: React.ReactNode; hint?: React.ReactNode; input?: React.RefObject<HTMLTextAreaElement>; autoFocus?: boolean;
+  glow?: "halo" | "rise";
 }) {
   const { t } = useApp();
   const own = useRef<HTMLTextAreaElement>(null);
   const box = input ?? own;
+  const frame = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const row = useRef<HTMLDivElement>(null);
   const [files, setFiles] = useState<Attached[]>([]);
@@ -140,10 +144,13 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
         .catch((e) => done({ error: t(e?.code === "upload_type" ? "chat.upload.type" : e?.code === "upload_size" ? "chat.upload.size" : "chat.upload.failed", { name: file.name, max }) }));
     }
   };
+  // Voice typing (voice.tsx): what is said is written into the box, to send like anything typed.
+  const voice = useVoiceTyping(text, setText, box);
   const going = files.some((f) => !f.id && !f.error);
   const ready = (text.trim() !== "" || files.some((f) => f.id)) && !going;
   const send = () => {
     if (!ready) return;
+    voice.stop();
     onSend(files.flatMap((f) => (f.id ? [f.id] : [])));
     setFiles([]);
     setNote("");
@@ -151,11 +158,13 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
   const errors = [note, ...files.flatMap((f) => (f.error ? [f.error] : []))].filter(Boolean);
   const hasFiles = (e: React.DragEvent) => [...e.dataTransfer.types].includes("Files");
   const stopping = working && !ready && !going && Boolean(onStop);
-  const slotOpen = useGoSlot(ready || stopping, row, ".select.circle");
+  const slotOpen = useGoSlot(ready || stopping, row, ".select.circle, .voice-go, .voice-lang");
 
   return (
     <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
+      <VoiceGlow v={voice} shape={glow} box={frame} />
       <div
+        ref={frame}
         className={`composer-box ${tall ? "tall" : ""} ${ready || stopping ? "typing" : ""} ${slotOpen ? "slot-open" : ""} ${over ? "over" : ""}`}
         onDragOver={(e) => { if (hasFiles(e)) { e.preventDefault(); setOver(true); } }}
         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false); }}
@@ -186,6 +195,7 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
         />
         <div className="composer-tools" ref={row}>
           {tools}
+          <VoiceTypingButton v={voice} />
           <span className="seek-go-slot">
             {stopping
               ? <button type="button" className="seek-go stop" aria-label={t("chat.stop")} onClick={onStop}><Icon name="stop" /></button>
@@ -242,10 +252,10 @@ function NewConversation({ onList }: { onList: () => void }) {
     if ((!raw && !files.length) || busy) return;
     setBusy(true);
     const prompt = !files.length && /^https?:\/\/\S+$/.test(raw) ? `/apply ${raw}` : raw;
-    start(prompt, model || undefined, access, files).catch(() => setBusy(false));
+    return start(prompt, model || undefined, access, files).catch((err) => { setBusy(false); throw err; });
   };
   const begin = (command: string, more: boolean) => {
-    if (!more) return go(`/${command}`);
+    if (!more) { go(`/${command}`)?.catch(() => {}); return; }
     setText(`/${command} `);
     requestAnimationFrame(() => input.current?.focus());
   };
@@ -258,7 +268,7 @@ function NewConversation({ onList }: { onList: () => void }) {
           <h1>{t("chat.newTitle")}</h1>
         </div>
         <Composer
-          text={text} setText={setText} onSend={(files) => go(text.trim(), files)} placeholder={t("chat.newPlaceholder")} input={input} autoFocus
+          text={text} setText={setText} onSend={(files) => { go(text.trim(), files)?.catch(() => {}); }} placeholder={t("chat.newPlaceholder")} input={input} autoFocus glow="halo"
           tools={plain ? null : <><AccessPicker value={access} onChange={setAccess} />{!codex && <ModelPicker value={model} onChange={setModel} />}</>}
           warn={!plain && access === "full" ? t("chat.access.fullWarn") : ""} hint={codex ? t("chat.ai.codex", MAKERS[first]) : plain ? t("chat.ai.plain", MAKERS[first]) : ""}
         />

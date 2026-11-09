@@ -16,6 +16,7 @@ import { REPO } from "./policy";
 import { candidateContext, fetchPosting, guarded, PYTHON, runTool, type Ask, type Run, type Steps } from "./ranker";
 
 const SKILLS = ".claude/skills/job-application-assistant";
+const HUMANIZER = ".claude/skills/humanizer/SKILL.md";
 const TEMPLATE = "templates/cv/one-page-clean";
 const WEIGHTS = { technical: 0.3, experience: 0.25, behavioral: 0.15, career: 0.3 };
 const BANDS: [number, string][] = [[75, "Strong Fit"], [60, "Good Fit"], [45, "Moderate Fit"], [30, "Weak Fit"], [0, "Poor Fit"]];
@@ -165,6 +166,27 @@ const REVIEW_RULES = [
   "Last, go through the final check in the CV best practices and fix whatever fails it.",
 ].join(" ");
 
+// The humanizer pass, as /apply's Step 4b gives it (.claude/skills/humanizer/SKILL.md).
+const HUMANIZE = [
+  "Before that final check, give the profile statement and the bullets the humanizer below, changing wording only.",
+  "Every fact, number and skill, and the posting's exact terms, stay as they are, and so do the template's commands, bullets that open with a verb and have no subject and no \"I\", and each bullet on its line.",
+  "The CV rules win where the humanizer differs from them.",
+].join(" ");
+
+// The humanizer's patterns without its frontmatter or its "What to return", since the reviewer answers with the
+// whole LaTeX source and nothing else. Without the file, the review goes on without it.
+export function humanizerPatterns(r: Read = read) {
+  let guide = "";
+  try { guide = r(HUMANIZER); } catch { return ""; }
+  return guide.replace(/^---\r?\n[\s\S]*?\r?\n---[^\n]*\n/, "").replace(/^### What to return\b[\s\S]*?(?=^## )/m, "").trim();
+}
+
+// What the second pass is told: the review rules, the humanizer, then everything the writer was told.
+export function reviewSystem(system: string, r: Read = read) {
+  const humanizer = humanizerPatterns(r);
+  return [REVIEW_RULES, ...(humanizer ? [HUMANIZE, "# The humanizer", humanizer] : []), system].join("\n\n");
+}
+
 const latexAsk = async (ask: Ask, system: string, prompt: string, signal: AbortSignal, by: Set<string>) => {
   const answer = await ask(system, prompt, signal);
   const [text, engine] = typeof answer === "string" ? [answer, ""] : [answer.text, answer.by];
@@ -264,7 +286,7 @@ export async function applyJob(o: {
     if (!source) { steps.done("draft", false, ""); throw new ChatbotError("apply_no_cv"); }
     steps.done("draft", true, "");
     steps.start("review", name, "ReviewCv");
-    const reviewed = await latexAsk(ask, `${REVIEW_RULES}\n\n${system}`, `The draft to review:\n\`\`\`latex\n${source}\`\`\`\nThe posting is between the two ${mark} lines.\n${posting}`, signal, by);
+    const reviewed = await latexAsk(ask, reviewSystem(system, r), `The draft to review:\n\`\`\`latex\n${source}\`\`\`\nThe posting is between the two ${mark} lines.\n${posting}`, signal, by);
     if (reviewed) source = reviewed;
     steps.done("review", Boolean(reviewed), "");
 

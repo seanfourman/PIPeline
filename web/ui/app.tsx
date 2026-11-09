@@ -11,6 +11,7 @@ import { Home, Sprite } from "./views/home";
 import { Login, type SiteInfo } from "./login";
 import { Jobs, SavedJobs } from "./views/jobs";
 import { Portals } from "./views/portals";
+import { Portfolio } from "./views/portfolio";
 import { Settings } from "./views/settings";
 import { Welcome } from "./views/welcome";
 
@@ -95,6 +96,7 @@ const pagePath = (view: string, arg?: string) => (view === "dash" && !arg ? "/" 
 export const COMMANDS: { group: string; items: { id: string; arg?: boolean; danger?: boolean }[] }[] = [
   { group: "daily", items: [{ id: "job-scraper" }, { id: "rank" }, { id: "apply", arg: true }, { id: "interview", arg: true }, { id: "outcome", arg: true }] },
   { group: "growth", items: [{ id: "upskill", arg: true }, { id: "expand" }, { id: "html-report" }] },
+  { group: "showcase", items: [{ id: "portfolio" }, { id: "readme", arg: true }, { id: "brag-slim", arg: true }] },
   { group: "connect", items: [{ id: "gmail-sync" }, { id: "notion-sync" }, { id: "add-portal", arg: true }, { id: "add-template" }] },
   { group: "setup", items: [{ id: "setup", arg: true }, { id: "reset", danger: true }] },
 ];
@@ -116,7 +118,7 @@ export function friendlyTitle(title: string, t: Ctx["t"]) {
 // SHOWN are in the list, and those after them in More's menu at its end, where any page added later goes too.
 const NAV: [string, string][] = [
   ["dash", "home"], ["jobs", "jobs"], ["saved", "saved"], ["portals", "portals"], ["apps", "apps"], ["chat", "chat"],
-  ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"],
+  ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"], ["portfolio", "portfolio"],
 ];
 const SHOWN = 10;
 // Every page an address can open: the sidebar's, a CV or a letter in the editor, and the introduction.
@@ -413,6 +415,7 @@ function Screen() {
     case "apps": return <Apps />;
     case "chat": return <Chat id={arg ?? (lastChat || "new")} />;
     case "tools": return <Tools />;
+    case "portfolio": return <Portfolio />;
     case "profile": return <Profile />;
     case "rules": return <Rules />;
     case "files": return <Files />;

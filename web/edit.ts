@@ -260,8 +260,10 @@ const FILE_GROUPS: { title: string; dir?: string; match?: RegExp; files?: string
   { title: "agents", dir: ".claude/agents", match: /\.md$/ },
   { title: "knowledge", dir: "user/profile", match: /^(?!01-).*\.md$/ },
   { title: "knowledge", dir: ".claude/skills/job-application-assistant", match: /\.md$/ },
+  { title: "knowledge", files: [".claude/skills/humanizer/SKILL.md"] },
   { title: "search", files: [".claude/skills/job-scraper/SKILL.md", "user/search-queries.md"] },
   { title: "upskill", files: [".claude/skills/upskill/SKILL.md"] },
+  { title: "portfolio", files: [".claude/skills/portfolio/SKILL.md", ".claude/skills/readme/SKILL.md", ".claude/skills/readme/RECIPE.md"] },
   { title: "template", files: [`${TEMPLATE}/TEMPLATE.md`, `${TEMPLATE}/template.tex`, `${TEMPLATE}/onepage.sty`, `${TEMPLATE}/build.py`, `${TEMPLATE}/ats.py`, "cover_letters/cover.cls"] },
   { title: "permissions", files: [".claude/settings.json", "web/policy.ts"], readOnly: true },
 ];

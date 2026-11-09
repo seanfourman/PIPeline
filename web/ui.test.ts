@@ -100,6 +100,17 @@ describe("the two languages", () => {
       });
     }
   });
+
+  // Voice typing's notes are Pip's too (ui/voice.tsx says them from his peek), in both languages.
+  test("give Pip's voice typing notes lines short enough for his bubble", () => {
+    for (const lang of ["he", "en"] as const) {
+      for (const key of ["unsupported", "micDenied", "noMic", "network", "langUnsupported", "failed"]) {
+        const said = translate(lang, `voice.${key}`, { detail: "not-allowed" }) as string;
+        expect(said).not.toBe(`voice.${key}`);
+        for (const line of said.split("\n")) expect(line.length).toBeLessThanOrEqual(32);
+      }
+    }
+  });
 });
 
 describe("the interface", () => {

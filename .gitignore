@@ -120,6 +120,9 @@ company_research/*.json
 # Brainstorm mockups (superpowers visual companion) - never ship
 .superpowers/
 
+# Launch videos /brag-slim makes when run from Pip, which works in this folder: the user's own, never shipped.
+/brag-output*/
+
 # The user's own data: profile, rules, CVs, letters, applications, job list, tracker, research, reports, and
 # the web interface's conversations and settings. Never commit it; each person who installs the app gets their
 # own, filled in by the introduction. Rooted, so templates/user/ (the clean starting files) stays in the repo.

@@ -26,7 +26,7 @@ On the computer, `PIP_SITE` is the site's address: the installed launcher sets i
 
 ## On Railway
 
-`deploy.ts` gathers the site's own files and a fresh build of the app's interface in a folder outside the repository, and uploads only that, so nothing else leaves the computer. It runs from `Dockerfile` with the settings in `railway.json`: one copy only, since the computers' connections live in its memory, a health check on `/health`, and restarts if it stops. `DATA_DIR` points at a volume, so the records survive a redeploy.
+`deploy.ts` gathers the site's own files and a fresh build of the app's interface in a folder outside the repository, and uploads only that, so nothing else leaves the computer. It runs from `Dockerfile`, with Railway's settings kept on the service itself and written in `.railway/railway.ts`: built from the Dockerfile, one copy only, since the computers' connections live in its memory, and a new version taking over only once `/health` answers; restarting if it stops is Railway's own default. `DATA_DIR` points at a volume, so the records survive a redeploy.
 
 ```bash
 cd site
@@ -36,9 +36,11 @@ railway service link pip-site           # once: before the volume, which needs a
 railway volume add --mount-path /data   # once: where site.db is kept
 railway domain                          # once: its https address
 bun deploy.ts --yes                     # each deploy
+railway config plan                     # after changing .railway/railway.ts: what would change
+railway config apply                    # and then to set it
 ```
 
-Run these from PowerShell or cmd: Git Bash turns `/data` into a Windows path. `RAILWAY` names the CLI when it isn't on the PATH, and `bun deploy.ts --stage-only` gathers the folder and prints where it is, without uploading. Railway sets `PORT` and puts HTTPS in front, and the site marks its cookies Secure behind it. The CLI warns that `railway.json` is deprecated (read until 2026-12-01) and offers `railway config migrate`; without it Railway still finds the Dockerfile itself, but the health check goes.
+Run these from PowerShell or cmd: Git Bash turns `/data` into a Windows path. `RAILWAY` names the CLI when it isn't on the PATH, and `bun deploy.ts --stage-only` gathers the folder and prints where it is, without uploading. Railway sets `PORT` and puts HTTPS in front, and the site marks its cookies Secure behind it. The settings were moved there from `railway.json` (Config as Code, which Railway reads only until 2026-12-01) on 2026-11-08. `railway config` reads `.railway/railway.ts` with Railway's SDK (`npm install` here, the `railway` package pinned in `package.json`), which runs `railway --version` by name, so the CLI must be on the PATH for it, not only in `RAILWAY`. The file leaves the service's variables alone (`managed: false`).
 
 ## Files
 
@@ -46,5 +48,6 @@ Run these from PowerShell or cmd: Git Bash turns `/data` into a Windows path. `R
 - `relay.ts`: the requests and answers along each computer's connection, streamed, a phone that leaves cancelling its request.
 - `store.ts`: the linked computers.
 - `deploy.ts`: the upload to Railway.
+- `.railway/railway.ts`: Railway's settings for the site's service and its volume (`railway config plan` and `apply`).
 
 The tests are in `web/remote.test.ts`, which runs the site with the app's side of the connection (`web/remote.ts`).

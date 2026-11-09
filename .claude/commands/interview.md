@@ -80,6 +80,8 @@ Pick 4-6 from `07`'s categories, customized to the research and the stage: role 
 ### 6. Logistics
 The phone/video tips from `07` when the format calls for them, plus date and interviewer names as a header.
 
+Before saving, give the answers and talking points the humanizer pass: read `.claude/skills/humanizer/SKILL.md` and apply it in its embedded mode. The candidate will say these aloud, so they must sound like a person talking. Every fact stays exactly as the profile and the submitted documents state it, and the STAR structure stays.
+
 Save the pack in the archive folder derived in Step 1 as `interview_prep_<stage>.md` (create the folder if this application predates `/outcome`). The folder is gitignored, so the pack stays personal; one file per stage, so earlier packs remain as history. Present the pack in chat as well - the file is the artifact, the conversation is the delivery.
 
 ---

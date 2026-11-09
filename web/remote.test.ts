@@ -126,7 +126,10 @@ describe("phone access", () => {
   test("a phone that has not signed in gets the app's own sign-in, from the site", async () => {
     const page = await phone("/");
     expect(page.status).toBe(200);
-    expect(await page.text()).toContain('id="root"');
+    const html = await page.text();
+    expect(html).toContain('id="root"');
+    // Marked as the login's page from the start, for the login's background before its code shows it (styles.css).
+    expect(html).toMatch(/<html\b[^>]*\bclass="forest"[^>]*>/);
     expect(page.headers.get("content-security-policy")).toContain("default-src 'self'");
     expect((await phone("/styles.css")).headers.get("content-type")).toContain("text/css");
     expect(await (await phone("/api/me")).json()).toEqual({ loggedIn: false, needsAccount: false, site: true, download: "", mac: false });
@@ -158,7 +161,10 @@ describe("phone access", () => {
     // The page and its styles: the site's own copy, the newest, whatever the computer has; nothing of it asked there.
     const asked = seen.length;
     const page = await phone("/", { headers: { Cookie: signedIn } });
-    expect(await page.text()).toContain('id="root"');
+    const html = await page.text();
+    expect(html).toContain('id="root"');
+    // The app's page, not the login's: no forest background.
+    expect(html).not.toMatch(/\bclass="forest"/);
     expect((await phone("/styles.css", { headers: { Cookie: signedIn } })).headers.get("content-type")).toContain("text/css");
     expect(seen.length).toBe(asked);
     // A file the site hasn't is still the computer's to answer.

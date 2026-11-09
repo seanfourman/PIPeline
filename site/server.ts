@@ -10,7 +10,7 @@
 //
 // Run: bun site/server.ts. PORT (4180) and DATA_DIR (site/data) set where it listens and keeps its records. Behind
 // HTTPS, as it must be when on the internet, the cookies are marked Secure.
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type { Server } from "bun";
 import { createRelay, Offline, type Link } from "./relay";
@@ -88,7 +88,9 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
   };
   // One of the interface's files, the page itself at /, or null. The browser opening an address with no file at it
   // gets the page too: the app's pages (/jobs, /chat/<id>) are addresses in it, which it shows (web/ui/app.tsx).
-  const appFile = (req: Request, pathname: string) => {
+  // forest: the page will be the login, as the browser isn't tied to a computer, so the page comes with the class that
+  // gives it the login's background from its first moment (styles.css), before its code has shown the login.
+  const appFile = (req: Request, pathname: string, forest = false) => {
     let rel: string;
     try { rel = pathname === "/" ? "index.html" : decodeURIComponent(pathname.slice(1)); } catch { return null; }
     let abs = path.join(appRoot, rel);
@@ -97,7 +99,12 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
       if (!/\btext\/html\b/.test(req.headers.get("accept") ?? "")) return null;
       abs = path.join(appRoot, "index.html");
     }
-    return new Response(Bun.file(abs), { headers: { ...SECURITY, "Content-Type": MIME[path.extname(abs)] ?? "application/octet-stream", "Content-Security-Policy": PAGE_POLICY } });
+    const headers = { ...SECURITY, "Content-Type": MIME[path.extname(abs)] ?? "application/octet-stream", "Content-Security-Policy": PAGE_POLICY };
+    if (forest && abs === path.join(appRoot, "index.html")) {
+      const page = readFileSync(abs, "utf8").replace(/<html\b([^>]*)>/, (tag: string, attrs: string) => (/\bclass=/.test(attrs) ? tag : `<html${attrs} class="forest">`));
+      return new Response(page, { headers });
+    }
+    return new Response(Bun.file(abs), { headers });
   };
   const goHome = (cookies: string[] = []) => {
     const headers = new Headers({ ...SECURITY, Location: "/" });
@@ -279,7 +286,7 @@ export function startSite({ port = 4180, dataFile = path.join(import.meta.dir, "
         if (url.pathname === "/api/me") return json({ loggedIn: false, needsAccount: false, site: true, download, mac });
         if (url.pathname === "/api/login" && req.method === "POST") return sameSite(req) ? signIn(req, server) : new Response("Forbidden", { status: 403 });
         if (api) return json({ error: "login_required" }, 401);
-        return (reading && appFile(req, url.pathname)) || new Response("Not found", { status: 404, headers: SECURITY });
+        return (reading && appFile(req, url.pathname, true)) || new Response("Not found", { status: 404, headers: SECURITY });
       }
       // Tied to a computer: the interface's own files (the page, its code, styles and fonts) still from here, the newest
       // the site has, whatever the computer's copy is, so a change to them shows as soon as the site has it, without

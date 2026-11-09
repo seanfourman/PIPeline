@@ -656,9 +656,24 @@ export function paintStill(c: HTMLCanvasElement, night: boolean, sunAt = 0.3, fa
 type Fly = { x: number; y: number; z: number; ph: number; color: number };
 type Spark = { a: number; r: number; speed: number; color: string };
 
-// How many screen pixels the login's forest gives each of its pixels, by the window's height; Pip on the board is
-// drawn at that size too, so what is placed by him (login.tsx's PipSays) takes it from here.
-export const forestScale = () => Math.max(2, Math.round(innerHeight / 225));
+// The height the login's forest is painted for: the window's height with a phone browser's bars shrunk away (100vh is
+// that height on a phone), or the window's own if that is more. A phone's window gets shorter and taller as its bars
+// grow and shrink, its keyboard comes and goes, or it zooms in on a field; painted for the tallest, the forest stays as
+// it is through all of that and only shows more or less of its foot, instead of being painted again a different size
+// under the form, with the login's own colour showing below it until it was.
+let tallest: HTMLDivElement | null = null;
+const forestHeight = () => {
+  if (!tallest) {
+    tallest = document.createElement("div");
+    tallest.style.cssText = "position: fixed; left: 0; top: 0; width: 0; height: 100vh; visibility: hidden; pointer-events: none";
+    document.body.append(tallest);
+  }
+  return Math.max(innerHeight, tallest.offsetHeight);
+};
+
+// How many screen pixels the login's forest gives each of its pixels, by that height; Pip on the board is drawn at
+// that size too, so what is placed by him (login.tsx's PipSays) takes it from here.
+export const forestScale = () => Math.max(2, Math.round(forestHeight() / 225));
 
 export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: IntroOptions) {
   seed = 41;
@@ -705,9 +720,14 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
   const foxPixel = (s: number) => clamp(Math.round((scale * s * (FOX_Z - CAM_END.z)) / (H * 0.82)), scale, scale * 6);
 
   const resize = () => {
-    scale = forestScale();
-    const w = Math.ceil(innerWidth / scale);
-    const h = Math.ceil(innerHeight / scale);
+    // As wide as the login (the page's width, which a zoom on a phone leaves as it is), as tall as forestHeight.
+    const next = forestScale();
+    const w = Math.ceil((bg.parentElement?.clientWidth || innerWidth) / next);
+    const h = Math.ceil(forestHeight() / next);
+    // Nothing to do when only a phone's bars or keyboard moved; giving a canvas its size again, even the same one,
+    // would clear it.
+    if (next === scale && w === W && h === H) return;
+    scale = next;
     const changed = h !== H;
     W = w;
     H = h;
@@ -936,7 +956,9 @@ export function startIntro(bg: HTMLCanvasElement, fx: HTMLCanvasElement, opts: I
           const off = reaction.off;
           if (!off.down) {
             const spot = clearingSpot();
-            off.wait = spot.x + 12 < card.left ? [spot.x, spot.y] : [card.left + 18, Math.min(H - 2, card.top + card.height + 24)];
+            // Above the login's foot, which on a phone can be above the forest's (forestHeight).
+            const foot = Math.floor((bg.parentElement?.clientHeight || innerHeight) / scale);
+            off.wait = spot.x + 12 < card.left ? [spot.x, spot.y] : [card.left + 18, Math.min(foot - 2, card.top + card.height + 24)];
             off.down = jump(perch, off.wait);
             off.backAt = Math.max(off.down.length, off.opened) + BEAT;
           }

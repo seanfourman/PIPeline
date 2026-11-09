@@ -23,7 +23,9 @@ const INSTALLER = path.join(SITE, "..", "installer");
 const SETUP = path.join(INSTALLER, "out", "PipSetup.exe");
 const STAGED = path.join(INSTALLER, "stage");
 const STAGE = path.join(os.tmpdir(), "pip-site-stage");
-const FILES = ["Dockerfile", "railway.json", "server.ts", "relay.ts", "store.ts"];
+// Railway's own settings for the site (the Dockerfile, the health check) live on its service, set from .railway/railway.ts
+// with `railway config apply`, so they don't go with the upload.
+const FILES = ["Dockerfile", "server.ts", "relay.ts", "store.ts"];
 
 rmSync(STAGE, { recursive: true, force: true });
 mkdirSync(STAGE, { recursive: true });

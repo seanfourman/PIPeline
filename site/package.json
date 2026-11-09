@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "graphql": "16.14.2",
+    "railway": "3.16.0"
+  }
+}

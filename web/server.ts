@@ -4,12 +4,13 @@ import "./switching";
 import "./upgrade";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { createSession, createTaskSession, getSession, isAccess, listSessions, runTask, runUnattended } from "./agent";
-import { AccountError, clearedCookie, createAuth, rememberedCookie, rememberedOf, sessionCookie, sessionOf } from "./auth";
+import { AccountError, clearedCookie, createAuth, openedByHand, rememberedCookie, rememberedOf, sessionCookie, sessionOf } from "./auth";
 import { buildInterface, watchInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
 import { askInOrder, ENGINE_NAMES, engineOrder } from "./ai";
-import { ChatbotError, checkKey, keyStatus, PROVIDERS, saveKey, type Provider } from "./chatbots";
+import { ChatbotError, checkKey, keyStatus, PROVIDERS, saveKey as saveAiKey, type Provider } from "./chatbots";
 import { cliSignedIn, cliStatus, openLogin } from "./clis";
 import { accountFile, computerId, findLocal, localAccounts, readAccount, requestSwitch, USERS_DIR, type AccountFile, type LocalAccount } from "./accounts";
 import { foundPortals } from "./discover";
@@ -23,6 +24,7 @@ import { conversationFiles, loadState, resolveDocument, searchJobs } from "./dat
 import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, listSources, readChecks, readDocument, readEditableFile, readSource, saveChecks, saveDocument, saveEditableFile, saveSource, setApplicationStatus } from "./edit";
 import { REPO } from "./policy";
 import { createRemote, RemoteError } from "./remote";
+import { byteRange, MEDIA_TYPES, mediaFile, PORTFOLIO_DIR, readPortfolio } from "./portfolio";
 import { readSaved, setSaved } from "./saved";
 import { loadSettings, REGION_PRESETS, saveSettings, syncWorkspace } from "./settings";
 import { joinWithTranscript, removeTranscript, saveTranscript, TRANSCRIPT, TranscriptError, transcriptInfo } from "./transcript";
@@ -360,6 +362,33 @@ async function loginRoutes(req: Request, url: URL): Promise<Response | null> {
 
 const hasCookie = (req: Request) =>
   (req.headers.get("cookie") ?? "").split(/;\s*/).includes(`job_token=${TOKEN}`);
+// The cookie the start link gives, as does a page asked for by hand (auth.ts openedByHand).
+const TOKEN_COOKIE = `job_token=${TOKEN}; HttpOnly; SameSite=Strict; Path=/`;
+// A page of this site by its path alone: letters, digits, / _ . and -, never starting //, so it can't lead elsewhere.
+const LOCAL_PAGE = /^\/(?!\/)[A-Za-z0-9/_.-]{0,200}$/;
+
+// A browser without the cookie that wasn't let in by hand, as one sent by another site's link: a page that says how to
+// go on, in Pip's font, with a link to the same page, which a click lets in (openedByHand). No script runs on it, and
+// the path it links to is this site's own.
+function turnedAway(url: URL) {
+  const page = LOCAL_PAGE.test(url.pathname) ? url.pathname : "/";
+  const html = `<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Pip</title><style>
+@font-face { font-family: Rubik; src: url(/fonts/rubik-hebrew.woff2) format("woff2"); unicode-range: U+0590-05FF; font-weight: 300 900; }
+@font-face { font-family: Rubik; src: url(/fonts/rubik-latin.woff2) format("woff2"); unicode-range: U+0000-00FF; font-weight: 300 900; }
+body { margin: 0; display: grid; place-items: center; min-height: 100vh; background: #fff; color: #0f1419; font: 16px/1.6 Rubik, "Segoe UI", system-ui, sans-serif; text-align: center; }
+p { margin: 0 0 8px; } a { color: #2f7a3a; font-weight: 600; }
+</style></head><body><main>
+<p>כדי להיכנס לפיפ, לוחצים כאן: <a href="${page}">כניסה לפיפ</a></p>
+<p dir="ltr" lang="en">To open Pip, click here: <a href="${page}">Open Pip</a></p>
+</main></body></html>`;
+  return new Response(html, {
+    status: 401,
+    headers: {
+      ...SECURITY_HEADERS, "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    },
+  });
+}
 
 // The browser opening a page (an address typed, a link followed, a reload), rather than a file one asks for.
 const opensPage = (req: Request) => (req.method === "GET" || req.method === "HEAD") && /\btext\/html\b/.test(req.headers.get("accept") ?? "");
@@ -373,9 +402,15 @@ function rejected(req: Request, url: URL): Response | null {
     if (!req.headers.get("content-type")?.startsWith("application/json")) return new Response("Unsupported", { status: 415 });
   }
   if (!hasCookie(req)) {
-    return new Response("Open Pip from its shortcut, or with start-web.cmd. פותחים את פיפ מקיצור הדרך שלו, או דרך start-web.cmd.", {
-      status: 401, headers: { ...SECURITY_HEADERS, "Content-Type": "text/plain; charset=utf-8" },
-    });
+    // A page of Pip opened by hand in another browser on this computer (its address typed, a bookmark, a link from
+    // another program, or the turned-away page's link), as Sean chose: the cookie, and on to the same page, where the
+    // login asks for the account's password. After the host check above, and only a page loaded, never a write.
+    if (req.method === "GET" && openedByHand(req.headers) && req.headers.get("x-pip-relayed") !== "1") {
+      return new Response(null, { status: 303, headers: { ...SECURITY_HEADERS, Location: LOCAL_PAGE.test(url.pathname) ? url.pathname : "/", "Set-Cookie": TOKEN_COOKIE } });
+    }
+    // The turned-away page's own font.
+    if (req.method === "GET" && /^\/fonts\/rubik-(hebrew|latin)\.woff2$/.test(url.pathname)) return null;
+    return turnedAway(url);
   }
   return null;
 }
@@ -431,6 +466,9 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (parts[0] === "automation") return json(automationStatus());
     // The portals page: every portal, the industries, and each one's last check.
     if (parts[0] === "portals") return json({ portals: PORTALS, industries: INDUSTRIES, checks: readPortalChecks(), found: foundPortals(), busy: listBusy === "portals" });
+    // The portfolio page: what /portfolio wrote (portfolio.ts), and the pictures and videos it shows.
+    if (parts[0] === "portfolio" && !parts[1]) return json(readPortfolio());
+    if (parts[0] === "portfolio" && parts[1] === "media") return portfolioMedia(req, url);
     if (parts[0] === "sessions" && parts[1] && parts[2] === "events") return eventStream(parts[1], req);
     if (parts[0] === "uploads" && parts[1]) {
       const upload = getUpload(parts[1]);
@@ -511,6 +549,14 @@ async function api(req: Request, url: URL): Promise<Response> {
   }
   // A job the user saved, or took off their saved jobs (saved.ts).
   if (parts[0] === "saved") return json({ saved: setSaved(body) });
+  // The portfolio's website (/portfolio builds it in user/portfolio/site/) opened in this computer's browser, from its
+  // folder. Not from the phone, which would open it here, out of sight.
+  if (parts[0] === "portfolio" && parts[1] === "site") {
+    const site = path.join(PORTFOLIO_DIR, "site", "index.html");
+    if (req.headers.get("x-pip-relayed") === "1" || !existsSync(site)) return json({ error: "not found" }, 404);
+    openInBrowser(pathToFileURL(site).href);
+    return json({ ok: true });
+  }
   if (parts[0] === "sources" && isSourceKind(parts[1] ?? "") && parts[2]) {
     const kind = parts[1] as "cv" | "letter";
     saveSource(kind, parts[2], body.source, body.base);
@@ -565,7 +611,7 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (key) {
       try { await checkKey(provider, key); } catch (err) { if (err instanceof ChatbotError) throw new EditError(err.code); throw err; }
     }
-    saveKey(provider, key);
+    saveAiKey(provider, key);
     return json(keyStatus());
   }
   // The new jobs ranked (ranker.ts), or the smart search and save (scraper.ts), by the settings' AI, the next
@@ -627,6 +673,19 @@ async function api(req: Request, url: URL): Promise<Response> {
   }
   if (parts[2] === "interrupt") { await session.interrupt(); return json({ ok: true }); }
   return json({ error: "not found" }, 404);
+}
+
+// A picture or a video of the portfolio's, from its media folder only; a video in the pieces it asks for, so it starts
+// and seeks without the whole file first.
+function portfolioMedia(req: Request, url: URL) {
+  const abs = mediaFile(url.searchParams.get("path"));
+  if (!abs) return new Response("Not found", { status: 404 });
+  const file = Bun.file(abs);
+  const headers = { ...SECURITY_HEADERS, "Content-Type": MEDIA_TYPES[path.extname(abs).toLowerCase()], "Cache-Control": "private, max-age=60", "Accept-Ranges": "bytes" };
+  const range = byteRange(req.headers.get("range"), file.size);
+  if (range === "bad") return new Response(null, { status: 416, headers: { ...headers, "Content-Range": `bytes */${file.size}` } });
+  if (!range) return new Response(file, { headers });
+  return new Response(file.slice(range.start, range.end + 1), { status: 206, headers: { ...headers, "Content-Range": `bytes ${range.start}-${range.end}/${file.size}` } });
 }
 
 // The uploads a message names, by id, up to five; one that is not there is left out.
@@ -694,7 +753,7 @@ async function handle(req: Request): Promise<Response> {
     const away = await remote.openUrl().catch(() => null);
     return new Response(null, {
       status: 303,
-      headers: { Location: away?.url ?? "/", "Set-Cookie": `job_token=${TOKEN}; HttpOnly; SameSite=Strict; Path=/`, ...SECURITY_HEADERS },
+      headers: { Location: away?.url ?? "/", "Set-Cookie": TOKEN_COOKIE, ...SECURITY_HEADERS },
     });
   }
   const refusal = rejected(req, url);

@@ -157,6 +157,19 @@ export function createAuth(file = ACCOUNT_FILE) {
 export const sessionCookie = (id: string) => `${SESSION_COOKIE}=${id}; HttpOnly; SameSite=Strict; Path=/`;
 export const clearedCookie = `${SESSION_COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0`;
 
+// A page of Pip asked for by the person at the browser, not by another site: its address typed, a bookmark, or a link
+// opened from another program such as a mail app (all Sec-Fetch-Site: none), or a click on Pip's own page
+// (same-origin, with the user's click: Sec-Fetch-User). The browser sets these itself and no page can fake them.
+// Another site's link, a page on another of this computer's ports (same-site: a site ignores the port), a script's
+// request, a frame, or a program that sends none of these (curl) never pass. Such a browser is let past the start
+// link's cookie (server.ts), on to the login, where the account's password is still asked for. Sean chose this on
+// 2026-11-09, so that Pip opens in Edge or Chrome as well as in the browser its shortcut opens.
+export function openedByHand(headers: Headers): boolean {
+  if (headers.get("sec-fetch-mode") !== "navigate" || headers.get("sec-fetch-dest") !== "document") return false;
+  const site = headers.get("sec-fetch-site");
+  return site === "none" || (site === "same-origin" && headers.get("sec-fetch-user") === "?1");
+}
+
 // The browser's logins to this computer's other accounts, each by the account's id (accounts.ts) and the login's id,
 // as "<account>.<login>" joined by "_". Kept as long as the login's own cookie is, and never passed on by the site
 // (remote.ts), so it opens nothing from the phone.

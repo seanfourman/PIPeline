@@ -240,7 +240,20 @@ Once the reviewer agent returns its feedback:
    Use Edit for targeted changes; only re-read a file if an edit fails because the surrounding text has shifted.
 3. Do NOT incorporate any suggestion that would fabricate skills or experience. If a posting requirement is a genuine gap, acknowledge it honestly and frame adjacent experience instead.
 
-After all edits are applied, the two files on disk are the final drafts.
+After all edits are applied, the two files on disk are the drafts Step 4b finishes.
+
+---
+
+## Step 4b: DRAFTER - Humanizer Pass
+
+Read `.claude/skills/humanizer/SKILL.md` and apply it, in its embedded mode (only the final text, no draft or critique for the user), to the prose of both drafts: the CV's profile statement, experience bullets and project lines, and every paragraph and bullet of the cover letter. Edit the files in place with Edit, changing wording only:
+
+- **Facts stay.** Every employer, title, date, number, skill, tool and claim reads the same after the pass. The posting's exact terms stay verbatim, because hiring systems match them as strings.
+- **Markup stays.** LaTeX commands, macros, escapes, the template's structure and its bold are not prose; leave them as they are.
+- **The CV keeps its form.** Bullets open with a past-tense verb and have no subject and no "I", the summary has no "I", and each bullet fits its line. That is the genre of a CV, not an AI tell.
+- **What wins.** `user/CV_RULES.md`, `03-writing-style.md` and `10-cv-best-practices.md` win wherever the humanizer differs from them.
+
+Step 5 compiles both documents and checks the layout, so a line the pass made longer is caught there.
 
 ---
 
@@ -429,7 +442,7 @@ Check whether the posting or the portal it came from asks for free-text fields t
 
 > "This posting has free-text application fields I can draft too — [name the specific fields, e.g. a self-introduction paragraph and structured project entries]. Want those drafted?"
 
-**Only on yes**, read `08-application-forms.md` and draft the fields per its rules, grounded against the same three-source union as the CV and cover letter. Save per that file's "Output format" section. **On no, or when the posting has no such fields, say nothing further and move on** — this is an optional addition and never changes the default two-document output.
+**Only on yes**, read `08-application-forms.md` and draft the fields per its rules, grounded against the same three-source union as the CV and cover letter, and give them the Step 4b humanizer pass within their limits. Save per that file's "Output format" section. **On no, or when the posting has no such fields, say nothing further and move on** — this is an optional addition and never changes the default two-document output.
 
 ### Next Steps
 - **Submitted?** `/outcome <company>` moves the `drafted` row to `applied` and starts the per-application record that `/setup` later uses to calibrate the fit framework.

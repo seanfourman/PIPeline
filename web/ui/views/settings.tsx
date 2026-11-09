@@ -304,10 +304,11 @@ export function AiKeys({ primary, onPrimary, bare = false }: { primary: string; 
               {logins[p.id]
                 ? <p className="note">{t(`settings.ai.${p.id}Login`)}</p>
                 : <div className="ai-sign-in"><Btn onClick={() => signIn(p)}>{t("settings.ai.signIn")}</Btn><small className="note">{t(`settings.ai.${p.id}How`)}</small></div>}
-              {/* The other way, a key, folded until opened; inside, whether one is saved, and only then is there a
-                  key to remove. */}
+              {/* The other way, a key, folded until opened and marked not recommended, since OpenAI bills every use
+                  of it; inside, why, whether one is saved, and only then is there a key to remove. */}
               <details className="ai-key">
-                <summary>{t("settings.ai.orKey")}</summary>
+                <summary>{t("settings.ai.orKey")}<span className="result-chip bad">{t("settings.ai.notAdvised")}</span></summary>
+                <p className="note ai-key-why">{t("settings.ai.notAdvisedWhy")}</p>
                 {s.aiKeys[p.id] && (
                   <div className="key-saved-row">
                     <span className="key-saved"><Mark />{t("settings.ai.keyOn")}</span>

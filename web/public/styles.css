@@ -140,6 +140,8 @@ legend { padding: 0; }
 .icon-apps.filled path:not(:first-child), .icon-settings.filled circle, .icon-portals.filled path { fill: var(--bg); stroke: var(--bg); }
 .icon-jobs.filled, .icon-rules.filled { fill: none; stroke-width: 2.8; }
 .icon-more.filled path { stroke: var(--bg); stroke-width: 2.6; }
+.icon-portfolio.filled path { fill: none; }
+.icon-portfolio.filled path:nth-child(n + 3) { stroke: var(--bg); }
 .nav-icon { position: relative; display: grid; place-items: center; }
 .nav > :is(a, button) .icon { width: 26px; height: 26px; }
 /* More's menu (More in app.tsx), like a social site's: a round panel with a light shadow, as wide as the sidebar
@@ -374,6 +376,8 @@ textarea { resize: vertical; width: 100%; }
 .ai-key > summary { width: fit-content; color: var(--ink-2); font-size: 13px; cursor: pointer; }
 .ai-key > summary:hover { color: var(--ink); }
 .ai-key[open] > summary { margin-bottom: 8px; }
+/* Marked not recommended on the fold: the results' chip, filled red with bold words; why is the first thing inside. */
+.ai-key > summary .result-chip { margin-inline-start: 8px; white-space: nowrap; background: var(--bad); color: var(--surface); font-weight: 700; }
 /* A key for ChatGPT: its box and, once one is saved, a way to remove it; under them, where to get one. */
 .key-row { display: flex; align-items: center; gap: 8px; }
 .key-row input { flex: 1; min-width: 0; }
@@ -1164,20 +1168,26 @@ textarea { resize: vertical; width: 100%; }
 .result-act.save.on { color: var(--primary); }
 /* Applying is the AI's work: a white round button like its neighbours, its paper plane in their grey, and the AI's
    colours as a soft light along the inside of its rim, turning slowly. Under the pointer, or reached by the keyboard,
-   the light grows in toward the middle and the plane darkens to ink, fading in and out (--rim, how far from the
-   middle the light starts). */
-@property --rim { syntax: "<percentage>"; inherits: false; initial-value: 42%; }
-.result-act.apply { isolation: isolate; border: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 9%); }
-.result-act.apply:hover { background: var(--surface); }
+   the light grows in toward the middle and the plane darkens to ink, fading in and out. A list has one on every row,
+   so nothing here is drawn again as it moves: the rainbow is a whole soft disc that only turns (::before), and the
+   white middle over it, soft-edged, only shrinks (::after), both moved by the graphics card as they are. */
+.result-act:is(.apply, .ai-act) { isolation: isolate; border: 0; box-shadow: 0 1px 3px rgb(0 0 0 / 9%); }
+.result-act:is(.apply, .ai-act):hover { background: var(--surface); }
 .apply-rim { position: absolute; inset: 0; z-index: -1; overflow: hidden; border-radius: 50%; pointer-events: none; }
 .apply-rim::before {
-  content: ""; position: absolute; inset: -1px; border-radius: 50%; filter: blur(2px) saturate(1.15);
-  background: conic-gradient(from var(--chroma), var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3));
-  -webkit-mask: radial-gradient(circle, transparent var(--rim), #000 calc(var(--rim) + 30%));
-  mask: radial-gradient(circle, transparent var(--rim), #000 calc(var(--rim) + 30%));
-  animation: chroma 4s linear infinite; transition: --rim 0.35s ease;
+  content: ""; position: absolute; inset: -2px; border-radius: 50%; filter: blur(3px); opacity: 0.85;
+  background: conic-gradient(var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3));
+  animation: spin 4s linear infinite;
 }
-.result-act.apply:is(:hover, :focus-visible) .apply-rim::before { --rim: 24%; }
+/* The white middle fades out slowly toward the rim, so the colours come in softly rather than at an edge. */
+.apply-rim::after {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(closest-side, var(--surface) 34%, color-mix(in srgb, var(--surface) 72%, transparent) 64%, transparent);
+  transition: scale 0.35s ease;
+}
+.result-act:is(.apply, .ai-act):is(:hover, :focus-visible) .apply-rim::after, .result-act.ai-act.busy .apply-rim::after { scale: 0.84; }
+/* At work on a project (the portfolio page), the light stays grown in and turns faster. */
+.result-act.ai-act.busy .apply-rim::before { animation-duration: 1.4s; }
 .result-act .icon { width: 18px; height: 18px; }
 .result-act:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .act-label {
@@ -1190,7 +1200,7 @@ textarea { resize: vertical; width: 100%; }
   content: ""; position: absolute; top: calc(100% - 4px); left: 50%; width: 8px; height: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
   background: var(--surface); translate: -50% 0; rotate: 45deg;
 }
-:is(.result-act, .seek-ai):is(:hover, :focus-visible) .act-label {
+:is(.result-act, .seek-ai, .voice-go, .voice-lang):is(:hover, :focus-visible) .act-label {
   opacity: 1; translate: -50% 0; scale: 1; transition-delay: 0.25s; transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 /* The sparkles' goes as they are pressed: what they open says it all. */
@@ -1279,6 +1289,7 @@ textarea { resize: vertical; width: 100%; }
 .saved-panel > :is(.rank-row, .saved-empty), .saved-panel .saved-group-head, .saved-panel .result {
   animation: rise-in 0.36s cubic-bezier(0.22, 0.8, 0.3, 1) both; animation-delay: calc(min(var(--i, 0), 8) * 25ms);
 }
+.saved-panel .pf-card { animation: rise-in 0.36s cubic-bezier(0.22, 0.8, 0.3, 1) both; animation-delay: calc(min(var(--i, 0), 8) * 40ms); }
 /* The ranking: a glass pill like the roles', the sparkles' live colours in its round mark, its two lines in ink and
    grey. Under the pointer its glass takes the page's hover shade and the colours deepen, fading in and out. At work
    a thin ring turns round the mark; waiting for the smart search, it is faded and takes no clicks. */
@@ -1316,12 +1327,6 @@ textarea { resize: vertical; width: 100%; }
 .score-mark.strong, .score-mark.good { background: color-mix(in srgb, var(--good) 15%, var(--surface)); color: color-mix(in srgb, var(--good) 80%, var(--ink)); }
 .score-mark.fair { background: color-mix(in srgb, var(--warn) 17%, var(--surface)); color: color-mix(in srgb, var(--warn) 75%, var(--ink)); }
 .score-mark.low { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); color: var(--ink-3); }
-.result-mark.score-mark.wait { display: flex; align-items: center; justify-content: center; gap: 4px; background: none; box-shadow: inset 0 0 0 1.5px var(--line); }
-.score-mark.wait i { width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); opacity: 0.6; }
-.score-mark.wait.busy i { animation: score-dot 1.2s ease-in-out infinite; }
-.score-mark.wait.busy i:nth-child(2) { animation-delay: 0.15s; }
-.score-mark.wait.busy i:nth-child(3) { animation-delay: 0.3s; }
-@keyframes score-dot { 0%, 60%, 100% { translate: 0 0; opacity: 0.6; } 30% { translate: 0 -4px; opacity: 1; } }
 .score-mark.fresh { animation: score-pop 0.45s cubic-bezier(0.34, 1.4, 0.64, 1); }
 @keyframes score-pop { from { scale: 0.4; } }
 /* An empty list: Pip lying on the top edge of what to do about it, near its start, three screen pixels to each of
@@ -1351,8 +1356,8 @@ textarea { resize: vertical; width: 100%; }
 html.lite .ai-glow { animation: ai-breathe 1.6s ease-in-out infinite alternate; }
 html.lite .rank-pill { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
 @media (prefers-reduced-motion: reduce) {
-  .ai-sky > i, .ai-sky, .busy > .ai-sky::before, .ai-glow, .ai-pill, .saved-panel *, .rank-pill::after, .rank-ring, .score-mark i, .result.faded > *,
-  .apply-rim::before { animation: none !important; transition: none !important; }
+  .ai-sky > i, .ai-sky, .busy > .ai-sky::before, .ai-glow, .ai-pill, .saved-panel *, .rank-pill::after, .rank-ring, .result.faded > *,
+  .apply-rim::before, .apply-rim::after { animation: none !important; transition: none !important; }
 }
 
 /* Tables */
@@ -1586,6 +1591,42 @@ select.status { font-weight: 600; }
 .composer-warn .icon { flex: none; width: 15px; height: 15px; margin-top: 1px; }
 .composer-warn a { margin-inline-start: 4px; color: inherit; font-weight: 600; }
 .composer-hint { margin: 8px 8px 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.45; }
+/* Voice typing (voice.tsx). Its button by the box's others: round, the AI's colours with a white microphone, the
+   colours deepening under the pointer; while it listens, four white bars with round ends, each as tall as the voice is
+   loud (--b0 to --b3, eased in voice.tsx; their height changes, not their scale, so the ends stay round). The language
+   it listens in shows before it then, a round button like the box's others. Each says what it does in the page's
+   floating label (.act-label), never the browser's tooltip. */
+.voice-go {
+  position: relative; isolation: isolate; flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0;
+  border-radius: 50%; background: none; color: #fff; font: inherit; cursor: pointer; transition: scale 0.12s ease;
+}
+.voice-go .icon { width: 20px; height: 20px; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
+.voice-bars { display: flex; align-items: center; gap: var(--bar-gap, 4px); height: 20px; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); animation: say-in 0.2s cubic-bezier(0.22, 0.8, 0.3, 1) both; }
+.voice-bars i { width: var(--bar-w, 3px); height: calc(6px + var(--b, 0) * 14px); border-radius: 999px; background: #fff; }
+.voice-bars i:nth-child(1) { --b: var(--b0, 0); }
+.voice-bars i:nth-child(2) { --b: var(--b1, 0); }
+.voice-bars i:nth-child(3) { --b: var(--b2, 0); }
+.voice-bars i:nth-child(4) { --b: var(--b3, 0); }
+.voice-go:hover .ai-sky { filter: saturate(1.3) brightness(1.04); }
+.voice-go:active { scale: 0.94; }
+.voice-go:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.voice-lang {
+  position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none;
+  color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+  animation: say-in 0.2s cubic-bezier(0.22, 0.8, 0.3, 1) both;
+}
+.voice-lang:hover { background: var(--hover); color: var(--ink); }
+.voice-lang:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+/* The glow behind the box while it listens (VoiceGlow): a canvas over the whole conversation, or the whole new one,
+   under everything in it, so the messages and the box stay over it, and it takes no clicks. */
+.convo, .chat-new { position: relative; isolation: isolate; }
+.voice-glow { position: absolute; inset: 0; z-index: -1; width: 100%; height: 100%; pointer-events: none; }
+/* On a phone the box keeps room for its words: the language stays as it was last set, and is changed on a wider one. */
+@media (max-width: 520px) { .voice-lang { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .voice-lang, .voice-bars { animation: none; }
+  .voice-bars i { height: 12px; }
+}
 
 /* A new conversation: Pip and the question in the middle, the box under them, and a few starts as pills. */
 .chat-new { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; }
@@ -1663,14 +1704,25 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
   --go: #3fd0e0; --go-hi: #a6f6ff; --go-lo: #1f7f95; --go-ink: #0b1230;
   --chip: #1b1e48; --chip-on: #313c8f; --chip-ink: #c9d0ff;
 }
-/* The light theme's forest is a morning one, and the board is wood and parchment. */
+/* The light theme's forest is a morning one, and the board is wood and parchment. Behind it, the colour of its foot
+   (nearGround's first in ui/intro.ts), the colour of the page below too. */
 .login.morning {
-  background: #dfedcf;
+  background: #4d8436;
   --board-line: #3a2414; --board-ink: #4a2f1c; --board-ink-2: #7a5a3e; --board-label: #5a3a24; --board-bad: #b3261e; --board-good: #2f7a2b;
   --field: #fffaf0; --field-ink: #3a2414; --field-ring: #b48a5a; --field-shade: #ead8b2; --field-focus: #367a32;
   --go: #367a32; --go-hi: #5fae44; --go-lo: #24541f; --go-ink: #ffffff;
   --chip: #6e4426; --chip-on: #9a6438; --chip-ink: #fbeed2;
 }
+/* Safari on a phone keeps the page out of some strips of the screen and fills them with the page's own background:
+   on the iPhone Duo's outer screen, the column beside its side buttons and the strip under the page. While the forest
+   is up, that background is the colour of the forest's last rows (nearGround's first in ui/intro.ts), so the ground
+   runs on into those strips instead of white. Where the site knows the page will be its login (forest, which
+   site/server.ts puts on the page), it is that colour from the first moment, as Safari may take the colour then. */
+html.forest, html.forest body, :root:has(.login.morning), :root:has(.login.morning) body { background: #4d8436; }
+:root:has(.login:not(.morning)), :root:has(.login:not(.morning)) body { background: #0c1130; }
+/* Nothing on the login moves with a drag, so the page can't be dragged or pulled past its edge either: on a phone a
+   drag shrinks the browser's bars and makes the page taller. */
+:root:has(.login), :root:has(.login) body { overflow: hidden; overscroll-behavior: none; }
 .intro-bg, .intro-fx { position: absolute; left: 0; top: 0; display: block; }
 .intro-bg { z-index: 0; }
 .intro-fx { z-index: 3; pointer-events: none; }
@@ -1721,9 +1773,10 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 /* The board that makes the account is as tall as the site's board for a computer (.login-card.pc), which a computer
    goes on to it from: its five gaps make up the difference. */
 .login-card.create { gap: 19.37px; }
-/* Fields: square, a stepped edge that turns bright while typing, and a shadow under the top edge. */
+/* Fields: square, a stepped edge that turns bright while typing, and a shadow under the top edge. Their words are
+   16px, as an iPhone zooms the page in on a field with smaller ones as it is tapped. */
 .login-card input, .login-card input:hover, .login-card input:focus {
-  width: 100%; border: 0; border-radius: 0; background: var(--field); color: var(--field-ink);
+  width: 100%; border: 0; border-radius: 0; background: var(--field); color: var(--field-ink); font-size: 16px;
   box-shadow: 0 calc(var(--px) * -1) 0 0 var(--field-ring), 0 var(--px) 0 0 var(--field-ring), calc(var(--px) * -1) 0 0 0 var(--field-ring), var(--px) 0 0 0 var(--field-ring),
     inset 0 var(--px) 0 0 var(--field-shade);
 }
@@ -2805,12 +2858,13 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-board .ai-row-head strong { font-family: var(--pixel); font-size: 25px; font-weight: 800; line-height: 1; }
 /* Whether each is connected: a pill in the board's pixels, its ends stepping in one block and then two (::after,
    under the words), with a light at its start (::before): lit green, glowing in two pixel steps like a power light,
-   while connected; dark on parchment while not. */
-.welcome-board .ai-state {
+   while connected; dark on parchment while not. The key's "not recommended" is the same pill, in the pins' red. */
+.welcome-board .ai-state, .welcome-board .ai-key .result-chip {
   position: relative; isolation: isolate; gap: 8px; padding: 3px 14px 4px; border-radius: 0; background: none;
   color: var(--board-ink-2); font-family: var(--pixel); font-size: 17px; font-weight: 700;
 }
-.welcome-board .ai-state::after {
+.welcome-board .ai-key .result-chip { display: inline-flex; align-items: center; line-height: 1.2; color: #fff; font-weight: 800; }
+.welcome-board .ai-state::after, .welcome-board .ai-key .result-chip::after {
   content: ""; position: absolute; inset: 0; z-index: -1; background: var(--w-chip);
   clip-path: polygon(calc(var(--px) * 2) 0, calc(100% - var(--px) * 2) 0, calc(100% - var(--px) * 2) var(--px), calc(100% - var(--px)) var(--px),
     calc(100% - var(--px)) calc(var(--px) * 2), 100% calc(var(--px) * 2), 100% calc(100% - var(--px) * 2), calc(100% - var(--px)) calc(100% - var(--px) * 2),
@@ -2819,6 +2873,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
     0 calc(var(--px) * 2), var(--px) calc(var(--px) * 2), var(--px) var(--px), calc(var(--px) * 2) var(--px));
 }
 .welcome-board .ai-state::before { width: 8px; height: 8px; border-radius: 0; background: var(--w-faint); }
+.welcome-board .ai-key .result-chip::after { background: var(--w-pin); }
 .welcome-board .ai-state.on { color: var(--w-on-lo); }
 .welcome-board .ai-state.on::after { background: #dcefd3; }
 .welcome-board .ai-state.on::before { background: var(--w-on-hi); animation: power-light 2.4s steps(1, end) infinite; }
@@ -2830,6 +2885,8 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
   .welcome-board .ai-state.on::before { animation: none; box-shadow: 0 0 0 2px rgb(95 174 68 / 35%); }
 }
 .welcome-board .ai-key > summary { color: var(--board-ink-2); font-size: 14px; }
+/* Why not, clear of the key box's pixel ring under it. */
+.welcome-board .ai-key-why { margin-bottom: 6px; }
 /* Where to get a key: a quiet link all in one gold, its key and its arrow out to the other site in the board's pixels. */
 .welcome-board .key-link { gap: 7px; margin-top: 2px; color: var(--w-gold); font-size: 14px; font-weight: 700; }
 .welcome-board .key-link svg { flex: none; height: auto; }
@@ -2997,4 +3054,108 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
   .welcome-track { --track-gap: 18px; grid-template-columns: repeat(8, 34px); gap: 6px; }
   .welcome-track-name { display: none; }
   .welcome-go { width: 100%; justify-content: flex-end; }
+}
+
+/* The portfolio page (Portfolio in views/portfolio.tsx), in the saved jobs page's look: its sky, title and glass
+   buttons, with the owner's line under the title, and a list wider than the jobs', for the projects' pictures. */
+.portfolio-panel { width: min(940px, calc(100% - 76px)); padding-bottom: 64px; }
+.pf-owner { margin: -12px 0 0; color: var(--ink-2); font-size: 15.5px; text-align: center; }
+.portfolio-page .saved-tab { gap: 8px; }
+.portfolio-page .saved-tab .icon { width: 17px; height: 17px; }
+/* Adding a project: the jobs search's round box, narrower, its hint in the middle of the room its cross leaves
+   (6 + 44 + 8 pixels at the end, less the 24 at the start). */
+.pf-add { width: min(560px, 100%); }
+.pf-add input::placeholder { text-indent: 34px; }
+/* A project's picture: its video, reel or cover, filling a rounded frame with a hairline round it; or, with none, its
+   initial on a tile in its forest colour. A video's button sits in the corner, in the role buttons' glass. */
+.pf-media {
+  position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-radius: 18px;
+  background: color-mix(in srgb, var(--ink) 5%, var(--surface));
+}
+.pf-media::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 8%); pointer-events: none; }
+.pf-media > :is(img, video) { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pf-media.none {
+  display: grid; place-items: center;
+  background: linear-gradient(150deg, color-mix(in srgb, var(--tint) 30%, var(--surface)), color-mix(in srgb, var(--tint) 10%, var(--surface)));
+}
+.pf-media.none span { color: color-mix(in srgb, var(--tint) 55%, var(--ink)); font-family: var(--head); font-size: 64px; font-weight: 700; line-height: 1; }
+.pf-play {
+  position: absolute; z-index: 1; bottom: 12px; inset-inline-end: 12px; isolation: isolate; display: grid; place-items: center; width: 38px; height: 38px;
+  border: 0; border-radius: 50%; color: var(--ink); cursor: pointer;
+  background: linear-gradient(160deg, var(--glass-top), var(--glass-bottom)); backdrop-filter: blur(14px) saturate(180%);
+  box-shadow: inset 0 0 0 1px var(--glass-rim), inset 0 1px 1px var(--glass-shine), 0 0 0 1px rgb(0 0 0 / 5%), 0 6px 18px rgb(0 0 0 / 12%);
+}
+.pf-play::after { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; background: var(--hover); opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
+.pf-play:hover::after { opacity: 1; }
+.pf-play .icon { width: 15px; height: 15px; fill: currentColor; }
+.pf-play:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+/* A Featured project, large, one under another: its picture across the list, then its name, tagline and story beside
+   what stands out in it, each point marked in one of the forest's colours; its chips and buttons under them. */
+.pf-list { display: flex; flex-direction: column; gap: 48px; margin-top: 12px; }
+.pf-card { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pf-body { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 30px; padding-inline: 4px; }
+.pf-story { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.pf-name { margin: 0; font-family: var(--head); font-size: 24px; font-weight: 700; line-height: 1.2; }
+.pf-tagline { margin: 0; color: var(--ink-2); font-size: 16px; line-height: 1.45; }
+.pf-summary { margin: 6px 0 0; font-size: 15px; line-height: 1.65; }
+.pf-highlights { display: flex; flex-direction: column; gap: 9px; margin: 4px 0 0; padding: 0; list-style: none; }
+.pf-highlights li { position: relative; padding-inline-start: 18px; color: var(--ink-2); font-size: 14.5px; line-height: 1.55; }
+.pf-highlights li::before { content: ""; position: absolute; top: 0.6em; inset-inline-start: 2px; width: 7px; height: 7px; border-radius: 50%; background: var(--sky-3); }
+.pf-highlights li:nth-child(5n + 2)::before { background: var(--sky-6); }
+.pf-highlights li:nth-child(5n + 3)::before { background: var(--sky-5); }
+.pf-highlights li:nth-child(5n + 4)::before { background: var(--sky-4); }
+.pf-highlights li:nth-child(5n + 5)::before { background: var(--sky-1); }
+.pf-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-inline: 4px; }
+.pf-card .result-chips { margin: 0; min-width: 0; }
+/* The rest, two to a row, each smaller: its picture, name and tagline, a few chips, its buttons. */
+.pf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 40px 28px; margin-top: 12px; }
+.pf-showcase { gap: 12px; }
+.pf-showcase .pf-media { aspect-ratio: 16 / 10; border-radius: 16px; }
+.pf-showcase .pf-media.none span { font-size: 46px; }
+.pf-showcase .pf-name { font-size: 18px; }
+.pf-showcase .pf-tagline { font-size: 14.5px; }
+.pf-showcase > :is(.pf-story, .result-chips, .result-actions) { padding-inline: 2px; }
+.pf-showcase > .result-actions { align-self: flex-start; }
+/* Nothing yet: under the AI's button, adding one project instead, as underlined words. */
+/* The AI's button as a link, to the conversation at work on the portfolio. */
+a.ai-pill { text-decoration: none; }
+.saved-empty p.pf-or { display: block; margin-top: -6px; color: var(--ink-3); font-size: 14px; }
+.pf-text-btn {
+  padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; cursor: pointer;
+  text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--ink-2) 40%, transparent); text-underline-offset: 3px;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+.pf-text-btn:hover { color: var(--ink); text-decoration-color: currentColor; }
+.pf-text-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+/* Those left out, folded under a group's heading that opens them, each with why. */
+.pf-skipped { margin-top: 40px; }
+.pf-skipped summary.saved-group-head {
+  width: fit-content; margin: 0; padding: 6px 12px; border-radius: 999px; list-style: none; cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.pf-skipped summary::-webkit-details-marker { display: none; }
+.pf-skipped summary:hover { background: var(--hover); color: var(--ink); }
+.pf-skipped summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.pf-skipped summary .icon { width: 16px; height: 16px; transition: rotate 0.25s ease; }
+.pf-skipped[open] summary .icon { rotate: 180deg; }
+.pf-skipped ul { display: flex; flex-direction: column; margin: 6px 0 0; padding: 0 12px; list-style: none; }
+.pf-skipped li { display: flex; flex-direction: column; gap: 2px; padding: 11px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.pf-skipped li:first-child { border-top: 0; }
+.pf-skipped li strong { font-weight: 600; }
+.pf-skipped li span { color: var(--ink-2); }
+@media (max-width: 760px) {
+  .pf-body { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .pf-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .portfolio-panel { width: calc(100% - 32px); }
+  .pf-owner { margin-top: -8px; font-size: 14.5px; }
+  .pf-media { border-radius: 14px; }
+  .pf-name { font-size: 21px; }
+  .pf-foot { flex-direction: column; align-items: flex-start; }
+  .pf-card .result-actions { width: auto; padding-inline-start: 0; }
+  .pf-list { gap: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-play::after, .pf-text-btn, .pf-skipped summary, .pf-skipped summary .icon { transition: none !important; }
 }

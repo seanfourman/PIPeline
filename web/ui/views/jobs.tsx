@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { store, stored, useApp, type AppState } from "../app";
-import { AiSky, api, goTo, Icon, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
+import { AiSky, api, Icon, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
@@ -43,14 +43,14 @@ function postedAgo(date: string, t: (key: string, params?: Record<string, string
 }
 
 // One of the forest colours for a company, the same one each time it comes up.
-function tint(name: string) {
+export function tint(name: string) {
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.codePointAt(0)!) >>> 0;
   return `var(--sky-${(h % 6) + 1})`;
 }
 
 // The company's initial on a round tile, in its forest colour, at the start of a job's row.
-function Initial({ name }: { name: string }) {
+export function Initial({ name }: { name: string }) {
   const initial = [...name.trim()].find((ch) => /[\p{L}\p{N}]/u.test(ch))?.toUpperCase() ?? "?";
   return <span className="result-mark" aria-hidden="true" style={{ "--tint": tint(name) } as React.CSSProperties}>{initial}</span>;
 }
@@ -236,7 +236,7 @@ const pipFound = (jobs: Record<string, any>[]) => jobs.filter((j) => j.tier !== 
 // Behind the search, only gradients, as if alive: a forest rainbow (the --sky colours, a sunny forest's by day and
 // the night forest's at night) as six clouds that drift, turn and stretch round a breathing glow, blending as they
 // pass, each on its own slow course.
-const Sky = () => (
+export const Sky = () => (
   <div className="seek-sky" aria-hidden="true">
     {[1, 2, 3, 4, 5, 6].map((n) => <span key={n} className={`sky-blob sky-blob-${n}`} />)}
     <span className="sky-core" />
@@ -704,10 +704,11 @@ function Quick() {
   // The first search of a visit: the box and the roles rise from the middle of the page to the top (from where
   // the box was, rise), and the question over them goes down into the box as it rises, fading, gone by the time
   // the box is up. Pip rides up on the box for a moment, frightened, then leaps off it and runs away
-  // (EscapingPip). He is back on the box the next time the page opens.
+  // (EscapingPip). He stays away while the search's results are kept (search, above), so going to another page and
+  // back finds the results without him; he is on the box again on the next visit, which starts without a search.
   const page = useRef<HTMLDivElement>(null);
   const rise = useRef<{ box: number; title: number } | null>(null);
-  const [pip, setPip] = useState<{ phase: "rest" | "scared" | "escape" | "gone"; x?: number; y?: number }>({ phase: "rest" });
+  const [pip, setPip] = useState<{ phase: "rest" | "scared" | "escape" | "gone"; x?: number; y?: number }>(() => ({ phase: search.results !== null || search.busy ? "gone" : "rest" }));
   const asked = search.results !== null || search.busy;
   useLayoutEffect(() => {
     const before = rise.current;
@@ -938,13 +939,10 @@ function groupOf(job: Found): (typeof GROUPS)[number] {
 
 // The ranking's score at the start of a job Pip found, on a round tile where a search result has the company's
 // initial: green for a strong or good fit, amber for a fair one, grey below, or when the ranking left the job out
-// (out). Not ranked yet, an empty ring with three dots, which rise in turn while the ranking runs (busy). fresh is a
-// score just come in while the page is open, which pops up.
-function Score({ score, busy = false, fresh = false, out = false }: { score: number | null; busy?: boolean; fresh?: boolean; out?: boolean }) {
+// (out). A job not ranked yet has its company's initial there, as everywhere else. fresh is a score just come in
+// while the page is open, which pops up.
+function Score({ score, fresh = false, out = false }: { score: number; fresh?: boolean; out?: boolean }) {
   const { t } = useApp();
-  if (score === null) return (
-    <span className={`result-mark score-mark wait ${busy ? "busy" : ""}`} role="img" aria-label={t("jobs.unscored")}><i /><i /><i /></span>
-  );
   return (
     <span className={`result-mark score-mark ${out ? "low" : bandOf(score)} ${fresh ? "fresh" : ""}`} role="img" aria-label={t("jobs.score", { n: score })}>
       {score}
@@ -1031,6 +1029,18 @@ function RankPill({ waiting, ranking, searching }: { waiting: number; ranking?: 
   const title = busy ? t("jobs.rankRunning") : waiting === 1 ? t("jobs.rankNewOne") : t("jobs.rankNew", { n: waiting });
   const note = busy ? t("jobs.rankRunningNote") : searching ? t("jobs.rankWaitSmart")
     : waiting > RANK_AT_ONCE ? `${t("jobs.rankAtOnce", { max: RANK_AT_ONCE })} ${t("jobs.aiQuota", { ai })}` : t("jobs.aiQuota", { ai });
+  return (
+    <AiAction title={title} note={note} busy={busy} error={error} disabled={busy || searching} onClick={rank}
+      chat={ranking && { id: ranking.id, label: t("jobs.rankWatch") }} />
+  );
+}
+
+// Work the AI does, offered over a list: a glass pill like the role buttons on the jobs page, the sparkles' live colours
+// in its round mark, and two lines, what it does and what it takes. At work a ring turns round the mark, and while
+// that work has a conversation (chat) the pill opens it. Why it couldn't start shows under it.
+export function AiAction({ title, note, busy = false, disabled = false, error = "", onClick, chat }: {
+  title: string; note: string; busy?: boolean; disabled?: boolean; error?: string; onClick?: () => void; chat?: { id: string; label: string } | null;
+}) {
   const inside = (
     <>
       <span className="rank-orb" aria-hidden="true"><AiSky orb />{busy && <span className="rank-ring" />}<Icon name="ai" /></span>
@@ -1039,9 +1049,9 @@ function RankPill({ waiting, ranking, searching }: { waiting: number; ranking?: 
   );
   return (
     <div className="rank-row" aria-live="polite">
-      {ranking
-        ? <a className="rank-pill busy" href={`/chat/${ranking.id}`} aria-label={`${title} ${t("jobs.rankWatch")}`}>{inside}</a>
-        : <button type="button" className={`rank-pill ${busy ? "busy" : ""}`} disabled={busy || searching} onClick={rank}>{inside}</button>}
+      {chat
+        ? <a className={`rank-pill ${busy ? "busy" : ""}`} href={`/chat/${chat.id}`} aria-label={`${title} ${chat.label}`}>{inside}</a>
+        : <button type="button" className={`rank-pill ${busy ? "busy" : ""}`} disabled={disabled} onClick={onClick}>{inside}</button>}
       {error && <small className="error-line" role="alert">{error}</small>}
     </div>
   );
@@ -1049,7 +1059,7 @@ function RankPill({ waiting, ranking, searching }: { waiting: number; ranking?: 
 
 // An empty list: Pip lying on top of what to do about it, as he lies on the search box on the jobs page, and under it
 // what the list waits for.
-function Empty({ title, text, after, children }: { title: string; text: string; after?: React.ReactNode; children: React.ReactNode }) {
+export function Empty({ title, text, after, children }: { title: string; text: string; after?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="saved-empty">
       <div className="saved-empty-stage">
@@ -1150,7 +1160,9 @@ function FoundList() {
           <div className="results">
             {list.map((job) => (
               <JobRow key={job.key} job={job} index={index++} chips={<FoundChips job={job} />}
-                lead={<Score score={typeof job.score === "number" ? job.score : null} busy={Boolean(ranking)} fresh={fresh.has(job.key)} out={group === "out"} />} />
+                lead={typeof job.score === "number"
+                  ? <Score score={job.score} fresh={fresh.has(job.key)} out={group === "out"} />
+                  : <Initial name={job.company || job.title || "?"} />} />
             ))}
           </div>
         </section>
@@ -1161,25 +1173,30 @@ function FoundList() {
 
 // The saved jobs, a tab of their own in the sidebar, in the jobs page's look: the forest rainbow's moving sky behind
 // a question-sized title, and under it the two lists, the jobs the user saved and those Pip found, as two glass
-// buttons that say how many each has, the open one in ink; then the open list, as wide as the search's results. The
-// tab is in the address (/saved/found), so the home page's links open Pip's; with nothing saved yet, Pip's opens
-// first. The arrow keys go from one button to the other. Opened, a list's rows rise in.
+// buttons that say how many each has, the open one in ink; then the open list, as wide as the search's results.
+// The open list is the page's own, not the address's (which stays /saved): picked once the lists are in, Pip's while
+// nothing is saved yet, or the one an address from a link names (the home page's /saved/found), and changed only by
+// the two buttons, so saving or removing a job never switches it. The arrow keys go from one button to the other.
+// Opened, a list's rows rise in.
 export function SavedJobs() {
-  const { s, t, arg } = useApp();
+  const { s, t, arg, loaded } = useApp();
   const mine = s.saved ?? [];
   const found = pipFound(s.jobs);
-  const tab = arg === "mine" || arg === "found" ? arg : mine.length ? "mine" : "found";
+  const [picked, setPicked] = useState<"mine" | "found" | null>(arg === "mine" || arg === "found" ? arg : null);
+  const tab = picked ?? (mine.length ? "mine" : "found");
+  useEffect(() => { if (loaded && !picked) setPicked(tab); }, [loaded, picked, tab]);
+  useLayoutEffect(() => { if (location.pathname !== "/saved") history.replaceState(null, "", "/saved"); }, []);
   const keys = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     const other = tab === "mine" ? "found" : "mine";
-    goTo(`/saved/${other}`);
+    setPicked(other);
     requestAnimationFrame(() => document.getElementById(`saved-tab-${other}`)?.focus());
   };
   const tabButton = (id: "mine" | "found", label: string, n: number) => (
     <button
       type="button" role="tab" id={`saved-tab-${id}`} aria-controls="saved-panel" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1}
-      className={`seek-pill saved-tab ${tab === id ? "on" : ""}`} onClick={() => goTo(`/saved/${id}`)}
+      className={`seek-pill saved-tab ${tab === id ? "on" : ""}`} onClick={() => setPicked(id)}
     >
       {label}<span className="saved-count">{n}</span>
     </button>

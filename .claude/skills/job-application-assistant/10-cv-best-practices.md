@@ -91,7 +91,7 @@ What the research on CVs agrees on, turned into rules for writing and reviewing 
 
 ### Honest and human
 
-41. **Write like the person who did the work.** Hiring managers rank AI-written CVs among their top red flags, and generic claims, buzzwords and the same rhythm in every line give one away. Describe work done with AI tools by what was built and decided, not by the tool.
+41. **Write like the person who did the work.** Hiring managers rank AI-written CVs among their top red flags, and generic claims, buzzwords and the same rhythm in every line give one away. Describe work done with AI tools by what was built and decided, not by the tool. Before the final check, give the summary, the bullets and the project lines the humanizer pass (`.claude/skills/humanizer/SKILL.md`, in its embedded mode): it rewrites the patterns that mark text as AI-written and keeps every fact. The CV's own form stays, as `/apply` Step 4b says: verb-first bullets with no "I", the posting's exact terms, and only the template's bold.
 42. **Rewrite these words on sight,** unless a specific fact right after them earns them: responsible for, duties included, helped, worked on, various, etc., team player, hard-working, motivated, passionate, detail-oriented, results-driven, dynamic, synergy, proven track record, spearheaded, leveraged, utilized ("used" says it), excellent communication skills. In Hebrew: אחראי/ת על, שחקן/ית צוות, יחסי אנוש מעולים, ראש גדול, מוטיבציה גבוהה, יכולת למידה גבוהה. The banned list in `user/cv_checks.json` is what stops the build.
 43. **No hidden text, ever:** no white or tiny text, no keywords outside the visible page, no instructions to AI screeners. They are found, and the CV is thrown out.
 44. **The interview test.** The candidate can talk about every line for two minutes without backtracking (03-writing-style.md), because interviewers ask about anything on the page. A line that fails is softened or cut.
@@ -106,7 +106,7 @@ Before the CV is done, every answer is yes:
 - Every skill is an exact tool the posting values, in three to five categories, with no levels.
 - Every bullet says what the candidate changed, built or decided, opens with a specific verb, shows a result or a scale and fits its line, and no two read alike.
 - Every employer, title, date, degree, number and skill is in the profile or the master CV, or among the additions CV_RULES.md allows.
-- There is no cliché, AI-sounding phrase, personal detail or hidden text.
+- There is no cliché, AI-sounding phrase, personal detail or hidden text, and the humanizer pass ran.
 - Every date carries a month, in one format, tools are spelled right, numbers are digits, bullets end alike, and there are no typos.
 - It fits one page within the CV rules' limits.
 

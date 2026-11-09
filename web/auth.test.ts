@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import os from "node:os";
 import path from "node:path";
 import { NAME_RULE as SITE_NAME_RULE } from "../site/store";
-import { createAuth, REMEMBERED_COOKIE, rememberedCookie, rememberedOf, SESSION_COOKIE, SESSION_MS } from "./auth";
+import { createAuth, openedByHand, REMEMBERED_COOKIE, rememberedCookie, rememberedOf, SESSION_COOKIE, SESSION_MS } from "./auth";
 import { commonPasswords, NAME_RULE, nameProblem, PASSWORD_MIN, passwordChecks, passwordError } from "./ui/account-rules";
 
 const cookie = (id: string, others = "job_token=abc") => `${others}; ${SESSION_COOKIE}=${id}`;
@@ -186,5 +186,29 @@ describe("the logins the browser keeps to this computer's other accounts", () =>
     for (const wrong of ["", id.slice(1), "0".repeat(32)]) expect(auth.holds(wrong)).toBe(false);
     auth.logout(cookie(id));
     expect(createAuth(file).holds(id)).toBe(false);
+  });
+});
+
+describe("a page of Pip asked for by hand, let past the start link's cookie", () => {
+  const asked = (headers: Record<string, string>) => openedByHand(new Headers(headers));
+  const page = { "sec-fetch-mode": "navigate", "sec-fetch-dest": "document" };
+
+  test("its address typed or a bookmark opened, and a click on Pip's own page, are let in", () => {
+    expect(asked({ ...page, "sec-fetch-site": "none", "sec-fetch-user": "?1" })).toBe(true);
+    expect(asked({ ...page, "sec-fetch-site": "none" })).toBe(true);
+    expect(asked({ ...page, "sec-fetch-site": "same-origin", "sec-fetch-user": "?1" })).toBe(true);
+  });
+
+  test("another site's link, a page on another of this computer's ports, or a page moving itself, are not", () => {
+    expect(asked({ ...page, "sec-fetch-site": "cross-site", "sec-fetch-user": "?1" })).toBe(false);
+    expect(asked({ ...page, "sec-fetch-site": "same-site", "sec-fetch-user": "?1" })).toBe(false);
+    expect(asked({ ...page, "sec-fetch-site": "same-origin" })).toBe(false);
+  });
+
+  test("a script's request, a frame, a picture, or a browser that says nothing, are not", () => {
+    expect(asked({ "sec-fetch-site": "none", "sec-fetch-mode": "cors", "sec-fetch-dest": "empty" })).toBe(false);
+    expect(asked({ "sec-fetch-site": "none", "sec-fetch-mode": "navigate", "sec-fetch-dest": "iframe" })).toBe(false);
+    expect(asked({ "sec-fetch-site": "none", "sec-fetch-mode": "no-cors", "sec-fetch-dest": "image" })).toBe(false);
+    expect(asked({})).toBe(false);
   });
 });
