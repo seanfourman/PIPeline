@@ -604,25 +604,46 @@ async function api(req: Request, url: URL): Promise<Response> {
     try { openLogin(provider); } catch (err) { if (err instanceof ChatbotError) throw new EditError(err.code); throw err; }
     return json({ ok: true });
   }
-  // The new jobs ranked (ranker.ts), or the smart search and save (scraper.ts), by the settings' AI, the next
+  // A job's key as seen_jobs.json has it (tools/job_key.py): what a job's own ranking button may name.
+const JOB_KEY = /^[a-z0-9][a-z0-9_-]{0,199}$/;
+// Jobs asked to be ranked one by one while a list's run was under way, to go as soon as it is done.
+let rankNext: string[] = [];
+
+// A run over the job list, in a conversation of its own, one at a time; once it is done, the jobs asked to be ranked
+// meanwhile go next.
+function startList(job: "rank" | "scrape" | "portals", keys: string[] = []) {
+  listBusy = job;
+  const settings = loadSettings();
+  const lang = settings.language === "en" ? "en" : "he";
+  const title = job === "rank" ? "/rank" : job === "scrape" ? "/job-scraper" : lang === "he" ? "בדיקת פורטלים" : "Portals check";
+  return createTaskSession(title, (steps, signal) => {
+    const ask = askFor(steps);
+    const work = job === "rank" ? rankJobs({ steps, signal, lang, ask, keys })
+      : job === "scrape" ? scrapeJobs({ steps, signal, lang, ask, settings })
+      : scanPortals({ steps, signal, lang, ask, settings, discover: true });
+    return work.finally(() => {
+      listBusy = "";
+      if (!rankNext.length) return;
+      const next = rankNext;
+      rankNext = [];
+      startList("rank", next);
+    });
+  });
+}
+
+// The new jobs ranked (ranker.ts), or the smart search and save (scraper.ts), by the settings' AI, the next
   // connected one taking over from one that fails for the rest of the run, and the server doing everything else.
   // One run of each at a time, since two would pick the same jobs; and while one writes the list, the other waits.
   // The portals check, from the portals page: the employers' own lists read now (scraper.ts scanPortals).
   if (parts[0] === "rank" || parts[0] === "scrape" || (parts[0] === "portals" && parts[1] === "scan")) {
-    if (listBusy) throw new EditError(`${listBusy}_busy`, 409);
-    const job = parts[0];
-    listBusy = job;
-    const settings = loadSettings();
-    const lang = settings.language === "en" ? "en" : "he";
-    const title = job === "rank" ? "/rank" : job === "scrape" ? "/job-scraper" : lang === "he" ? "בדיקת פורטלים" : "Portals check";
-    const session = createTaskSession(title, (steps, signal) => {
-      const ask = askFor(steps);
-      const work = job === "rank" ? rankJobs({ steps, signal, lang, ask })
-        : job === "scrape" ? scrapeJobs({ steps, signal, lang, ask, settings })
-        : scanPortals({ steps, signal, lang, ask, settings, discover: true });
-      return work.finally(() => { listBusy = ""; });
-    });
-    return json(session.summary());
+    // A job's own button ranks that job (keys): asked while a run is under way, it waits its turn and goes next,
+    // with any others asked meanwhile, rather than being turned away.
+    const keys = parts[0] === "rank" && Array.isArray(body.keys) ? [...new Set(body.keys.map(String).filter((k: string) => JOB_KEY.test(k)))].slice(0, 50) : [];
+    if (listBusy) {
+      if (keys.length) { rankNext = [...new Set([...rankNext, ...keys])]; return json({ queued: true }); }
+      throw new EditError(`${listBusy}_busy`, 409);
+    }
+    return json(startList(parts[0] === "portals" ? "portals" : parts[0], keys).summary());
   }
   if (parts[0] === "sessions" && !parts[1]) {
     const prompt = String(body.prompt ?? "").trim();

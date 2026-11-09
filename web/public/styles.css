@@ -1327,6 +1327,56 @@ textarea { resize: vertical; width: 100%; }
 .rank-text strong { font-size: 15px; font-weight: 700; }
 .rank-text small { color: var(--ink-2); font-size: 12.5px; }
 /* Pip's list in groups by how well they fit, each under its name, in grey, and how many it has. */
+/* Over a list (ListBar in jobs.tsx), quiet: one slim box as wide as the list, a magnifier at its start, the words
+   typed in it, and at its end one button for the filters, which says how many are in use; or, in q2, the filters as a
+   line of plain words under the box, each opening its own choices. Nothing else shows until a filter is in use: then
+   how many jobs are left of how many, what is in use as chips to take off, and a way to clear them all. In q3 the
+   box sits on the lists' own row, beside their buttons. */
+.list-bar { position: relative; z-index: 3; display: flex; flex-direction: column; gap: 10px; margin: 2px 0 10px; }
+.list-search {
+  position: relative; display: flex; align-items: center; gap: 10px; height: 46px; padding-inline: 16px 6px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface); transition: border-color 0.2s ease;
+}
+.list-search:focus-within { border-color: color-mix(in srgb, var(--ink) 35%, var(--line)); }
+.list-search > .icon { flex: none; width: 18px; height: 18px; color: var(--ink-3); }
+.list-search input, .list-search input:hover, .list-search input:focus { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; box-shadow: none; font-size: 15px; }
+.list-search input::-webkit-search-cancel-button { display: none; }
+.list-x { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease; }
+.list-x:hover { background: var(--hover-soft); color: var(--ink); }
+.list-x .icon { width: 16px; height: 16px; }
+.list-filter {
+  flex: none; display: inline-flex; align-items: center; gap: 7px; height: 34px; padding-inline: 12px 14px; border: 0; border-radius: 999px;
+  background: var(--hover-soft); color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+}
+.list-filter:hover { background: color-mix(in srgb, var(--ink) 9%, var(--surface)); }
+.list-filter .icon { width: 16px; height: 16px; }
+.list-filter.on { background: var(--ink); color: var(--bg); }
+.list-filter-n { display: grid; place-items: center; min-width: 18px; height: 18px; padding-inline: 5px; border-radius: 999px; background: var(--bg); color: var(--ink); font-size: 11.5px; font-weight: 700; }
+.list-search > .seek-panel { top: calc(100% + 8px); }
+.list-words { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 18px; padding-inline: 14px; }
+.list-word-slot { position: relative; }
+.list-word {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 0; border: 0; background: none; color: var(--ink-2);
+  font: inherit; font-size: 13.5px; cursor: pointer; transition: color 0.2s ease;
+}
+.list-word:hover, .list-word.on { color: var(--ink); }
+.list-word b { font-weight: 700; }
+.list-word .icon { width: 14px; height: 14px; opacity: 0.55; }
+.list-word-panel { top: calc(100% + 6px); inset-inline-start: -8px; inset-inline-end: auto; }
+.list-found { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-inline: 14px; color: var(--ink-2); font-size: 13.5px; }
+.list-used { display: inline-flex; align-items: center; gap: 4px; border: 0; cursor: pointer; font: inherit; font-size: 12.5px; }
+.list-used .icon { width: 13px; height: 13px; }
+.list-clear { padding: 2px 4px; border: 0; background: none; color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.choice-count { margin-inline-start: 6px; font-weight: 700; opacity: 0.6; }
+/* A job's own ranking (RankOne in jobs.tsx): a button like the row's others, turning while it ranks. */
+.result-act.rank-one.busy { cursor: default; }
+.result-act.rank-one .spinner { width: 16px; height: 16px; }
+.list-none { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 48px 16px; color: var(--ink-2); text-align: center; }
+.saved-row { display: flex; flex-direction: column; align-items: center; gap: 18px; width: min(760px, 100%); }
+.look-q3 .saved-row { flex-direction: row; justify-content: space-between; }
+.look-q3 .saved-row .list-bar { flex: 1; max-width: 380px; margin: 0; }
+/* There its menus open over the list under the row. */
+.look-q3 .saved-top { z-index: 4; }
 .saved-group { display: flex; flex-direction: column; }
 .saved-group-head { display: flex; align-items: center; gap: 8px; margin: 22px 12px 2px; color: var(--ink-2); font-size: 14px; font-weight: 600; }
 .saved-group-count { color: var(--ink-3); font-weight: 500; }
@@ -2007,7 +2057,7 @@ html.forest .boot-paws { color: #ffffff; }
    comes up and breathes but stands still. */
 html.lite .seek-sky *, html.lite .seek-ai::before { animation: none !important; }
 html.lite .smart-glow { animation: ai-glow-in 0.5s ease-out 0.35s backwards, ai-breathe 1.6s ease-in-out 0.85s infinite alternate; }
-html.lite :is(.seek-pill, .role-fan-item) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
+html.lite :is(.seek-pill, .role-fan-item):not(.on) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
 html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0 / 45%); }
 @media (prefers-reduced-motion: reduce) {
   .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .more-menu, .more-menu :is(a, button), .nav > button .icon, .account .icon, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .login-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }

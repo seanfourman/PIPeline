@@ -69,7 +69,10 @@ export function Initial({ name }: { name: string }) {
 // the inside of its rim (.apply-rim in styles.css). Under the pointer, or reached by the keyboard, a button's name
 // floats over it. index is its place in the list, for rising in one after another; faded, a job just taken off the
 // saved list, kept in its place.
-function JobRow({ job, index, lead, chips, faded = false }: { job: Job; index: number; lead: React.ReactNode; chips?: React.ReactNode; faded?: boolean }) {
+// rank: a job of Pip's not ranked yet has a button that ranks it on its own (RankOne), turning while that runs.
+function JobRow({ job, index, lead, chips, faded = false, rank }: {
+  job: Job; index: number; lead: React.ReactNode; chips?: React.ReactNode; faded?: boolean; rank?: { busy: boolean; onRank: () => void };
+}) {
   const { t, start } = useApp();
   const { isSaved, toggle } = useSave();
   const on = isSaved(job.url);
@@ -90,6 +93,13 @@ function JobRow({ job, index, lead, chips, faded = false }: { job: Job; index: n
           <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}>
             <Icon name="open" /><span className="act-label" aria-hidden="true">{t("jobs.open")}</span>
           </a>
+          {rank && (
+            <button type="button" className={`result-act rank-one ${rank.busy ? "busy" : ""}`} aria-label={`${t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}: ${job.title}`}
+              aria-busy={rank.busy} disabled={rank.busy} onClick={rank.onRank}>
+              {rank.busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="gauge" />}
+              <span className="act-label" aria-hidden="true">{t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}</span>
+            </button>
+          )}
           <button type="button" className="result-act apply" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}>
             <span className="apply-rim" aria-hidden="true" /><Icon name="apply" /><span className="act-label" aria-hidden="true">{t("jobs.apply")}</span>
           </button>
@@ -971,11 +981,10 @@ export const Jobs = () => <div className="page jobs-page"><Quick /></div>;
 // ---------- the saved jobs page ----------
 
 type Saved = AppState["saved"][number];
-// A job Pip found: gate is the check it failed, its place or its language, when the ranking left it out.
-type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string };
+// A job Pip found: gate is the check it failed, its place or its language, when the ranking left it out; portal is
+// where it was found (seen_jobs.json).
+type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string; portal?: string; fit?: string };
 
-// The most jobs one ranking reads (LIMIT in ranker.ts); the rest wait for the next.
-const RANK_AT_ONCE = 10;
 // The background runs the page waits on, by their conversations' titles (server.ts).
 const RANK = "/rank";
 const SMART = "/job-scraper";
@@ -984,11 +993,13 @@ const SMART = "/job-scraper";
 // 45, and less below that.
 const bandOf = (score: number) => (score >= 75 ? "strong" : score >= 60 ? "good" : score >= 45 ? "fair" : "low");
 
-// The groups Pip's list is shown in, in this order: the strong fits; the good and fair ones; the rest that were
-// ranked; those still waiting to be ranked; and those the ranking left out, for their place or their language.
+// The groups Pip's list is shown in, in this order: the strong fits; the good and fair ones; the rest; those with
+// nothing to go on yet; and those the ranking left out, for their place or their language. A job ranked goes by its
+// score; one not ranked yet by the fit the smart search gave it as it was found (scraper.ts: high, medium, low), so
+// a list of a thousand not yet ranked is still in its order, the best first.
 const GROUPS = ["strong", "worth", "less", "waiting", "out"] as const;
 function groupOf(job: Found): (typeof GROUPS)[number] {
-  if (typeof job.score !== "number") return "waiting";
+  if (typeof job.score !== "number") return job.fit === "high" ? "strong" : job.fit === "medium" ? "worth" : job.fit === "low" ? "less" : "waiting";
   if (job.veto) return "out";
   const band = bandOf(job.score);
   return band === "strong" ? "strong" : band === "low" ? "less" : "worth";
@@ -1065,31 +1076,6 @@ function useKeptList(list: Saved[]) {
     });
   }, [sign]);
   return shown;
-}
-
-// The ranking, over Pip's list while some of it waits to be ranked: a glass pill like the role buttons on the jobs
-// page, the sparkles' live colours in its round mark, how many new jobs it would rank and what that takes. It runs
-// in the background, in a conversation of its own, while Pip peeks out at work (app.tsx); meanwhile a ring turns
-// round the mark, the pill says so and opens that conversation, and the scores come in once it is done. While the
-// smart search runs the ranking waits for it, as the server has it (one of them writes the list at a time).
-function RankPill({ waiting, ranking, searching }: { waiting: number; ranking?: { id: string }; searching: boolean }) {
-  const { t, run, err } = useApp();
-  const ai = MAKERS[useFirstAi()].name;
-  const [starting, setStarting] = useState(false);
-  const [error, setError] = useState("");
-  const busy = Boolean(ranking) || starting;
-  const rank = () => {
-    setStarting(true);
-    setError("");
-    run(RANK).catch((e) => setError(err(e))).finally(() => setStarting(false));
-  };
-  const title = busy ? t("jobs.rankRunning") : waiting === 1 ? t("jobs.rankNewOne") : t("jobs.rankNew", { n: waiting });
-  const note = busy ? t("jobs.rankRunningNote") : searching ? t("jobs.rankWaitSmart")
-    : waiting > RANK_AT_ONCE ? `${t("jobs.rankAtOnce", { max: RANK_AT_ONCE })} ${t("jobs.aiQuota", { ai })}` : t("jobs.aiQuota", { ai });
-  return (
-    <AiAction title={title} note={note} busy={busy} error={error} disabled={busy || searching} onClick={rank}
-      chat={ranking && { id: ranking.id, label: t("jobs.rankWatch") }} />
-  );
 }
 
 // Work the AI does, offered over a list: a glass pill like the role buttons on the jobs page, the sparkles' live colours
@@ -1171,114 +1157,339 @@ function FoundEmpty({ searching }: { searching: boolean }) {
   );
 }
 
-// The jobs the user saved, newest first, more as the list is scrolled down, each led by its company's initial and
-// saying how long ago it was posted; one taken off stays, faded, until the page is left.
-function MineList() {
+// ---------- what the lists are filtered by ----------
+
+// Pip's list and the saved one, each filtered on its own: words in a job's title, company or place; then, for Pip's,
+// how well it fits (its group), its area, how lately it was posted, where it was found, whether it closes within the
+// week, and the order. Kept for the visit, as the search's results are, so the page left and come back to keeps them.
+type Filters = { q: string; fit: string; area: string; days: string; source: string; closing: string; sort: string };
+const NO_FILTERS: Filters = { q: "", fit: "all", area: "all", days: "all", source: "all", closing: "all", sort: "fit" };
+const MINE_DEFAULT: Filters = { ...NO_FILTERS, sort: "new" };
+const filtersKept: Record<"found" | "mine", Filters> = { found: { ...NO_FILTERS }, mine: { ...MINE_DEFAULT } };
+// How the search and filters show, while Sean picks one of three quiet ways (user/mockups/my-jobs): q1, a slim
+// search with one button for the filters in it; q2, the slim search with the filters as a line of words under it;
+// q3, the search and that button on the lists' own row, beside their buttons.
+const LOOK = (() => { try { return localStorage.getItem("pip-myjobs-look") ?? "q1"; } catch { return "q1"; } })();
+
+// Where Pip found a job, by the portal its list names (seen_jobs.json): a job site by its name, an employer's own
+// page among the companies' sites, anything else as another.
+const SOURCE_NAMES: Record<string, string> = {
+  "linkedin-search": "LinkedIn", "freehire-search": "freehire", "alljobs-search": "AllJobs", "drushim-search": "Drushim", "jobmaster-search": "JobMaster",
+};
+const sourceOf = (job: Found) => (SOURCE_NAMES[job.portal ?? ""] ? job.portal! : job.portal === "careers-page" ? "careers" : "other");
+
+// Days since a date given as YYYY-MM-DD, or null without one.
+const ageOf = (date: string | undefined) => {
+  const days = daysTo(date);
+  return days === null ? null : -days;
+};
+const within = (n: number | null, most: number) => n !== null && n >= 0 && n <= most;
+const has = (words: string, ...texts: string[]) => !words || texts.join(" ").toLowerCase().includes(words);
+
+function filterFound(jobs: Found[], f: Filters) {
+  const words = f.q.trim().toLowerCase();
+  const list = jobs.filter((j) => has(words, j.title, j.company, j.location)
+    && (f.fit === "all" || groupOf(j) === f.fit)
+    && (f.area === "all" || j.tier === f.area)
+    && (f.days === "all" || within(ageOf(j.date), Number(f.days)))
+    && (f.source === "all" || sourceOf(j) === f.source)
+    && (f.closing === "all" || within(daysTo(j.deadline), 7)));
+  return f.sort === "new" ? [...list].sort((a, b) => String(b.date).localeCompare(String(a.date))) : list;
+}
+
+function filterMine(jobs: Saved[], f: Filters) {
+  const words = f.q.trim().toLowerCase();
+  const list = jobs.filter((j) => has(words, j.title, j.company, j.location) && (f.days === "all" || within(ageOf(j.date), Number(f.days))));
+  return f.sort === "posted" ? [...list].sort((a, b) => String(b.date).localeCompare(String(a.date))) : list;
+}
+
+type Option = [string, string, number?];
+type Filter = { key: keyof Filters; label: string; options: Option[] };
+
+// The filters a list has, each a row of choices, with how many jobs each would leave for Pip's groups and areas.
+function useFilters(tab: "found" | "mine", jobs: Found[]): Filter[] {
+  const { t } = useApp();
+  const days: Filter = { key: "days", label: t("jobs.filters.posted"), options: [["all", t("jobs.filters.anyTime")], ...["1", "7", "14", "30"].map((v): Option => [v, t(`jobs.days.d${v}`)])] };
+  if (tab === "mine") return [days, { key: "sort", label: t("jobs.filters.sort"), options: [["new", t("jobs.filters.bySaved")], ["posted", t("jobs.filters.byPosted")]] }];
+  const count = (test: (j: Found) => boolean) => jobs.filter(test).length;
+  const sources = [...new Set(jobs.map(sourceOf))].sort((a, b) => (a === "other" ? 1 : b === "other" ? -1 : a.localeCompare(b)));
+  return [
+    { key: "fit", label: t("jobs.filters.fit"), options: [["all", t("jobs.filters.all")], ...GROUPS.map((g): Option => [g, t(`jobs.groups.${g}`), count((j) => groupOf(j) === g)]).filter((o) => o[2])] },
+    { key: "area", label: t("jobs.filters.area"), options: [["all", t("jobs.filters.all")], ...(["near", "ok", "edge", "unknown"] as const).map((a): Option => [a, t(`tiers.${a}`), count((j) => j.tier === a)]).filter((o) => o[2])] },
+    days,
+    { key: "source", label: t("jobs.filters.source"), options: [["all", t("jobs.filters.all")], ...sources.map((s): Option => [s, SOURCE_NAMES[s] ?? t(`jobs.filters.${s}`)])] },
+    { key: "closing", label: t("jobs.filters.closing"), options: [["all", t("jobs.filters.all")], ["week", t("jobs.filters.thisWeek")]] },
+    { key: "sort", label: t("jobs.filters.sort"), options: [["fit", t("jobs.filters.byFit")], ["new", t("jobs.filters.byNew")]] },
+  ];
+}
+
+// One filter's choices, as the jobs page's search menu has them (Choice), with a count after each where there is one.
+function FilterChoice({ filter, value, onPick }: { filter: Filter; value: string; onPick: (v: string) => void }) {
+  return (
+    <div className="choice" role="radiogroup" aria-label={filter.label}>
+      <span className="choice-label">{filter.label}</span>
+      <div className="choice-options">
+        {filter.options.map(([v, text, n]) => (
+          <button key={v} type="button" role="radio" aria-checked={v === value} className="choice-option" onClick={() => onPick(v)}>
+            {text}{n !== undefined && <span className="choice-count">{n}</span>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// A menu that closes on a click outside its box or on Escape, and stays a moment as it fades (panel-out).
+function useMenu<T extends string>(box: React.RefObject<HTMLElement | null>) {
+  const [open, setOpen] = useState<T | "">("");
+  const [shut, setShut] = useState<T | "">("");
+  const close = () => {
+    if (open && !matchMedia("(prefers-reduced-motion: reduce)").matches) setShut(open);
+    setOpen("");
+  };
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) close(); };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    addEventListener("pointerdown", away);
+    addEventListener("keydown", escape);
+    return () => { removeEventListener("pointerdown", away); removeEventListener("keydown", escape); };
+  });
+  useEffect(() => {
+    if (!shut) return;
+    const timer = setTimeout(() => setShut(""), MENU_OUT_MS);
+    return () => clearTimeout(timer);
+  }, [shut]);
+  const toggle = (which: T) => (open === which ? close() : (setShut(""), setOpen(which)));
+  return { open, toggle, close, showing: (which: T) => open === which || shut === which, panel: (which: T) => (open === which ? "" : "closing") };
+}
+
+// Over a list, quiet: a slim box finding words in the jobs' titles, companies and places as they are typed, and the
+// filters, one way of three while Sean picks (LOOK): behind one button in the box (q1, q3), or as a line of words
+// under it, each opening its own choices (q2). Nothing else shows until a filter is in use; then what is in use, a
+// way to clear it, and how many jobs are left of how many.
+function ListBar({ tab, filters, value, onChange, shown, total }: {
+  tab: "found" | "mine"; filters: Filter[]; value: Filters; onChange: (f: Filters) => void; shown: number; total: number;
+}) {
+  const { t } = useApp();
+  const box = useRef<HTMLDivElement>(null);
+  const menu = useMenu<string>(box);
+  const base = tab === "mine" ? MINE_DEFAULT : NO_FILTERS;
+  const set = (key: keyof Filters) => (v: string) => onChange({ ...value, [key]: v });
+  const used = filters.filter((f) => value[f.key] !== base[f.key]);
+  const nameOf = (f: Filter) => f.options.find(([v]) => v === value[f.key])?.[1] ?? "";
+  const words = LOOK === "q2";
+  return (
+    <div className={`list-bar look-${LOOK}`} ref={box}>
+      <div className="list-search">
+        <Icon name="find" />
+        <input type="search" value={value.q} placeholder={t(tab === "found" ? "jobs.filters.findFound" : "jobs.filters.findMine")} aria-label={t("jobs.filters.find")}
+          dir={value.q ? "auto" : undefined} onChange={(e) => set("q")(e.target.value)} />
+        {value.q && <button type="button" className="list-x" aria-label={t("jobs.filters.clearWords")} onClick={() => set("q")("")}><Icon name="close" /></button>}
+        {!words && (
+          <button type="button" className={`list-filter ${used.length ? "on" : ""}`} aria-expanded={menu.open === "menu"} onClick={() => menu.toggle("menu")}>
+            <Icon name="filters" /><span>{t("jobs.filters.button")}</span>{used.length > 0 && <span className="list-filter-n">{used.length}</span>}
+          </button>
+        )}
+        {!words && menu.showing("menu") && (
+          <div className={`seek-panel seek-filters ${menu.panel("menu")}`} role="group" aria-label={t("jobs.filters.menu")}>
+            {filters.map((f) => <FilterChoice key={f.key} filter={f} value={value[f.key]} onPick={set(f.key)} />)}
+          </div>
+        )}
+      </div>
+      {words && (
+        <div className="list-words">
+          {filters.map((f) => (
+            <div key={f.key} className="list-word-slot">
+              <button type="button" className={`list-word ${used.includes(f) ? "on" : ""}`} aria-expanded={menu.open === f.key} onClick={() => menu.toggle(f.key)}>
+                {f.label}{used.includes(f) && <b>{nameOf(f)}</b>}<Icon name="down" />
+              </button>
+              {menu.showing(f.key) && (
+                <div className={`seek-panel seek-filters list-word-panel ${menu.panel(f.key)}`} role="group" aria-label={f.label}>
+                  <FilterChoice filter={f} value={value[f.key]} onPick={(v) => { set(f.key)(v); menu.close(); }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {(used.length > 0 || value.q) && (
+        <div className="list-found">
+          <span>{t("jobs.filters.left", { n: shown, all: total })}</span>
+          {!words && used.map((f) => (
+            <button key={f.key} type="button" className="result-chip list-used" onClick={() => set(f.key)(base[f.key])}>{nameOf(f)}<Icon name="close" /></button>
+          ))}
+          <button type="button" className="list-clear" onClick={() => onChange({ ...base })}>{t("jobs.filters.clear")}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Nothing left once filtered: what to do about it.
+function NoneLeft({ onClear }: { onClear: () => void }) {
+  const { t } = useApp();
+  return (
+    <div className="list-none">
+      <strong>{t("jobs.filters.noneTitle")}</strong>
+      <button type="button" className="seek-pill" onClick={onClear}>{t("jobs.filters.clear")}</button>
+    </div>
+  );
+}
+
+// The jobs the user saved, filtered, newest saved first unless posted is asked for, more as the list is scrolled
+// down, each led by its company's initial and saying how long ago it was posted; one taken off stays, faded, until
+// the page is left.
+function MineList({ f, onClear }: { f: Filters; onClear: () => void }) {
   const { s, t } = useApp();
   const { isSaved } = useSave();
-  const shown = useKeptList(s.saved ?? []);
-  const at = useMore(shown.length, JOBS_STEP);
-  if (!shown.length) return <MineEmpty />;
+  const all = useKeptList(s.saved ?? []);
+  const shown = filterMine(all, f);
+  const at = useMore(shown.length, JOBS_STEP, JSON.stringify(f));
+  if (!all.length) return <MineEmpty />;
   return (
     <>
-      <div className="results">
-        {shown.slice(0, at.shown).map((job, i) => {
-          const off = !isSaved(job.url);
-          return (
-            <JobRow key={job.url} job={{ ...job, tier: "" }} index={rising(i)} faded={off} lead={<Initial name={job.company || job.title || "?"} />} chips={<>
-              {off && <span className="result-chip">{t("jobs.flags.removed")}</span>}
-              {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
-            </>} />
-          );
-        })}
-      </div>
+      {!shown.length ? <NoneLeft onClear={onClear} /> : (
+        <div className="results">
+          {shown.slice(0, at.shown).map((job, i) => {
+            const off = !isSaved(job.url);
+            return (
+              <JobRow key={job.url} job={{ ...job, tier: "" }} index={rising(i)} faded={off} lead={<Initial name={job.company || job.title || "?"} />} chips={<>
+                {off && <span className="result-chip">{t("jobs.flags.removed")}</span>}
+                {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
+              </>} />
+            );
+          })}
+        </div>
+      )}
       <div ref={at.end} className="more-end" aria-hidden="true" />
     </>
   );
 }
 
-// The jobs Pip found, in groups by how well they fit, each led by its score, best first, more as the list is scrolled
-// down: each group with jobs shown under its name, which counts the whole group. Over them, while some wait to be
-// ranked, the ranking.
-function FoundList() {
+// A job of Pip's ranked on its own, its button turning from the click until its score is in: the server ranks one
+// run at a time and puts a job asked for meanwhile next (server.ts), so the button turns while any ranking runs, or
+// for a moment after the click before that ranking shows. A job that couldn't be ranked (its page wouldn't open)
+// stops turning once no ranking runs. Kept for the visit, so leaving the page and coming back keeps it turning.
+const rankAsked = new Map<string, number>();
+function useRankOne() {
+  const { s, refresh, err, say } = useApp();
+  const [, redraw] = useState(0);
+  const running = s.sessions.some((x) => x.title === RANK && x.status === "running");
+  const busy = (key: string) => {
+    const at = rankAsked.get(key);
+    return at !== undefined && (running || Date.now() - at < 8000);
+  };
+  // Asked once more, so the moment after the click ends and the button settles, as no refresh may come by then.
+  useEffect(() => {
+    if (!rankAsked.size) return;
+    const timer = setTimeout(() => redraw((n) => n + 1), 8200);
+    return () => clearTimeout(timer);
+  });
+  const rank = (key: string) => {
+    rankAsked.set(key, Date.now());
+    redraw((n) => n + 1);
+    api("rank", { keys: [key] }).then(() => refresh()).catch((e) => {
+      rankAsked.delete(key);
+      redraw((n) => n + 1);
+      say(err(e), "confused");
+    });
+  };
+  return { busy, rank };
+}
+
+// The jobs Pip found, filtered, more as the list is scrolled down: by fit, in groups by how well they fit, each led
+// by its score once ranked, best first, each group with jobs shown under its name, which counts the group as
+// filtered; by date, one list, newest first. Over them, while some wait to be ranked, the ranking.
+function FoundList({ f, onClear }: { f: Filters; onClear: () => void }) {
   const { s, t } = useApp();
   const found = pipFound(s.jobs) as Found[];
-  // What the ranking reads: the new ones, and those it couldn't open before.
-  const waiting = s.jobs.filter((j) => j.status === "new" || j.status === "unreachable").length;
-  const ranking = s.sessions.find((x) => x.title === RANK && x.status === "running");
   const searching = s.sessions.some((x) => x.title === SMART && x.status === "running");
   const fresh = useFreshScores(found);
-  const groups = GROUPS.map((g) => [g, found.filter((j) => groupOf(j) === g)] as const).filter(([, list]) => list.length > 0);
-  const ordered = groups.flatMap(([group, list]) => list.map((job) => [group, job] as const));
-  const at = useMore(ordered.length, JOBS_STEP);
+  const rankOne = useRankOne();
+  const list = filterFound(found, f);
+  const grouped = f.sort === "fit";
+  const groups = grouped ? GROUPS.map((g) => [g, list.filter((j) => groupOf(j) === g)] as const).filter(([, l]) => l.length > 0) : [["all", list] as const];
+  const ordered = groups.flatMap(([group, l]) => l.map((job) => [group, job] as const));
+  const at = useMore(ordered.length, JOBS_STEP, JSON.stringify(f));
   if (!found.length) return <FoundEmpty searching={searching} />;
   const shown = ordered.slice(0, at.shown);
   let index = 0;
+  const row = (job: Found) => (
+    <JobRow key={job.key} job={job} index={rising(index++)} chips={<FoundChips job={job} />}
+      rank={typeof job.score === "number" ? undefined : { busy: rankOne.busy(job.key), onRank: () => rankOne.rank(job.key) }}
+      lead={typeof job.score === "number"
+        ? <Score score={job.score} fresh={fresh.has(job.key)} out={Boolean(job.veto)} />
+        : <Initial name={job.company || job.title || "?"} />} />
+  );
   return (
     <>
-      {(waiting > 0 || ranking) && <RankPill waiting={waiting} ranking={ranking} searching={searching} />}
-      {groups.filter(([group]) => shown.some(([g]) => g === group)).map(([group, list]) => (
+      {!list.length && <NoneLeft onClear={onClear} />}
+      {grouped ? groups.filter(([group]) => shown.some(([g]) => g === group)).map(([group, l]) => (
         <section key={group} className="saved-group" aria-labelledby={`saved-group-${group}`}>
           <h2 id={`saved-group-${group}`} className="saved-group-head">
-            {t(`jobs.groups.${group}`)}<span className="saved-group-count">{list.length}</span>
+            {t(`jobs.groups.${group}`)}<span className="saved-group-count">{l.length}</span>
           </h2>
-          <div className="results">
-            {shown.filter(([g]) => g === group).map(([, job]) => (
-              <JobRow key={job.key} job={job} index={rising(index++)} chips={<FoundChips job={job} />}
-                lead={typeof job.score === "number"
-                  ? <Score score={job.score} fresh={fresh.has(job.key)} out={group === "out"} />
-                  : <Initial name={job.company || job.title || "?"} />} />
-            ))}
-          </div>
+          <div className="results">{shown.filter(([g]) => g === group).map(([, job]) => row(job))}</div>
         </section>
-      ))}
+      )) : list.length > 0 && <div className="results">{shown.map(([, job]) => row(job))}</div>}
       <div ref={at.end} className="more-end" aria-hidden="true" />
     </>
   );
 }
 
-// The saved jobs, a tab of their own in the sidebar, in the jobs page's look: the forest rainbow's moving sky behind
-// a question-sized title, and under it the two lists, the jobs the user saved and those Pip found, as two glass
-// buttons that say how many each has, the open one in ink; then the open list, as wide as the search's results.
-// The open list is the page's own, not the address's (which stays /saved): picked once the lists are in, Pip's while
-// nothing is saved yet, or the one an address from a link names (the home page's /saved/found), and changed only by
-// the two buttons, so saving or removing a job never switches it. The arrow keys go from one button to the other.
-// Opened, a list's rows rise in.
+// My jobs, a tab of their own in the sidebar, in the jobs page's look: the forest rainbow's moving sky behind a
+// question-sized title, and under it the two lists, Pip's haul and the jobs the user saved, as two glass buttons that
+// say how many each has, the open one in ink; then the open list's search and filters (ListBar), and the list, as
+// wide as the search's results. The open list is the page's own, not the address's (which stays /saved): Pip's,
+// unless an address from a link names the saved one, and changed only by the two buttons, so saving or removing a job
+// never switches it. The arrow keys go from one button to the other. Opened, a list's rows rise in.
 export function SavedJobs() {
-  const { s, t, arg, loaded } = useApp();
+  const { s, t, arg } = useApp();
   const mine = s.saved ?? [];
-  const found = pipFound(s.jobs);
-  const [picked, setPicked] = useState<"mine" | "found" | null>(arg === "mine" || arg === "found" ? arg : null);
-  const tab = picked ?? (mine.length ? "mine" : "found");
-  useEffect(() => { if (loaded && !picked) setPicked(tab); }, [loaded, picked, tab]);
+  const found = pipFound(s.jobs) as Found[];
+  const [tab, setTab] = useState<"found" | "mine">(arg === "mine" ? "mine" : "found");
+  const [, redraw] = useState(0);
+  const f = filtersKept[tab];
+  const change = (next: Filters) => { filtersKept[tab] = next; redraw((n) => n + 1); };
+  const clear = () => change({ ...(tab === "mine" ? MINE_DEFAULT : NO_FILTERS) });
+  const filters = useFilters(tab, found);
+  const shown = tab === "found" ? filterFound(found, f).length : filterMine(mine, f).length;
   useLayoutEffect(() => { if (location.pathname !== "/saved") history.replaceState(null, "", "/saved"); }, []);
   const keys = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
     const other = tab === "mine" ? "found" : "mine";
-    setPicked(other);
+    setTab(other);
     requestAnimationFrame(() => document.getElementById(`saved-tab-${other}`)?.focus());
   };
   const tabButton = (id: "mine" | "found", label: string, n: number) => (
     <button
       type="button" role="tab" id={`saved-tab-${id}`} aria-controls="saved-panel" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1}
-      className={`seek-pill saved-tab ${tab === id ? "on" : ""}`} onClick={() => setPicked(id)}
+      className={`seek-pill saved-tab ${tab === id ? "on" : ""}`} onClick={() => setTab(id)}
     >
       {label}<span className="saved-count">{n}</span>
     </button>
   );
+  const bar = (tab === "mine" ? mine.length : found.length) > 0 && (
+    <ListBar key={tab} tab={tab} filters={filters} value={f} onChange={change} shown={shown} total={tab === "mine" ? mine.length : found.length} />
+  );
   return (
-    <div className="page jobs-page saved-page">
+    <div className={`page jobs-page saved-page look-${LOOK}`}>
       <div className="saved-top">
         <Sky />
         <h1 className="saved-title">{t("jobs.savedTitle")}</h1>
-        <div className="saved-tabs" role="tablist" aria-label={t("jobs.savedTitle")} onKeyDown={keys}>
-          {tabButton("mine", t("jobs.tabMine"), mine.length)}
-          {tabButton("found", t("jobs.tabFound"), found.length)}
+        <div className="saved-row">
+          <div className="saved-tabs" role="tablist" aria-label={t("jobs.savedTitle")} onKeyDown={keys}>
+            {tabButton("found", t("jobs.tabFound"), found.length)}
+            {tabButton("mine", t("jobs.tabMine"), mine.length)}
+          </div>
+          {LOOK === "q3" && bar}
         </div>
       </div>
       <div id="saved-panel" key={tab} role="tabpanel" aria-labelledby={`saved-tab-${tab}`} className="saved-panel">
-        {tab === "mine" ? <MineList /> : <FoundList />}
+        {LOOK !== "q3" && bar}
+        {tab === "mine" ? <MineList f={f} onClear={clear} /> : <FoundList f={f} onClear={clear} />}
       </div>
     </div>
   );

@@ -65,6 +65,8 @@ WEIGHTS = {"technical": 0.30, "experience": 0.25, "behavioral": 0.15, "career": 
 BANDS = ((75, "Strong Fit"), (60, "Good Fit"), (45, "Moderate Fit"), (30, "Weak Fit"), (0, "Poor Fit"))
 
 DEFAULT_LIMIT = 10
+# The smart search's quick fit, best first (web/scraper.ts FITS); a job without one comes after.
+FIT_ORDER = {"high": 0, "medium": 1, "low": 2}
 URGENT_DAYS = 7
 ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -191,17 +193,23 @@ def cmd_candidates(args) -> int:
     excluded = tracker_pairs(args.tracker)
 
     selected, skipped_tracker = [], 0
+    # Named by key (a job's own button in the web app): those jobs and no other, whatever their status, ranked or
+    # applied to already, as they were asked for by name.
+    wanted = set(args.key or [])
     for key, entry in seen.items():
         status = entry.get("status")
-        if args.all:
+        if wanted:
+            if key not in wanted:
+                continue
+        elif args.all:
             if status == "skipped":
                 continue
         elif status not in ("new", "unreachable"):
             continue
-        if (norm(entry.get("company")), norm(entry.get("title"))) in excluded:
+        if not wanted and (norm(entry.get("company")), norm(entry.get("title"))) in excluded:
             skipped_tracker += 1
             continue
-        if args.focus:
+        if args.focus and not wanted:
             haystack = " ".join(
                 [str(entry.get("title") or ""), str(entry.get("company") or "")]
                 + [str(b) for b in entry.get("strengths") or []]
@@ -210,16 +218,26 @@ def cmd_candidates(args) -> int:
             if args.focus.lower() not in haystack:
                 continue
         selected.append(
-            {
-                "key": key,
-                "title": entry.get("title"),
-                "company": entry.get("company"),
-                "url": entry.get("url"),
-                "portal": entry.get("portal"),
-                "deadline": entry.get("deadline"),
-                "posted_date": entry.get("posted_date"),
-            }
+            (
+                FIT_ORDER.get(str(entry.get("fit") or ""), len(FIT_ORDER)),
+                str(entry.get("posted_date") or entry.get("first_seen") or ""),
+                {
+                    "key": key,
+                    "title": entry.get("title"),
+                    "company": entry.get("company"),
+                    "url": entry.get("url"),
+                    "portal": entry.get("portal"),
+                    "deadline": entry.get("deadline"),
+                    "posted_date": entry.get("posted_date"),
+                },
+            )
         )
+
+    # The best first, so a batch of ten is the ten most worth ranking: by the smart search's quick fit (high, medium,
+    # low, then none), newest first within each.
+    selected.sort(key=lambda item: item[1], reverse=True)
+    selected.sort(key=lambda item: item[0])
+    selected = [row for _, _, row in selected]
 
     eligible = len(selected)
     if args.limit > 0:
@@ -552,6 +570,7 @@ def main() -> int:
     cand.add_argument("--all", action="store_true", help="include every non-skipped status")
     cand.add_argument("--focus", help="substring filter over title, company and stored fit notes")
     cand.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="0 for no cap")
+    cand.add_argument("--key", action="append", help="this entry only, whatever its status (repeatable); pass as --key=KEY")
     cand.set_defaults(func=cmd_candidates)
 
     sweep = sub.add_parser("sweep", parents=[common], help="rule 6's expiry pass, no fetch")

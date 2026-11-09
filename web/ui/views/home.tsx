@@ -116,7 +116,7 @@ export function nextStep(s: AppState, t: ReturnType<typeof useApp>["t"], start: 
   const top = s.jobs.filter((j) => j.status === "ranked" && j.score !== null && j.tier !== "far" && j.url).sort((a, b) => b.score - a.score)[0];
   if (top) return step("top", () => start(`/apply ${top.url}`), { title: top.title, company: top.company, score: top.score });
   const fresh = s.jobs.filter((j) => j.status === "new" || j.status === "unreachable").length;
-  if (fresh) return step("fresh", () => start("/rank"), { n: fresh });
+  if (fresh) return step("fresh", go("/saved/found"), { n: fresh });
   return step("start", go("/jobs"));
 }
 

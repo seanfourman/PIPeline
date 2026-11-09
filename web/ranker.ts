@@ -225,9 +225,11 @@ const NONE: Applied = { ranked: [], vetoed: [], expired: [], unreachable: [], ga
 
 // One run: up to ten new jobs, three at a time, each a step in the conversation; then the scores written back,
 // the expiry sweep over the jobs ranked before, and the report. Stopped, it keeps what was already scored.
-export async function rankJobs(o: { ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; run?: Run; system?: string; limit?: number }) {
+// keys: these jobs only (a job's own button), whatever their status; otherwise the next LIMIT of those waiting.
+export async function rankJobs(o: { ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; run?: Run; system?: string; limit?: number; keys?: string[] }) {
   const { ask, steps, signal, lang, run = runTool } = o;
-  const picked = await run([PYTHON, "tools/rank_state.py", "candidates", "--limit", String(o.limit ?? LIMIT)], { signal });
+  const which = o.keys?.length ? [...o.keys.map((k) => `--key=${k}`), "--limit", "0"] : ["--limit", String(o.limit ?? LIMIT)];
+  const picked = await run([PYTHON, "tools/rank_state.py", "candidates", ...which], { signal });
   if (picked.code !== 0) {
     if (/not found/i.test(picked.err + picked.out)) return WORDS[lang].noState;
     throw new ChatbotError("rank_tool", oneLine(picked.err || picked.out));

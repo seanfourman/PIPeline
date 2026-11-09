@@ -94,6 +94,28 @@ class Candidates(RankStateCase):
             "the user has to know a re-run continues it",
         )
 
+    def test_the_best_fits_go_first_newest_first_within_each(self):
+        self.write_state(
+            {
+                "low-new": entry(fit="low", posted_date="2026-11-08"),
+                "none": entry(posted_date="2026-11-09"),
+                "high-old": entry(fit="high", posted_date="2026-10-01"),
+                "medium": entry(fit="medium", posted_date="2026-11-01"),
+                "high-new": entry(fit="high", posted_date="2026-11-05"),
+            }
+        )
+        out = self.run_tool("candidates", "--limit", "0", "--tracker", str(self.tmp / "none.csv"))
+        self.assertEqual([row["key"] for row in out["selected"]], ["high-new", "high-old", "medium", "low-new", "none"])
+        out = self.run_tool("candidates", "--limit", "2", "--tracker", str(self.tmp / "none.csv"))
+        self.assertEqual([row["key"] for row in out["selected"]], ["high-new", "high-old"], "a batch is the best ones")
+
+    def test_named_jobs_are_ranked_whatever_their_status(self):
+        self.write_state({"a": entry(), "b": entry(status="ranked", rank_score=70), "c": entry(fit="high")})
+        out = self.run_tool("candidates", "--key=b", "--limit", "0", "--tracker", str(self.tmp / "none.csv"))
+        self.assertEqual([row["key"] for row in out["selected"]], ["b"])
+        out = self.run_tool("candidates", "--key=nope", "--limit", "0", "--tracker", str(self.tmp / "none.csv"))
+        self.assertEqual(out["selected"], [])
+
     def test_limit_zero_means_no_cap(self):
         self.write_state({f"k{i}": entry(title=f"Role {i}") for i in range(15)})
         out = self.run_tool("candidates", "--limit", "0", "--tracker", str(self.tmp / "none.csv"))

@@ -72,6 +72,8 @@ function seenJobs(areas: Area[]) {
     // Which check left it out: its place, or its language.
     gate: j.location_verdict === "FAIL" ? "location" : j.language_gate === "FAIL" ? "language" : "",
     fit: String(j.fit ?? ""),
+    // Where it was found: a job site's search, an employer's own page (careers-page), or another.
+    portal: String(j.portal ?? ""),
   }));
 }
 
