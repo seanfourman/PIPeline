@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { byteRange, mediaFile, readPortfolio, webLink } from "./portfolio";
 
 // A portfolio folder with a picture and a video in its media folder, and a file beside it that must never be served.
+// By its real path, as mediaFile answers with one: a Mac's temp folder is under /var, a link to /private/var.
 function folder(portfolio?: unknown) {
-  const dir = mkdtempSync(path.join(os.tmpdir(), "job-portfolio-"));
+  const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), "job-portfolio-")));
   mkdirSync(path.join(dir, "media", "rival-minds"), { recursive: true });
   writeFileSync(path.join(dir, "media", "rival-minds", "cover.jpg"), "jpg");
   writeFileSync(path.join(dir, "media", "rival-minds", "brag.mp4"), "mp4");
