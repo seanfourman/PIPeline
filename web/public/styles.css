@@ -1283,6 +1283,8 @@ textarea { resize: vertical; width: 100%; }
 .saved-tab.seek-pill { padding: 10px 22px; font-size: 15.5px; }
 .saved-tab.on, .saved-tab.on:hover { background: var(--ink); color: var(--bg); box-shadow: 0 8px 24px rgb(0 0 0 / 14%); backdrop-filter: none; cursor: default; }
 .saved-tab.on::before, .saved-tab.on::after { display: none; }
+/* The empty line right after a long list (ui/more.tsx): as it comes near the bottom of the screen, the list shows more. */
+.more-end { height: 1px; }
 .saved-count { margin-inline-start: 8px; font-weight: 700; opacity: 0.65; }
 .saved-panel { display: flex; flex-direction: column; width: min(760px, calc(100% - 76px)); margin: 0 auto; }
 /* The open list rises in, row after row, quickly. */
@@ -1882,6 +1884,10 @@ html.forest, html.forest body, :root:has(.login.morning), :root:has(.login.morni
    prints lighting up one after another, toes the way you read. It fades out as the page fades in. Pip's moves
    are in its own pixels, since inside its SVG a CSS pixel is one of Pip's. */
 .boot { position: fixed; inset: 0; z-index: 50; display: grid; place-content: center; justify-items: center; gap: 30px; background: var(--bg); transition: opacity 0.35s ease; }
+/* Before the site's login (html.forest, from site/server.ts) it is on the forest's ground, the login's colour, with
+   light paw prints: Safari may take the colour for the strips beside its buttons while it shows (styles of .login). */
+html.forest .boot { background: #4d8436; }
+html.forest .boot-paws { color: #ffffff; }
 /* The program stopped with its page open (Offline in app.tsx): over everything, the introduction and its big
    conversation too, the loading screen's page in its very layout, Pip worried where he hops there and at his size
    there, standing still. Under him, where the paw prints are, what happened in the pixel

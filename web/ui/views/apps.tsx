@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useApp } from "../app";
 import { api, Btn, Card, Page } from "../kit";
+import { useMore } from "../more";
 import type { Mood } from "../pip";
 import { TRANSCRIPT_FILE } from "./settings";
 
@@ -113,10 +114,15 @@ function TranscriptLinks({ cvFile }: { cvFile: unknown }) {
   );
 }
 
+// How many applications the table shows at first, and how many more each time its end comes near the bottom of the
+// screen (ui/more.tsx).
+const APPS_STEP = 25;
+
 export function Apps() {
   const { s, t, start, refresh, say, err } = useApp();
   const [error, setError] = useState("");
   const apps = [...s.applications].sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const at = useMore(apps.length, APPS_STEP);
 
   const change = async (a: Record<string, any>, status: string) => {
     setError("");
@@ -138,7 +144,7 @@ export function Apps() {
           <table>
             <thead><tr>{["date", "company", "role", "ats", "card", "status", "docs"].map((c) => <th key={c}>{t(`apps.cols.${c}`)}</th>)}<th /></tr></thead>
             <tbody>
-              {apps.map((a) => {
+              {apps.slice(0, at.shown).map((a) => {
                 const current = normal(a.status);
                 const options = STATUSES.includes(current) ? STATUSES : [current, ...STATUSES];
                 const name = inUserFolder(a.cv_file).match(/^user\/cv\/main_([a-z0-9_]+)\.\w+$/)?.[1];
@@ -169,6 +175,7 @@ export function Apps() {
               })}
             </tbody>
           </table>
+          <div ref={at.end} className="more-end" aria-hidden="true" />
           <p className="note table-note">{t("apps.atsTip")}</p>
         </Card>
       ) : (

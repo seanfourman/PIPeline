@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { store, stored, useApp, type AppState } from "../app";
 import { paintStill } from "../intro";
 import { Btn, goTo } from "../kit";
+import { useMore } from "../more";
 import { Pip, PipAsleep, pixelPath } from "../pip";
 
 // Small one-colour drawings in the banner's pixel blocks rather than a font's or an icon set's: the tick on a
@@ -283,6 +284,9 @@ const PropArt = ({ kind }: { kind: Prop }) => {
 
 // How many squares fit across a shelf: as many as are at least ITEM_MIN wide, and never fewer than two.
 const ITEM_MIN = 180;
+// How many shelves show at first, and how many more each time the last comes near the bottom of the screen
+// (ui/more.tsx).
+const SHELVES_STEP = 3;
 function useColumns() {
   const ref = useRef<HTMLDivElement>(null);
   const [cols, setCols] = useState(4);
@@ -305,31 +309,37 @@ type Place = { job: Job } | { prop: Prop } | { pip: true };
 // with Pip asleep on it.
 function Shelves({ jobs }: { jobs: Job[] }) {
   const [ref, cols] = useColumns();
-  const count = Math.max(cols, Math.ceil(jobs.length / cols) * cols);
+  // A few shelves, and more as the last comes near the bottom of the screen.
+  const at = useMore(jobs.length, cols * SHELVES_STEP);
+  const shown = jobs.slice(0, at.shown);
+  const count = Math.max(cols, Math.ceil(shown.length / cols) * cols);
   // Pip naps in the middle of an empty shelf; the things go round him in turn.
   const pipAt = jobs.length ? -1 : Math.floor((cols - 1) / 2);
   let litter = 0;
   const places: Place[] = Array.from({ length: count }, (_, i) => {
-    if (i < jobs.length) return { job: jobs[i] };
+    if (i < shown.length) return { job: shown[i] };
     if (i === pipAt) return { pip: true };
     return { prop: LITTER[litter++ % LITTER.length] };
   });
   const rows = Array.from({ length: count / cols }, (_, r) => places.slice(r * cols, r * cols + cols));
-  const gaps = count > jobs.length;
+  const gaps = count > shown.length;
   return (
-    <div className="shelves" ref={ref}>
-      {rows.map((row, r) => (
-        <div className="shelf" key={r}>
-          <div className="shelf-places" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-            {row.map((place, i) => ("job" in place ? <Item key={i} job={place.job} /> : (
-              <div key={i} className="place">{"pip" in place ? <PipAsleep className="shelf-pip" /> : <PropArt kind={place.prop} />}</div>
-            )))}
+    <>
+      <div className="shelves" ref={ref}>
+        {rows.map((row, r) => (
+          <div className="shelf" key={r}>
+            <div className="shelf-places" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
+              {row.map((place, i) => ("job" in place ? <Item key={i} job={place.job} /> : (
+                <div key={i} className="place">{"pip" in place ? <PipAsleep className="shelf-pip" /> : <PropArt kind={place.prop} />}</div>
+              )))}
+            </div>
+            <div className="shelf-plank" />
+            {gaps && r === rows.length - 1 && <Sprite className="shelf-web" rows={WEB} colors={{ X: "currentColor" }} />}
           </div>
-          <div className="shelf-plank" />
-          {gaps && r === rows.length - 1 && <Sprite className="shelf-web" rows={WEB} colors={{ X: "currentColor" }} />}
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      <div ref={at.end} className="more-end" aria-hidden="true" />
+    </>
   );
 }
 
@@ -353,7 +363,7 @@ function Item({ job }: { job: Job }) {
 export function Home() {
   const { s, t } = useApp();
   const st = appStats(s);
-  // Every job with a score, best first; a long list runs on down the page.
+  // Every job with a score, best first, more shelves of them as the page is scrolled down (Shelves).
   const top = s.jobs.filter((j) => j.score !== null && j.tier !== "far").sort((a, b) => b.score - a.score);
   const fresh = s.jobs.filter((j) => j.status === "new").length;
   // A plain card in the banner's colours: a pixel picture, the number in pixel digits, the words.

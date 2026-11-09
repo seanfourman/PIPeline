@@ -608,9 +608,16 @@ export function App() {
     };
   }, []);
 
+  // The state as last taken, as text: the same again (as it mostly is, asked every five seconds) draws nothing anew,
+  // which with a thousand jobs in it was the whole app drawn again for nothing.
+  const lastState = useRef("");
   const refresh = useCallback(async () => {
     const next = await api<AppState>("state");
-    setS(next);
+    const text = JSON.stringify(next);
+    if (text !== lastState.current) {
+      lastState.current = text;
+      setS(next);
+    }
     setLoaded(true);
   }, []);
 
@@ -761,7 +768,8 @@ export function App() {
     },
     run: async (prompt) => { await begin(prompt); },
     logout: () => {
-      api("logout", {}).catch(() => {}).finally(() => { setIntro(false); setLoaded(false); setS(EMPTY); setAuth("out"); });
+      // The state as last taken goes too, so the next login's, the same as it may be, is drawn.
+      api("logout", {}).catch(() => {}).finally(() => { setIntro(false); setLoaded(false); lastState.current = ""; setS(EMPTY); setAuth("out"); });
     },
     addAccount: setAdding,
   };

@@ -5,8 +5,14 @@ import React, { useEffect, useState } from "react";
 import { useApp } from "../app";
 import { SaveNote, useAutoSave } from "../autosave";
 import { api, Btn, Card, External, goTo, Icon, Page, Spinner } from "../kit";
+import { useMore } from "../more";
 import { Select } from "../select";
 import { employersToRead, INDUSTRIES, portalOn, PORTALS, webPortals, type How, type OwnPortal, type Portal } from "../../portals";
+
+// How many employers show at first, and how many more each time their end comes near the bottom of the screen
+// (ui/more.tsx), and the group the companies the daily search found are in.
+const EMPLOYERS_STEP = 30;
+const DISCOVERED = "discovered";
 
 type Check = { checked: string; found: number; kept: number; error?: string };
 type Update = (fn: (d: any) => void) => void;
@@ -97,6 +103,13 @@ export function Portals() {
     await api("settings", { ...next, language: lang });
     await refresh();
   }, { ready: Boolean(draft) });
+  // The employers, industry after industry and then those the daily search found, as one list that shows more as it
+  // is scrolled down, each industry with tiles shown under its name.
+  const employers = [
+    ...INDUSTRIES.flatMap((i) => PORTALS.filter((p) => p.kind === "employer" && p.industry === i.id).map((p) => [i.id, p] as const)),
+    ...found.map((p) => [DISCOVERED, p] as const),
+  ];
+  const at = useMore(employers.length, EMPLOYERS_STEP);
   if (!draft) return <Page title={t("portals.title")}><Spinner /></Page>;
 
   const update: Update = (fn) => { const next = structuredClone(draft); fn(next); setDraft(next); };
@@ -179,23 +192,23 @@ export function Portals() {
             <Btn kind="ghost" onClick={() => update((d) => { d.lowTech = true; })}>{t("portals.turnOn")}</Btn>
           </p>
         )}
-        {INDUSTRIES.map((i) => {
-          const here = PORTALS.filter((p) => p.kind === "employer" && p.industry === i.id);
+        {[...INDUSTRIES.map((i) => i.id), DISCOVERED].map((group) => {
+          const here = employers.slice(0, at.shown).filter(([g]) => g === group).map(([, p]) => p);
           if (!here.length) return null;
-          return (
-            <div key={i.id} className="portal-group">
-              <h3 className="role-field-name">{i[lang]}</h3>
+          return group === DISCOVERED ? (
+            <div key={group} className="portal-group">
+              <h3 className="role-field-name">{t("portals.discovered")}</h3>
+              <p className="note">{t("portals.discoveredNote")}</p>
+              <ul className="portal-list tiles">{here.map(row)}</ul>
+            </div>
+          ) : (
+            <div key={group} className="portal-group">
+              <h3 className="role-field-name">{INDUSTRIES.find((i) => i.id === group)![lang]}</h3>
               <ul className="portal-list tiles">{here.map(row)}</ul>
             </div>
           );
         })}
-        {found.length > 0 && (
-          <div className="portal-group">
-            <h3 className="role-field-name">{t("portals.discovered")}</h3>
-            <p className="note">{t("portals.discoveredNote")}</p>
-            <ul className="portal-list tiles">{found.map(row)}</ul>
-          </div>
-        )}
+        <div ref={at.end} className="more-end" aria-hidden="true" />
       </Card>
 
       <Card className="stack">

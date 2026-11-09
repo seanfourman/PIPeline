@@ -2,12 +2,20 @@ import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "reac
 import { store, stored, useApp, type AppState } from "../app";
 import { AiSky, api, Icon, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
+import { useMore } from "../more";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
 import { MAKERS, useFirstAi } from "./chat";
 import { areaName, AreasEditor, marketLabel, MarketsEditor } from "./settings";
 
 type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; verdict?: string; status?: string };
+
+// How many jobs a list of them shows at first, and how many more each time its end comes near the bottom of the
+// screen (ui/more.tsx): each row has its own live AI button.
+const JOBS_STEP = 20;
+// A row's place for its rise in one after another (--i): the first rows' own, and 0 for those that come as the list is
+// scrolled down, which come at once rather than after the rows before them, mostly out of sight.
+const rising = (i: number) => (i < JOBS_STEP ? i : 0);
 
 // Kept between visits to the screen, so leaving and coming back does not lose the results.
 // round counts the searches, so each one's results rise in afresh; chosen is whether the user's saved choices of
@@ -791,6 +799,8 @@ function Quick() {
     return j.tier !== "far";
   });
   const hidden = results.length - shown.length;
+  // A new search, or other areas shown (which changes the list at once), starts again from its top.
+  const at = useMore(shown.length, JOBS_STEP, `${search.round}|${search.areas}`);
 
   return (
     <>
@@ -890,7 +900,8 @@ function Quick() {
         {search.failed.length > 0 && <p className="error-line">{t("jobs.failed", { list: search.failed.join(", ") })}</p>}
         {search.results !== null && !search.busy && shown.length > 0 && (
           <div key={search.round} className="seek-results">
-            <div className="results">{shown.map((j, i) => <ResultRow key={j.id ?? j.url} job={j} index={i} />)}</div>
+            <div className="results">{shown.slice(0, at.shown).map((j, i) => <ResultRow key={j.id ?? j.url} job={j} index={rising(i)} />)}</div>
+            <div ref={at.end} className="more-end" aria-hidden="true" />
           </div>
         )}
       </div>
@@ -1114,30 +1125,35 @@ function FoundEmpty({ searching }: { searching: boolean }) {
   );
 }
 
-// The jobs the user saved, newest first, each led by its company's initial and saying how long ago it was posted;
-// one taken off stays, faded, until the page is left.
+// The jobs the user saved, newest first, more as the list is scrolled down, each led by its company's initial and
+// saying how long ago it was posted; one taken off stays, faded, until the page is left.
 function MineList() {
   const { s, t } = useApp();
   const { isSaved } = useSave();
   const shown = useKeptList(s.saved ?? []);
+  const at = useMore(shown.length, JOBS_STEP);
   if (!shown.length) return <MineEmpty />;
   return (
-    <div className="results">
-      {shown.map((job, i) => {
-        const off = !isSaved(job.url);
-        return (
-          <JobRow key={job.url} job={{ ...job, tier: "" }} index={i} faded={off} lead={<Initial name={job.company || job.title || "?"} />} chips={<>
-            {off && <span className="result-chip">{t("jobs.flags.removed")}</span>}
-            {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
-          </>} />
-        );
-      })}
-    </div>
+    <>
+      <div className="results">
+        {shown.slice(0, at.shown).map((job, i) => {
+          const off = !isSaved(job.url);
+          return (
+            <JobRow key={job.url} job={{ ...job, tier: "" }} index={rising(i)} faded={off} lead={<Initial name={job.company || job.title || "?"} />} chips={<>
+              {off && <span className="result-chip">{t("jobs.flags.removed")}</span>}
+              {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
+            </>} />
+          );
+        })}
+      </div>
+      <div ref={at.end} className="more-end" aria-hidden="true" />
+    </>
   );
 }
 
-// The jobs Pip found, in groups by how well they fit, each led by its score, best first; over them, while some
-// wait to be ranked, the ranking.
+// The jobs Pip found, in groups by how well they fit, each led by its score, best first, more as the list is scrolled
+// down: each group with jobs shown under its name, which counts the whole group. Over them, while some wait to be
+// ranked, the ranking.
 function FoundList() {
   const { s, t } = useApp();
   const found = pipFound(s.jobs) as Found[];
@@ -1146,20 +1162,23 @@ function FoundList() {
   const ranking = s.sessions.find((x) => x.title === RANK && x.status === "running");
   const searching = s.sessions.some((x) => x.title === SMART && x.status === "running");
   const fresh = useFreshScores(found);
-  if (!found.length) return <FoundEmpty searching={searching} />;
   const groups = GROUPS.map((g) => [g, found.filter((j) => groupOf(j) === g)] as const).filter(([, list]) => list.length > 0);
+  const ordered = groups.flatMap(([group, list]) => list.map((job) => [group, job] as const));
+  const at = useMore(ordered.length, JOBS_STEP);
+  if (!found.length) return <FoundEmpty searching={searching} />;
+  const shown = ordered.slice(0, at.shown);
   let index = 0;
   return (
     <>
       {(waiting > 0 || ranking) && <RankPill waiting={waiting} ranking={ranking} searching={searching} />}
-      {groups.map(([group, list]) => (
+      {groups.filter(([group]) => shown.some(([g]) => g === group)).map(([group, list]) => (
         <section key={group} className="saved-group" aria-labelledby={`saved-group-${group}`}>
           <h2 id={`saved-group-${group}`} className="saved-group-head">
             {t(`jobs.groups.${group}`)}<span className="saved-group-count">{list.length}</span>
           </h2>
           <div className="results">
-            {list.map((job) => (
-              <JobRow key={job.key} job={job} index={index++} chips={<FoundChips job={job} />}
+            {shown.filter(([g]) => g === group).map(([, job]) => (
+              <JobRow key={job.key} job={job} index={rising(index++)} chips={<FoundChips job={job} />}
                 lead={typeof job.score === "number"
                   ? <Score score={job.score} fresh={fresh.has(job.key)} out={group === "out"} />
                   : <Initial name={job.company || job.title || "?"} />} />
@@ -1167,6 +1186,7 @@ function FoundList() {
           </div>
         </section>
       ))}
+      <div ref={at.end} className="more-end" aria-hidden="true" />
     </>
   );
 }
