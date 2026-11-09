@@ -80,6 +80,23 @@ describe("scraper", () => {
     expect(text).toContain("freehire Israel");
   });
 
+  test("a stop ends the searches under way at once, and nothing is judged or kept", async () => {
+    // Each search hangs until it is stopped, as a site that takes its time does.
+    const search: Search = (_role, _settings, signal) => new Promise((resolve) => {
+      signal?.addEventListener("abort", () => resolve({ results: [hit(1)], failed: [] }));
+    });
+    const { run, stored } = fakeTools();
+    let asked = 0;
+    const stop = new AbortController();
+    const started = Date.now();
+    setTimeout(() => stop.abort(), 50);
+    const text = await scrapeJobs({ ask: async () => { asked++; return "[]"; }, steps: steps().steps, signal: stop.signal, lang: "en", settings, run, search, system: "rules" });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(asked).toBe(0);
+    expect(stored).toHaveLength(0);
+    expect(text).toContain("stopped partway");
+  });
+
   test("stores nothing it couldn't judge, and stops on a key the provider refused", async () => {
     const search: Search = async () => ({ results: [hit(1)], failed: [] });
     const { run, stored } = fakeTools();

@@ -36,6 +36,8 @@ type Fetched = { text: string; guard: string; findings?: Record<string, unknown>
 
 // A tool in the project, its output as text; stopped or too slow, it is killed.
 export const runTool: Run = async (argv, { stdin, signal } = {}) => {
+  // Stopped before it began: never started, as a stop that came during it would kill it.
+  if (signal?.aborted) return { code: 1, out: "", err: "stopped" };
   const proc = Bun.spawn(argv, { cwd: REPO, stdin: stdin === undefined ? "ignore" : "pipe", stdout: "pipe", stderr: "pipe", env: { ...process.env, PYTHONIOENCODING: "utf-8" } });
   if (stdin !== undefined) { const sink = proc.stdin as unknown as { write: (s: string) => void; end: () => void }; sink.write(stdin); sink.end(); }
   const kill = () => proc.kill();

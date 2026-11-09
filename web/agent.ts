@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import path from "node:path";
 import { askInOrder, ENGINE_NAMES, engineOrder, type Engine } from "./ai";
 import { CHAT_SYSTEM, ChatbotError, providerOf, type Turn } from "./chatbots";
-import { cliSignedIn } from "./clis";
+import { claudeLoginRefused, cliSignedIn } from "./clis";
 import { CodexAgent } from "./codex";
 import { documentPaths } from "./data";
 import { ACCESS, createPolicy, REPO, type Access } from "./policy";
@@ -250,6 +250,22 @@ class Session {
     }).finally(() => { this.closed = true; this.wake?.(); });
   }
 
+  // Claude's sign-in refused while ChatGPT's account is signed in here: the conversation goes on with ChatGPT's own
+  // agent (Codex) from the message Claude never got to, commands too, with what was attached to it and a line saying
+  // so. Not in an unattended run, and not once a tool has run since the message, whose steps would run again.
+  private toCodex() {
+    if (this.unattended || !cliSignedIn().openai) return false;
+    const lastUser = this.events.findLastIndex((e) => e.t === "user");
+    if (this.events.slice(lastUser).some((e) => e.t === "tool")) return false;
+    const asked = this.events[lastUser] ?? { t: "user" };
+    const uploads = ((asked.files as { id: string }[] | undefined) ?? []).map((f) => getUpload(f.id)).filter((u) => u !== null);
+    this.close();
+    this.agent = "codex";
+    this.emit({ t: "switched", from: ENGINE_NAMES.claude, to: ENGINE_NAMES.openai, code: "claude_login" });
+    this.sendToAgent(String(asked.text ?? ""), uploads);
+    return true;
+  }
+
   // When Claude fails on a plain message (its quota, say), and another AI is connected, the conversation goes on as
   // a plain one with the next in the order, which answers the message Claude didn't. Not for a command, which
   // needs Claude's tools, not once a tool has run since the message, and never in an unattended run.
@@ -345,6 +361,14 @@ class Session {
           this.emit({ t: "delta", text: event.delta.text }, false);
         }
       } else if (message.type === "assistant") {
+        // Claude's sign-in refused before it could answer (a session that ran out, a sign-out elsewhere): said as what
+        // to do about it rather than in its server's words, and Claude counts as signed out until signed in again.
+        if (message.error === "authentication_failed" && !parent) {
+          claudeLoginRefused();
+          if (this.toCodex()) return;
+          this.emit({ t: "error", code: "claude_login" });
+          continue;
+        }
         for (const block of message.message.content as any[]) {
           if (block.type === "text" && !parent && block.text.trim()) this.emit({ t: "text", text: block.text });
           if (block.type === "tool_use") this.emit({ t: "tool", id: block.id, name: block.name, target: toolTarget(block.name, block.input), nested: Boolean(parent), files: toolFiles(block.name, block.input) });
@@ -456,7 +480,10 @@ export function createSession(prompt: string, model?: string, options: { title?:
   const title = (options.title ?? (prompt || options.uploads?.map((u) => u.name).join(", ") || "")).replace(/\s+/g, " ").trim().slice(0, 70);
   const access = options.unattended ? "ask" : options.access ?? "ask";
   const first = options.unattended ? "claude" : engineOrder(loadSettings().aiPrimary)[0];
-  const agent = first === "openai" && cliSignedIn().openai ? "codex" : "claude";
+  // The agent, for a command or for work in the project: ChatGPT's own (Codex) when its account is signed in here and
+  // it comes first, or Claude isn't signed in (never was, or its sign-in was refused); otherwise Claude.
+  const signed = cliSignedIn();
+  const agent = !options.unattended && signed.openai && (first === "openai" || !signed.claude) ? "codex" : "claude";
   const plain = agent === "claude" && first !== "claude" && !prompt.trim().startsWith("/");
   const session = new Session(crypto.randomUUID(), title, !plain && agent === "claude" && MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended, access, plain, agent);
   sessions.set(session.id, session);

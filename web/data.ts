@@ -207,13 +207,18 @@ export function portalArgs(source: "linkedin" | "freehire", q: string, o: Search
 // A search's result, from a portal tool or an Israeli board.
 type Result = { id: string; title: string; company: string; location: string; tier: Area["tier"] | "unknown"; date: string; url: string; source: string };
 
-async function runPortal(source: "linkedin" | "freehire", q: string, o: SearchOptions, areas: Area[]): Promise<Result[]> {
+// Stopped (signal), the tool is killed at once rather than left to finish.
+async function runPortal(source: "linkedin" | "freehire", q: string, o: SearchOptions, areas: Area[], signal?: AbortSignal): Promise<Result[]> {
+  if (signal?.aborted) throw new Error("stopped");
   const proc = Bun.spawn([process.execPath, "run", `.agents/skills/${source}-search/cli/src/cli.ts`, ...portalArgs(source, q, o)], {
     cwd: REPO, stdout: "pipe", stderr: "ignore",
   });
-  const timer = setTimeout(() => proc.kill(), 60_000);
+  const kill = () => proc.kill();
+  signal?.addEventListener("abort", kill);
+  const timer = setTimeout(kill, 60_000);
   const text = await new Response(proc.stdout).text();
   clearTimeout(timer);
+  signal?.removeEventListener("abort", kill);
   if ((await proc.exited) !== 0) throw new Error(`${source} ${o.market.label}`);
   return (JSON.parse(text).results ?? []).map((r: any) => ({
     id: String(r.id ?? r.url),
@@ -241,17 +246,17 @@ const boardFetch: Fetch = pageFetcher();
 
 // An Israeli board's postings for one search, in the shape the portal tools' results have. The boards match loosely
 // too ("אנליסט נתונים" also finds a credit risk manager), so a title needs one of the search's words.
-async function runBoard(board: Board, q: string, days: number, areas: Area[]): Promise<Result[]> {
+async function runBoard(board: Board, q: string, days: number, areas: Area[], signal?: AbortSignal): Promise<Result[]> {
   const today = new Date().toLocaleDateString("en-CA");
-  return (await searchBoard(board, q, days, { fetch: boardFetch, today })).filter((p) => matchesQuery(p.title, q)).map((p) => ({
+  return (await searchBoard(board, q, days, { fetch: boardFetch, today, signal })).filter((p) => matchesQuery(p.title, q)).map((p) => ({
     id: p.url, title: p.title, company: p.company, location: p.location, tier: classifyLocation(p.location, areas), date: p.date, url: p.url, source: board,
   }));
 }
 
 // sources "boards" leaves LinkedIn and freehire out, for the daily run, whose agent searches those itself. The
 // Israeli boards are searched for a market in Israel, with the role's Hebrew name as well as its title; any site
-// switched off on the portals page is left out.
-export async function searchJobs(q: string, days: string, marketCode: string, workMode: string, settings: Settings, sources: "all" | "boards" = "all") {
+// switched off on the portals page is left out. Stopped (signal), what is still running is killed.
+export async function searchJobs(q: string, days: string, marketCode: string, workMode: string, settings: Settings, sources: "all" | "boards" = "all", signal?: AbortSignal) {
   const query = q.trim().slice(0, 120);
   if (!query || query.startsWith("-")) throw new Error("bad query");
   const age = ["1", "7", "14", "30"].includes(days) ? days : "14";
@@ -263,12 +268,12 @@ export async function searchJobs(q: string, days: string, marketCode: string, wo
   const tools = sources === "boards" ? [] : (["linkedin", "freehire"] as const).filter((s) => boardOn(s, settings));
   const runs: { label: string; run: Promise<Result[]> }[] = markets.flatMap((market) => tools.map((source) => {
     const options = { days: age, market, workMode: mode, seniority: settings.seniority };
-    return { label: `${source} ${market.label}`, run: runPortal(source, query, options, settings.areas) };
+    return { label: `${source} ${market.label}`, run: runPortal(source, query, options, settings.areas, signal) };
   }));
   if (markets.some((m) => m.code === "IL")) {
     const role = settings.roles.find((r) => r.query.toLowerCase() === query.toLowerCase());
     for (const board of BOARDS.filter((b) => boardOn(b, settings))) {
-      for (const search of role ? boardQueries(role) : [query]) runs.push({ label: board, run: runBoard(board, search, Number(age), settings.areas) });
+      for (const search of role ? boardQueries(role) : [query]) runs.push({ label: board, run: runBoard(board, search, Number(age), settings.areas, signal) });
     }
   }
   const settled = await Promise.allSettled(runs.map((r) => r.run));

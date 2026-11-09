@@ -268,7 +268,7 @@ const he = {
     drafted: "טיוטה", applied: "נשלח", interview: "ראיון", offer: "הצעה", hired: "התקבלת", rejected: "נדחה",
     no_response: "אין תגובה", offer_declined: "הצעה נדחתה", withdrawn: "משכת",
   },
-  session: { running: "עובד", waiting: "מחכה לך", idle: "הסתיים", error: "נעצר" },
+  session: { running: "עובד", waiting: "מחכה לך", idle: "הסתיים", error: "נעצר", stopping: "עוצר…" },
   apps: {
     title: "ההגשות שלי", sub: "{n} הגשות. שינוי סטטוס כאן לא צורך מכסת Claude.", noReply: "מי לא ענה?",
     cols: { date: "תאריך", company: "חברה", role: "תפקיד", ats: "ATS", card: "ציונים", status: "סטטוס", docs: "מסמכים" },
@@ -342,7 +342,9 @@ const he = {
       apply_posting: "לא הצלחתי לפתוח את המשרה: {detail}. אפשר להדביק את הטקסט שלה אחרי /apply.", apply_no_name: "לא הצלחתי לקרוא מהמשרה שם חברה ותפקיד באותיות לטיניות.", apply_no_cv: "לא חזרו קורות חיים. אפשר לנסות שוב.", ai_cli_login: "ההתחברות עם החשבון לא עבדה. אפשר להתחבר שוב בהגדרות: {detail}",
       scrape_no_market: "צריך קודם לבחור בהגדרות איפה לחפש.", scrape_no_roles: "צריך קודם לבחור בהגדרות תפקידים לחפש.",
       ai_none: "אף AI מחובר לא הצליח לענות.",
+      claude_login: "החיבור שלי ל-Claude פג, ולכן לא הצלחתי להתחיל. צריך להתחבר שוב.",
     },
+    loginAgain: "להתחבר שוב ל-Claude", loginOpened: "נפתח חלון התחברות במחשב. אחרי שמסיימים בו, אפשר לכתוב לי כאן כדי להמשיך.",
     tools: {
       Read: "קורא את {target}", Write: "כותב את {target}", Edit: "עורך את {target}", Glob: "מחפש: {target}", Grep: "מחפש: {target}",
       WebSearch: "מחפש ברשת: {target}", WebFetch: "פותח {target}", Agent: "מפעיל עוזר: {target}", Task: "מפעיל עוזר: {target}",
@@ -816,7 +818,7 @@ const en: Dict = {
     drafted: "Draft", applied: "Sent", interview: "Interview", offer: "Offer", hired: "Hired", rejected: "Rejected",
     no_response: "No response", offer_declined: "Offer declined", withdrawn: "Withdrawn",
   },
-  session: { running: "Working", waiting: "Waiting for you", idle: "Done", error: "Stopped" },
+  session: { running: "Working", waiting: "Waiting for you", idle: "Done", error: "Stopped", stopping: "Stopping…" },
   apps: {
     title: "My applications", sub: "{n} applications. Changing a status here uses no Claude usage.", noReply: "Who hasn't replied?",
     cols: { date: "Date", company: "Company", role: "Role", ats: "ATS", card: "Scores", status: "Status", docs: "Documents" },
@@ -889,7 +891,9 @@ const en: Dict = {
       apply_posting: "I couldn't open the job: {detail}. You can paste its text after /apply.", apply_no_name: "I couldn't read a company and role in Latin letters from the job.", apply_no_cv: "No CV came back. You can try again.", ai_cli_login: "The account sign-in didn't work. You can sign in again in the settings: {detail}",
       scrape_no_market: "Choose where to search in the settings first.", scrape_no_roles: "Choose roles to search for in the settings first.",
       ai_none: "None of the connected AIs could answer.",
+      claude_login: "My sign-in to Claude has run out, so I couldn't start. Sign in again.",
     },
+    loginAgain: "Sign in to Claude again", loginOpened: "A sign-in window opened on the computer. Once you're done there, write to me here to go on.",
     tools: {
       Read: "Reading {target}", Write: "Writing {target}", Edit: "Editing {target}", Glob: "Searching: {target}", Grep: "Searching: {target}",
       WebSearch: "Searching the web: {target}", WebFetch: "Opening {target}", Agent: "Starting a helper: {target}", Task: "Starting a helper: {target}",

@@ -405,6 +405,27 @@ function Files({ files }: { files: Doc[] }) {
 type Item = { kind: "tools"; key: string; tools: Ev[] } | { kind: "event"; key: string; ev: Ev };
 
 // bare: inside another page (the introduction's), which has its own heading, so no header of its own.
+// Claude's sign-in refused before it could answer (agent.ts), or its server's words for it in a conversation from
+// before Pip knew it: what happened, and the way to sign in again, Claude Code's own window on the computer
+// (clis.ts openLogin). After it, a message goes on with the conversation.
+const CLAUDE_REFUSED = /^Failed to authenticate\b/;
+function ClaudeLogin() {
+  const { t, err } = useApp();
+  const [opened, setOpened] = useState(false);
+  const [error, setError] = useState("");
+  const open = () => {
+    setError("");
+    api("ai-login", { provider: "claude" }).then(() => setOpened(true), (x) => setError(err(x)));
+  };
+  return (
+    <div className="chat-login" role="alert">
+      <p className="error-line" dir="auto">{t("chat.errors.claude_login")}</p>
+      {opened ? <p className="note" dir="auto">{t("chat.loginOpened")}</p> : <Btn onClick={open}>{t("chat.loginAgain")}</Btn>}
+      {error && <p className="error-line" dir="auto">{error}</p>}
+    </div>
+  );
+}
+
 export function Conversation({ id, onList, bare = false }: { id: string; onList?: () => void; bare?: boolean }) {
   const { s, t, refresh } = useApp();
   const session = s.sessions.find((c) => c.id === id);
@@ -456,6 +477,10 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
   }, [events]);
 
   const working = status === "running" || status === "waiting";
+  // Stop pressed: said at once, as what is under way takes a moment to be killed, until the conversation stops.
+  const [stopping, setStopping] = useState(false);
+  useEffect(() => { if (!working) setStopping(false); }, [working]);
+  const stop = () => { setStopping(true); api(`sessions/${id}/interrupt`, {}).catch(() => setStopping(false)); };
   const send = async (files: string[]) => {
     const message = text.trim();
     if (!message && !files.length) return;
@@ -493,11 +518,13 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
           {e.text && <div className="msg-bubble" dir="auto">{e.text}</div>}
         </div>
       );
-      case "text": return <div key={key} className="msg-pip"><Pip mood="idle" className="msg-avatar" /><Markdown src={e.text} className="md msg-text" /></div>;
+      case "text": return CLAUDE_REFUSED.test(e.text) ? <ClaudeLogin key={key} />
+        : <div key={key} className="msg-pip"><Pip mood="idle" className="msg-avatar" /><Markdown src={e.text} className="md msg-text" /></div>;
       case "permission": return resolved.has(e.requestId) ? settled(e) : <Permission key={key} ev={e} sessionId={id} />;
       case "question": return resolved.has(e.requestId) ? settled(e) : <Question key={key} ev={e} sessionId={id} />;
       case "result": return <p key={key} className="done-line">{e.ok ? t("chat.done") : t("chat.doneError")}{e.cost >= 0.01 ? t("chat.cost", { cost: e.cost.toFixed(2) }) : ""}</p>;
-      case "error": return <p key={key} className="error-line" role="alert" dir="auto">{e.code ? t(`chat.errors.${e.code}`, { detail: e.text ?? "" }) : e.text}</p>;
+      case "error": return e.code === "claude_login" ? <ClaudeLogin key={key} />
+        : <p key={key} className="error-line" role="alert" dir="auto">{e.code ? t(`chat.errors.${e.code}`, { detail: e.text ?? "" }) : e.text}</p>;
       case "switched": return <p key={key} className="switched-line" dir="auto"><Icon name="warn" />{t("chat.switched", { from: e.from, to: e.to })}</p>;
       default: return null;
     }
@@ -510,7 +537,7 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
           {onList && <ListButton onList={onList} />}
           <h1 className="chat-title" dir="auto">{session ? friendlyTitle(session.title, t) : ""}</h1>
           {(plain || (session?.agent && session.agent !== "claude")) && session?.engine && <span className="chat-model"><bdi>{session.engine}</bdi></span>}
-          {status !== "idle" && <span className={`chat-state ${status}`}>{t(`session.${status}`)}</span>}
+          {status !== "idle" && <span className={`chat-state ${status}`}>{t(stopping ? "session.stopping" : `session.${status}`)}</span>}
         </header>
       )}
       <div className="log-frame">
@@ -520,8 +547,8 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
               ? <ToolSteps key={item.key} tools={item.tools} results={results} working={working && i === items.length - 1} />
               : render(item.ev, item.key)))}
             {live && <div className="msg-pip"><Pip mood="idle" className="msg-avatar" /><Markdown src={live} className="md msg-text" /></div>}
-            {!live && status === "running" && items[items.length - 1]?.kind !== "tools" && (
-              <div className="msg-pip typing"><Pip mood="work" className="msg-avatar" /><span className="typing-text">{t("chat.working")}</span></div>
+            {!live && status === "running" && (stopping || items[items.length - 1]?.kind !== "tools") && (
+              <div className="msg-pip typing"><Pip mood="work" className="msg-avatar" /><span className="typing-text">{t(stopping ? "session.stopping" : "chat.working")}</span></div>
             )}
             {files.length > 0 && <Files files={files} />}
           </div>
@@ -529,7 +556,7 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
         <ThinBar target={log} />
       </div>
       <Composer
-        text={text} setText={setText} onSend={send} onStop={() => api(`sessions/${id}/interrupt`, {})} working={working} placeholder={t("chat.message")}
+        text={text} setText={setText} onSend={send} onStop={stop} working={working} placeholder={t("chat.message")}
         tools={plain ? null : <AccessPicker value={access} onChange={changeAccess} />}
         warn={!plain && access === "full" ? t("chat.access.fullWarn") : ""}
       />

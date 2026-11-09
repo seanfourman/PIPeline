@@ -28,7 +28,7 @@ const FITS = ["high", "medium", "low"];
 
 // portal: for a hit found on an employer's own list, that employer on the portals page.
 type Hit = { title: string; company: string; location: string; tier: string; date: string; url: string; source: string; portal?: string };
-export type Search = (role: string, settings: Settings) => Promise<{ results: Hit[]; failed: string[] }>;
+export type Search = (role: string, settings: Settings, signal?: AbortSignal) => Promise<{ results: Hit[]; failed: string[] }>;
 type Judged = { fit: string; keep: boolean; reason: string };
 
 const oneLine = (text: unknown, max = 200) => String(text ?? "").replace(/\s+/g, " ").trim().slice(0, max);
@@ -84,13 +84,15 @@ const WORDS = {
   },
 };
 
-const defaultSearch: Search = (role, settings) => searchJobs(role, "14", "all", settings.workMode, settings);
+const defaultSearch: Search = (role, settings, signal) => searchJobs(role, "14", "all", settings.workMode, settings, "all", signal);
 
 type Judging = { ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; run?: Run; system?: string; today?: string };
 
 // The hits found, through the list's own tool, judged by the AI a batch at a time and stored, kept and skipped alike.
 async function judgeAndStore(found: Hit[], o: Judging & { run: Run }) {
   const { ask, steps, signal, lang, run } = o;
+  // Stopped: nothing is judged or kept, and the report says it stopped.
+  if (signal.aborted) return { kept: [], skipped: [], unjudged: 0, already: 0, engines: new Set<string>() };
   // What the list already has, or was applied to, is left out before anything is judged.
   const pool = found.map((h) => ({
     title: h.title, company: h.company, url: h.url, location: h.location, tier: h.tier,
@@ -191,12 +193,12 @@ async function searchRoles(roles: string[], settings: Settings, search: Search, 
       const id = `search-${next}`;
       steps.start(id, role, "SearchRole");
       try {
-        const found = await search(role, settings);
+        const found = await search(role, settings, signal);
         for (const hit of found.results) if (hit.url && !hits.has(hit.url)) hits.set(hit.url, hit);
         found.failed.forEach((f) => failed.add(f));
         steps.done(id, true, `${found.results.length}`);
       } catch (err) {
-        steps.done(id, false, oneLine((err as Error)?.message ?? err));
+        steps.done(id, false, signal.aborted ? "" : oneLine((err as Error)?.message ?? err));
       }
     }
   };
@@ -227,7 +229,7 @@ export function readPortalChecks(file = CHECKS_FILE): Record<string, PortalCheck
   try { return existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : {}; } catch { return {}; }
 }
 
-const boardsOnly: Search = (role, settings) => searchJobs(role, "14", "all", settings.workMode, settings, "boards");
+const boardsOnly: Search = (role, settings, signal) => searchJobs(role, "14", "all", settings.workMode, settings, "boards", signal);
 
 // The employers on the portals page read, four at a time (each site still one page at a time, boards.ts), and the
 // user's own careers pages; with boards, the Israeli boards searched for every role as well. checks is where each

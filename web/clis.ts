@@ -36,6 +36,15 @@ async function run(argv: string[], options: { cwd?: string; stdin?: string; sign
 // The last that was found, for what can't wait for a check (ai.ts).
 export const cliSignedIn = () => signedIn;
 
+// Claude's sign-in refused by its server while Claude Code still says it is signed in, as when a session ran out and
+// could not be renewed (agent.ts): Claude counts as signed out, for the settings and the introduction to offer the
+// sign-in again, until the sign-in is opened again here.
+let claudeRefused = false;
+export function claudeLoginRefused() {
+  claudeRefused = true;
+  signedIn = { ...signedIn, claude: false };
+}
+
 // Each says so itself: Claude Code as JSON, of which only whether it is signed in is read, and Codex in words.
 export async function cliStatus(): Promise<Record<Login, boolean>> {
   if (Date.now() - checked < STATUS_MS) return signedIn;
@@ -45,7 +54,7 @@ export async function cliStatus(): Promise<Record<Login, boolean>> {
     existsSync(EXE) ? run([EXE, "login", "status"], { ms: 20_000 }).catch(() => null) : null,
   ]);
   const claudeIn = (() => { try { return JSON.parse(claude?.out ?? "").loggedIn === true; } catch { return false; } })();
-  signedIn = { claude: claudeIn, openai: Boolean(codex && codex.code === 0 && /logged in/i.test(codex.out + codex.err)) };
+  signedIn = { claude: claudeIn && !claudeRefused, openai: Boolean(codex && codex.code === 0 && /logged in/i.test(codex.out + codex.err)) };
   return signedIn;
 }
 
@@ -55,6 +64,7 @@ export function openLogin(which: Login) {
   const [exe, title, argv] = which === "claude" ? [CLAUDE, "Claude", ["auth", "login"]] : [EXE, "Codex", ["login"]];
   if (!existsSync(exe)) throw new ChatbotError("ai_cli_missing");
   checked = 0;
+  if (which === "claude") claudeRefused = false;
   if (process.platform === "win32") Bun.spawn(["cmd", "/c", "start", title, exe, ...argv], { stdout: "ignore", stderr: "ignore" });
   // On a Mac, in a Terminal window: the command quoted for the shell, then as AppleScript's text.
   else if (process.platform === "darwin") {

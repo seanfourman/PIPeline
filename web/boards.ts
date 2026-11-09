@@ -154,20 +154,22 @@ const PARSE: Record<Board, (html: string, today: string) => Posting[]> = { alljo
 
 export type Fetch = (url: string, signal?: AbortSignal) => Promise<string | null>;
 
-// One site's pages one after another, with a pause, however many searches want them at once.
+// One site's pages one after another, with a pause, however many searches want them at once. A page of a search
+// that was stopped leaves no pause after it, so the pages waiting behind it go at once, those stopped too, as nothing.
 const turns = new Map<string, Promise<void>>();
-async function inTurn<T>(host: string, work: () => Promise<T>): Promise<T> {
+async function inTurn<T>(host: string, work: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   const before = turns.get(host) ?? Promise.resolve();
   let release!: () => void;
   const mine = new Promise<void>((r) => (release = r));
   turns.set(host, before.then(() => mine));
   await before;
-  try { return await work(); } finally { setTimeout(release, GAPS[host] ?? GAP_MS); }
+  try { return await work(); } finally { setTimeout(release, signal?.aborted ? 0 : GAPS[host] ?? GAP_MS); }
 }
 
 // A page through tools/fetch_page.py, or null when the site said no (robots.txt), failed or answered with an error.
 export function pageFetcher(run: Run = runTool): Fetch {
   return (url, signal) => inTurn(new URL(url).host, async () => {
+    if (signal?.aborted) return null;
     const out = path.join(os.tmpdir(), `ai-job-search-page-${crypto.randomUUID()}.html`);
     try {
       const got = await run([PYTHON, "tools/fetch_page.py", url, "--out", out, "--robots-cache"], { signal });
@@ -179,7 +181,7 @@ export function pageFetcher(run: Run = runTool): Fetch {
     } finally {
       rmSync(out, { force: true });
     }
-  });
+  }, signal);
 }
 
 const fresh = (p: Posting, days: number, today: string) => {
