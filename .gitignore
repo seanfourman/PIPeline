@@ -40,6 +40,8 @@ linkedin_Profile.pdf
 *.jpeg
 *.png
 !cover_letters/OpenFonts/fonts/**
+# The README's screenshots, all made-up data from the app; personal files live in user/.
+!media/*.png
 
 # OS files
 .DS_Store

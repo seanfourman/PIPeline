@@ -227,6 +227,8 @@ ALLOWED_IGNORE_NEGATIONS = {
     "!cover_letters/OpenFonts/fonts/**",
     "!cover_letters/cover_example.tex",
     "!documents/**/.gitkeep",
+    # The README's screenshots (made-up data); personal files live in the ignored user/ folder.
+    "!media/*.png",
 }
 
 # Hook commands the template legitimately ships, as "<Event>:<command>" strings.
