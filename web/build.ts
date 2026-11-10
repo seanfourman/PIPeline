@@ -8,9 +8,15 @@ const SETTLE_MS = 300;
 
 export function watchInterface(outdir: string) {
   let timer: ReturnType<typeof setTimeout> | undefined;
+  // A rebuild that works prints nothing, so a failed one's errors stay in the window after they're fixed. The first
+  // good rebuild after a failure says so, and the old errors aren't taken for a page that is still broken.
+  let failed = false;
   const rebuild = () => {
     clearTimeout(timer);
-    timer = setTimeout(() => buildInterface(outdir).catch((err) => console.error("The interface did not rebuild:", err)), SETTLE_MS);
+    timer = setTimeout(() => buildInterface(outdir).then(
+      () => { if (failed) console.log("The interface rebuilt: the errors above are fixed."); failed = false; },
+      (err) => { failed = true; console.error("The interface did not rebuild:", err); },
+    ), SETTLE_MS);
   };
   for (const source of SOURCES) watch(source, { recursive: true }, rebuild);
 }
