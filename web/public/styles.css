@@ -224,7 +224,11 @@ legend { padding: 0; }
 .later { opacity: 0.5; pointer-events: none; user-select: none; }
 .table-note { padding: 10px 16px 4px; }
 
-main { overflow-y: auto; }
+/* The page's scrollbar never moves it: room is kept for the bar even while the page is too short to scroll, so a
+   page that grows past the window, a tab with fewer jobs, or the next page doesn't shift sideways. The
+   conversations page fills the window and never scrolls, so it keeps no room. */
+main { overflow-y: auto; scrollbar-gutter: stable; }
+main:has(> .chat) { scrollbar-gutter: auto; }
 main:focus, main:focus-visible { outline: none; }
 .page { max-width: 1100px; margin: 0 auto; padding: 38px 38px 80px; display: flex; flex-direction: column; gap: 22px; }
 .page.wide { max-width: 1560px; }
@@ -1601,7 +1605,8 @@ select.status { font-weight: 600; }
   grid-area: text; width: 100%; height: 44px; min-height: 44px; max-height: 220px; padding: 10px 6px; border: 0; border-radius: 0; background: none; box-shadow: none;
   line-height: 24px; text-align: start; resize: none; overflow: hidden;
 }
-.composer-box.tall textarea { overflow-y: auto; scrollbar-width: thin; }
+/* Once open, the box keeps room for its slim bar, so the words don't rewrap when they grow long enough to scroll. */
+.composer-box.tall textarea { overflow-y: auto; scrollbar-width: thin; scrollbar-gutter: stable; }
 .composer-tools { grid-area: tools; display: flex; align-items: center; gap: 6px; align-self: stretch; margin-block: -6px; margin-inline-end: -8px; }
 .composer-box.tall .composer-tools { margin-block: 0 -6px; }
 .composer-box .seek-go { top: calc(50% - 22px); }
@@ -1691,8 +1696,9 @@ select.status { font-weight: 600; }
   .voice-bars i { height: 12px; }
 }
 
-/* A new conversation: Pip and the question in the middle, the box under them, and a few starts as pills. */
-.chat-new { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; }
+/* A new conversation: Pip and the question in the middle, the box under them, and a few starts as pills. Room for
+   the scrollbar is kept on both sides, so when a short window scrolls it, the middle stays the middle. */
+.chat-new { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; }
 .chat-new-body { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding-bottom: 12vh; }
 .chat-new-head { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .chat-new-pip { width: 74px; }
