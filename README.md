@@ -1,470 +1,497 @@
-<p align="center">
-  <img src="assets/readme/hero.svg" alt="AI Job Search. Pip the courier bird carries an application along a flight path to its destination. The job search that runs on your machine." width="100%">
-</p>
+<div align="center">
 
-<p align="center">
-  <a href="https://github.com/ai-job-search-dev/ai-job-search/actions/workflows/ci.yml"><img src="https://github.com/ai-job-search-dev/ai-job-search/actions/workflows/ci.yml/badge.svg" alt="CI" height="20"></a>
-  &nbsp;
-  <a href="https://claude.com/claude-code"><img src="https://img.shields.io/badge/built_on-Claude_Code-2A9D8F?style=flat" alt="Built on Claude Code" height="20"></a>
-  &nbsp;
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2A9D8F?style=flat" alt="MIT license" height="20"></a>
-</p>
+<img src="media/banner.png" alt="PIPeline: Pip the pixel-art fox in a pixel forest" width="100%">
 
-<p align="center">
-  <a href="https://trendshift.io/repositories/43622?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-43622" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/43622/daily" alt="MadsLorentzen%2Fai-job-search | Trendshift" width="250" height="55"/></a>
-</p>
+### Find jobs. Rank them. Apply.
 
-<p align="center">
-  An AI-powered job application framework built on <a href="https://claude.com/claude-code">Claude Code</a>.<br>
-  Fork it, fill in your profile, and let Claude evaluate job postings, tailor your CV,<br>
-  write cover letters, and prepare you for interviews.
-</p>
+PIPeline is a job-search app that runs on your own computer. Pip, a pixel-art
+fox, searches Israeli job boards, employers' career pages and Telegram channels,
+reads every posting, scores it against your profile, and writes a one-page CV
+for the jobs worth sending. You use it in Hebrew or English, on the computer or
+from your phone.
 
-<p align="center">
-  <a href="#quick-start"><b>Quick start</b></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="#commands"><b>Commands</b></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="#how-apply-works"><b>How /apply works</b></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="#customization"><b>Customization</b></a>
-  &nbsp;&nbsp;&nbsp;
-  <a href="SETUP.md"><b>Setup guide</b></a>
-</p>
+<a href="https://pip-site-production-8fff.up.railway.app"><img src="https://img.shields.io/badge/%E2%96%B6%20Get%20Pip-Windows%20%7C%20macOS-1fa37f?style=for-the-badge" alt="Get Pip for Windows or macOS"></a>
 
-> [!NOTE]
-> This is an independent open-source project and is not affiliated with, endorsed by, sponsored by, or maintained by Anthropic. Anthropic and Claude Code are referenced only to describe the toolchain this workflow uses.
->
-> This project has **no affiliated cryptocurrency, token, or paid sponsorship program**. Anything claiming otherwise is unauthorized and should be treated as a scam. The only ways to support the project are the Ko-fi link below and contributing on GitHub.
+<img src="https://img.shields.io/badge/Bun-1.4-000000?logo=bun&logoColor=white" alt="Bun 1.4">
+<img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white" alt="React 18">
+<img src="https://img.shields.io/badge/TypeScript-strict-3178C6?logo=typescript&logoColor=white" alt="TypeScript, strict">
+<img src="https://img.shields.io/badge/Claude-Agent%20SDK-D97757?logo=anthropic&logoColor=white" alt="Claude Agent SDK">
+<img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white" alt="Python 3.10+">
+<img src="https://img.shields.io/badge/LaTeX-LuaLaTeX-008080?logo=latex&logoColor=white" alt="LuaLaTeX">
+<img src="https://img.shields.io/badge/tests-1%2C256-1fa37f" alt="1,256 tests">
 
-## Does it actually work?
+<img src="media/reel.gif" alt="Pip in motion: the home page's pixel forest, opening a job from My jobs, asking the AI to read it and the score arriving, then the profile's health ring" width="900">
 
-I'm a geophysicist by training. When my position was cut in late 2025, I built this framework to run my own job search - the same `/scrape`, `/apply`, and `/interview` workflow in this repo, used weekly, on my own career. I was upfront about it with every employer I spoke to, and instead of counting against me, it usually sparked a genuine technical conversation.
+<i>Recorded straight from the running app with made-up data: home, a job's own page, the AI's score arriving, the profile.</i>
 
-<p align="center">
-  <img src="assets/readme/letters.svg" alt="69 envelopes for 69 tailored applications. 20 of them light up as first interviews, and one is sealed as the signed contract." width="100%">
-</p>
+</div>
 
-Sixty-nine tailored applications, twenty first interviews, and one signed contract later, I started as an AI engineer in June 2026. People kept asking whether this actually works. It got me hired. Now it's yours.
+---
 
-*The longer version, including the full application funnel, is on [LinkedIn](https://www.linkedin.com/in/mads-lorentzen/).*
+## What it is
 
-<p align="center">
-  <i>Did this save you a Sunday of cover-letter writing? Consider a coffee.<br>
-  Did it land you the job? Maybe two.</i> ☕
-</p>
+Everything runs on your machine. A small Bun server serves a React interface,
+keeps your profile, CVs and job list in a `user/` folder that is never
+committed, and talks to the AI through your own subscription: Claude through
+the **Claude Agent SDK**, or ChatGPT through OpenAI's Codex. Your data stays on
+your computer; even the phone-access site only passes requests along.
 
-<p align="center">
-  <a href="https://ko-fi.com/madslorentzen">
-    <img src="https://storage.ko-fi.com/cdn/kofi3.png?v=6" alt="Buy me a coffee at ko-fi.com" height="40">
-  </a>
-</p>
+Once a day Pip searches AllJobs, Drushim, JobMaster, LinkedIn and freehire,
+20 more boards and career sites (4 read directly, 16 through web search),
+9 Telegram channels of job posts, and the employers' career pages it discovers
+on its own. It reads each posting the way a crawler
+would, with no AI, and leaves out what doesn't fit your search before a single
+AI call is spent. The rest it ranks with one call each, and for the best few
+it builds a CV in LaTeX, checks that it fits one page, and emails it to you.
+An installer for Windows and macOS sets everything up and updates itself, and
+a small site on Railway lets your phone reach Pip at home.
 
-## What this is
+The stack is TypeScript on Bun 1.4 throughout: React 18 on the front, a Bun
+HTTP server with server-sent events on the back, Python 3 tools for fetching,
+guarding and keeping the job list, LuaLaTeX for the CVs, and an Inno Setup
+installer with a C# tray launcher.
 
-A structured workflow that turns Claude Code into a full-stack job application assistant. Six commands carry you from an empty profile to a tracked result:
+## Finding jobs
 
-<p align="center">
-  <img src="assets/readme/route.svg" alt="The workflow in order: /setup builds your profile, /scrape finds new postings, /rank shortlists the fits, /apply tailors a CV and cover letter, /interview preps every round, /outcome tracks each result." width="100%">
-</p>
+<table>
+<tr>
+<td width="50%"><img src="media/jobs-search.png" alt="The jobs page: a search box under a moving sky, with the user's roles as chips below it"></td>
+<td width="50%"><img src="media/my-jobs.png" alt="My jobs: the jobs Pip found, each with its score on a round tile, grouped by how well they fit"></td>
+</tr>
+<tr>
+<td align="center"><b>Search in plain words.</b> Type a role or pick one of
+yours, and Pip searches the boards and career pages for it. The sparkles
+button starts the smart search, where the AI looks further and judges what it
+finds.</td>
+<td align="center"><b>Everything Pip found, sorted by fit.</b> Scores from 0
+to 100 in groups: the best fits, worth a look, less fitting, not scored yet,
+and filtered out for the place, the language or a level above yours.</td>
+</tr>
+</table>
 
-The core workflow (self-profiling, fit evaluation, and the drafter-reviewer application pipeline) is **language- and country-agnostic**. The job portal search skills are built for the Danish market (Jobindex, Jobnet, Akademikernes Jobbank, etc.), but the pattern is designed to be swapped for your local job boards.
+## A page for every job
 
-The framework encodes career guidance best practices, including structured evaluation criteria, forward-looking cover letter framing, and optional salary benchmarking.
+<table>
+<tr>
+<td width="50%"><img src="media/job-page.png" alt="A job's page read with no AI: its facts, the skills it names with ticks on those the profile has, and the posting under its own headings"></td>
+<td width="50%"><img src="media/job-ai.png" alt="A job's page after the AI read it: a score of 88, why it fits and what is missing"></td>
+</tr>
+<tr>
+<td align="center"><b>Read like a crawler, no AI.</b> Opening a job reads its
+page: the posting under its own headings, its facts (the kind of job, office
+days, the years it asks for) and the skills it names, ticked where your
+profile has them.</td>
+<td align="center"><b>The AI only when you ask.</b> One call scores the job
+against your profile, says why it fits and what's missing, and is saved, so
+opening it again costs nothing.</td>
+</tr>
+</table>
 
-## Quick start
+<div align="center">
+<img src="media/job-too-senior.png" alt="A job asking for 4+ years, with a red note saying it is more than a junior search takes and so is not on the list" width="720">
+<br>
+<i>A junior search never shows a job asking for three years or more. Pip reads
+the years from the posting itself, in English or Hebrew, and moves the job out
+of the list.</i>
+</div>
 
-> 🎥 **Prefer to see it in action first?** [The Next New Thing did a hands-on walkthrough](https://www.youtube.com/watch?v=HoVxjMNFYv4) of how the workflow is actually used, from setup to a finished application (recorded August 2026 - commands may have evolved since).
+## Your profile
 
-### What you need
+<table>
+<tr>
+<td width="50%"><img src="media/profile.png" alt="The profile as cards: personal details, skills as chips, and a profile health ring at 100 with Pip peeking over it"></td>
+<td width="50%"><img src="media/profile-edit.png" alt="The skills card open for editing as Markdown, the rest of the profile around it"></td>
+</tr>
+<tr>
+<td align="center"><b>Your profile, as cards.</b> They are built from the one
+Markdown file every CV is written from, with a profile health score out of 100
+and the check behind each point.</td>
+<td align="center"><b>Edit any part in place.</b> The pencil opens that card's
+part of the file as text, and it saves itself a second after you stop
+typing.</td>
+</tr>
+</table>
 
-| | |
+## Home, chat and your portfolio
+
+<table>
+<tr>
+<td width="50%"><img src="media/home.png" alt="The home page: a pixel-art forest with a wooden board naming the best job and the next step, and a path of six stations Pip walks along"></td>
+<td width="50%"><img src="media/chat.png" alt="A conversation with Pip, with the voice typing button in the message box"></td>
+</tr>
+<tr>
+<td align="center"><b>The next step, on a pixel-art board.</b> The home page
+walks you along six stations, from setting up to an offer, with Pip standing
+where you are.</td>
+<td align="center"><b>Talk to Pip.</b> Conversations run the same Claude Code
+commands as the terminal (<code>/apply</code>, <code>/interview</code>,
+<code>/setup</code> and the rest), with voice typing in Hebrew or English.</td>
+</tr>
+</table>
+
+<div align="center">
+<img src="media/portfolio.png" alt="The portfolio page: projects Pip picked from GitHub and the computer, each with its media and a case study" width="720">
+<br>
+<i>Pip scans your GitHub and your project folders, picks what is worth
+showing, writes a case study for each, and can build a portfolio site.</i>
+</div>
+
+## In your pocket
+
+<div align="center">
+<img src="media/phone-sign-in.png" alt="Signing in on a phone, in the app's pixel forest" width="170">
+<img src="media/phone-home.png" alt="The home page on a phone" width="170">
+<img src="media/phone-my-jobs.png" alt="My jobs on a phone" width="170">
+<img src="media/phone-job.png" alt="A job's page on a phone" width="170">
+<img src="media/phone-profile.png" alt="The profile on a phone" width="170">
+<br>
+<i>Sign in from a phone and use the whole app. Every request goes through the
+site to your computer, which keeps everything.</i>
+</div>
+
+## How it works
+
+<details>
+<summary><b>From a link to a posting, with no AI (the crawler)</b></summary>
+<br>
+
+```text
+link ─▶ fetch_page.py ─▶ the site's own data, or the page ─▶ posting_guard.py ─▶ lines with ## and • ─▶ facts, years, skills
+```
+
+1. **Fetch.** `tools/fetch_page.py` downloads the page. LinkedIn and freehire
+   jobs come through their own command-line readers instead, and a Telegram
+   post through its embed.
+2. **Prefer the site's own data.** `web/posting-read.ts` looks for a
+   schema.org `JobPosting`, Comeet's position data, Greenhouse's public API
+   and Apple's router data before falling back to the page's text, because
+   those carry the posting without the site's menus.
+3. **Guard it.** `tools/posting_guard.py` removes hidden HTML and flags lines
+   that read like instructions to an AI. With `--marks` it keeps headings as
+   `## ` and list items as `• `, so the page can show the posting under its
+   own headings.
+4. **Read the facts from the words.** `web/experience.ts` finds the years the
+   posting asks for. `web/posting-words.ts` finds up to 12 skills from a list
+   of 103, marks each as required or an advantage by the line or heading it
+   sits under, and reads the kind of job, the work mode and the office days.
+
+**Worked example** (from `web/postings.test.ts`). An 11-line page with
+"Hybrid: 3 days a week in the office", "2+ years of experience with Python",
+"SQL", and "Airflow" under a "Nice to have" heading gives a hybrid job with 3
+office days, 2 years asked, and the chips Python and SQL (required, both in
+the profile) and Airflow (an advantage). No AI was called.
+
+</details>
+
+<details>
+<summary><b>From a posting to a score (the ranking)</b></summary>
+<br>
+
+```text
+posting ─▶ one AI call ─▶ 4 scores and 2 gates ─▶ weighted total ─▶ band ─▶ rank_state.py ─▶ the list
+```
+
+The posting is wrapped between two random marker lines and labelled untrusted
+data, then scored against your profile and search settings on four
+dimensions:
+
+| Dimension | Weight |
 |---|---|
-| **[Claude Code](https://claude.com/claude-code)** | The CLI. No free tier: a Claude Pro/Max/Team subscription or Anthropic API credits (pay-per-token, usually cheaper for occasional use). |
-| **Python 3.10+** | For the tools in `tools/`. |
-| **[Bun](https://bun.sh)** | Runs the job search CLI tools. |
-| **LaTeX** | A distribution with `lualatex` and `xelatex`: [TeX Live](https://tug.org/texlive/), [MacTeX](https://tug.org/mactex/), [TinyTeX](https://yihui.org/tinytex/), or [MiKTeX](https://miktex.org/). |
-| **pypdf** *(optional)* | `pip install pypdf` for `/apply`'s ATS parseability check. |
+| Technical | 30% |
+| Experience | 25% |
+| Behavioral | 15% |
+| Career | 30% |
 
-<details>
-<summary>Fine print: other agents, LaTeX engines, PDF text extraction</summary>
+Two gates can veto a job whatever its score: **location** (your preferred,
+acceptable, borderline and excluded areas) and **language** (a language you
+don't list). The total falls into a band:
 
-- **Using a different agent tool** (Codex, Antigravity, Gemini CLI)? Start at [`AGENTS.md`](AGENTS.md) - the portal search skills work there out of the box, and [community forks](https://github.com/ai-job-search-dev/ai-job-search/discussions/78) adapt the full workflow.
-- **LaTeX engines.** The CV compiles with `lualatex` (pdflatex often fails on modern MiKTeX installs with `fontawesome5` font-expansion errors); the cover letter compiles with `xelatex` because `cover.cls` requires `fontspec`. If using a minimal TeX install such as TinyTeX or BasicTeX, install the extra packages listed in [SETUP.md](SETUP.md#minimal-tex-install-tinytexbasictex).
-- **PDF text extraction.** `pypdf` is BSD-licensed and needs no Poppler. Poppler `pdftotext` remains a fallback (macOS: `brew install poppler`, Debian/Ubuntu: `apt install poppler-utils`, Windows: `choco install poppler`). If both are missing, the check degrades to a visual keyword review.
+| Score | Band |
+|---|---|
+| 75 and up | Strong fit |
+| 60 to 74 | Good fit |
+| 45 to 59 | Moderate fit |
+| 30 to 44 | Weak fit |
+| below 30 | Poor fit |
 
-</details>
-
-### 1. Fork and clone
-
-```bash
-gh repo fork ai-job-search-dev/ai-job-search --clone
-cd ai-job-search
-```
-
-> [!IMPORTANT]
-> **A fork of this repo is always public** — GitHub does not allow private forks of
-> public repositories — and `/setup` (step 3 below) writes your personal data (name,
-> contact details, employment history, salary expectations) into **tracked** files.
-> If this copy is for your own job search rather than for contributing changes back,
-> use a **private repository** with this repo as `upstream` instead — the two-minute
-> recipe is in [SETUP.md section 8](SETUP.md#8-pulling-upstream-updates-into-your-fork),
-> and every update workflow works identically. Fork only to contribute.
-
-### 2. Install job search tools
-
-```bash
-python3 tools/install_portal_clis.py   # Windows: python tools\install_portal_clis.py
-```
-
-<details>
-<summary>What the installer does</summary>
-
-It runs `bun install` in every portal CLI under `.agents/skills/*/cli/` - discovered, not listed, so a portal you add with `/add-portal` or copy from another fork is included on a fresh clone. Every install runs with `--ignore-scripts`, and a CLI whose `package.json` declares an install-time lifecycle script, `trustedDependencies` or `workspaces`, or that has a `bunfig.toml` or `.npmrc` beside it, is skipped and reported rather than run. `--dry-run` shows what it would install.
-
-For `linkedin-search` and `freehire-search` the install is optional: both have zero runtime dependencies and run with plain `bun`; `bun install` only pulls TypeScript dev types.
+**Worked example.** Scores of 80, 70, 60 and 75 give
+`0.30 × 80 + 0.25 × 70 + 0.15 × 60 + 0.30 × 75 = 24 + 17.5 + 9 + 22.5 = 73`,
+a good fit. `tools/rank_state.py apply` writes it into the list.
 
 </details>
 
-### 3. Set up your profile
+<details>
+<summary><b>Leaving out what a junior shouldn't see (the years filter)</b></summary>
+<br>
 
-```bash
-claude
-# Then inside Claude Code:
-/setup
+```text
+posting ─▶ each line ─▶ skip the advantages ─▶ years asked ─▶ the most asked ─▶ 3 or more on a junior search ─▶ filtered
 ```
 
-`/setup` offers three paths: read your `user/documents/` folder if you have one populated (CV PDF, LinkedIn export, diplomas, reference letters, past applications), import a single CV pasted in chat, or walk through an interview. It auto-detects what you have and asks. Documents-folder mode is idempotent and safe to re-run as you add more material; see `user/documents/README.md` for the layout.
+1. **Read every line.** `web/experience.ts` matches "3-5 years", "4+ years",
+   "at least 2 years", "5 years of experience", "3+ שנות ניסיון", "ניסיון של
+   שנתיים" and number words, in English and Hebrew.
+2. **Skip what isn't a requirement.** Lines that call something an advantage,
+   a plus or preferred (or "יתרון") don't count, and neither do years over 15,
+   which are a company's age.
+3. **Take the most asked.** "5+ years in software, 2+ in Python" asks for
+   five.
+4. **Check the title too.** Senior, lead, principal, staff, head, architect
+   and their Hebrew names count as senior, unless the title also says junior,
+   student or intern.
 
-### 4. Search for jobs
+The ranking applies this before its AI call, and a job's page applies it when
+it opens. For a junior search, Pip also reads every listed posting in the
+background, one at a time, 1.5 seconds apart and at least 5 seconds between
+two pages of the same site, so the list knows each job's years. LinkedIn is
+never read in the background.
 
-```bash
-/scrape
+**Worked example.** "4+ years of hands-on experience in machine/deep learning
+or computer vision." gives 4 years. On a junior search the job is written to
+the list as `filtered` with the reason `years`, appears under "filtered out"
+with the chip "דורשת 4+ שנות ניסיון", and costs no AI call.
+
+</details>
+
+<details>
+<summary><b>From your profile to a health score (profile health)</b></summary>
+<br>
+
+```text
+01-candidate-profile.md ─▶ parse into cards ─▶ 12 checks in 6 groups ─▶ round(100 × met / 12)
 ```
 
-This searches multiple job portals for positions matching your profile, deduplicates results, and presents them sorted by fit. Pick a match to run `/apply` on it directly — or, when a scrape returns more jobs than you want to eyeball, run `/rank` to batch-score them all against the fit framework and get a ranked shortlist first.
+| Group | Checks |
+|---|---|
+| Basics | name, email, phone, location, LinkedIn |
+| Languages | at least one |
+| Skills | at least 5 |
+| Experience | at least one role, dates for each, points for each |
+| Education | at least one |
+| Projects | at least one |
 
-### 5. Apply to a job
+**Worked example.** A profile with a name, an email and a degree meets 3 of
+the 12 checks: `round(100 × 3 / 12) = 25`, shown in red. At 100 the ring turns
+a deep green and Pip's eyes turn to hearts.
 
-```bash
-/apply https://jobindex.dk/job/1234567
+</details>
+
+<details>
+<summary><b>A phone that reaches your computer (the relay)</b></summary>
+<br>
+
+```text
+phone ─HTTPS─▶ site on Railway ─▶ the WebSocket your computer opened ─▶ Pip ─▶ user/
 ```
 
-If the URL can't be fetched (some job portals block automated access), you can paste the job description directly instead:
+1. **The computer calls out.** Pip opens a connection to the site when it
+   starts, so nothing at home is opened to the internet.
+2. **The site only passes requests along.** It keeps each computer's id, its
+   account's name and a hash of the key it connects with, in SQLite, and
+   one-time pairing codes in memory for two minutes. No passwords and no files.
+3. **The computer checks the password.** A phone's sign-in goes through to
+   the computer, which holds the account.
+4. **Several computers, one account.** Each computer asks the others for the
+   account's files and takes whatever is newer, sealed with the account's key.
+   A replaced file is kept aside for a week, and files over 40 MB stay put.
 
-```bash
-/apply <paste the full job description here>
+</details>
+
+<details>
+<summary><b>Install once, update by itself (installer and updates)</b></summary>
+<br>
+
+```text
+PipSetup.exe ─▶ Bun 1.4.4, Python 3.14.9, MiKTeX 25.12 (each SHA-256 checked) ─▶ tray launcher ─▶ update check every 3 minutes
 ```
 
-This runs the full workflow: evaluate fit, draft CV + cover letter, review with a second agent, revise, and present the final output. The posting passes a deterministic integrity gate first (hidden text, invisible characters, instruction-shaped lines, hidden links), and its one-line verdict opens the evaluation; the agents that fetch and review read-only.
+1. **Per-user install.** Inno Setup installs into your own profile, then
+   downloads Bun, Python and MiKTeX, each checked against a pinned SHA-256.
+2. **A tray launcher.** A small C# launcher starts Pip, opens it in your
+   browser and puts Pip's face in the tray.
+3. **Updates.** It checks the site 60 seconds after starting and every 3
+   minutes after that, waits until Pip isn't busy, verifies the download and
+   installs it silently. A page open at the time hides the restart and carries
+   on.
+4. **macOS.** A one-line install script sets up the same pieces with launchd
+   agents and a menu-bar Pip.
 
-> [!WARNING]
-> Postings are treated as untrusted input (the workflow follows no instructions embedded in them and fetches no links from their body), but agentic defenses are instruction-level, not a sandbox - on an unfamiliar job board, skim what was fetched and written before you hit send. Details in [SECURITY.md](SECURITY.md).
+</details>
 
-## Commands
+## Run it locally
 
-`/setup`, `/scrape`, and `/apply` form the core workflow. Ten more commands extend it once your profile is in place.
+### Prerequisites
+
+- Windows 10 or 11, or macOS
+- [Bun](https://bun.sh) 1.4 or newer
+- Python 3.10 or newer
+- A TeX distribution with LuaLaTeX (MiKTeX or TinyTeX), for the CVs
+- For the AI parts, a Claude plan signed in to Claude Code, or ChatGPT through
+  Codex. Without one, everything that needs no AI still works.
+
+Or skip all of this and take the installer from
+[the site](https://pip-site-production-8fff.up.railway.app).
+
+### 1. Get it
+
+```bash
+git clone https://github.com/seanfourman/PIPeline.git
+cd PIPeline
+```
+
+### 2. Run it
+
+```bash
+cd web
+bun install
+bun run server.ts
+```
+
+On Windows, `start-web.cmd` does both. Open <http://127.0.0.1:4174>. The first
+visit walks you through making an account, uploading your CV and setting up
+the search, and fills a `user/` folder with your own copies of the profile
+templates. `python tools/init_user.py` makes that folder for the command-line
+route.
+
+### Settings
+
+| Variable | Default | What it sets |
+|---|---|---|
+| `JOB_WEB_PORT` | `4174` | Where the local server listens |
+| `PIP_SITE` | unset | The phone-access site to pair with; unset keeps Pip on the computer |
+
+Everything else (where to search, your areas, roles, salary, the daily run and
+its email) lives on the app's settings page, saved in `user/`.
+
+## Scripts
 
 | Command | What it does |
 |---|---|
-| **`/setup`** | Builds your profile from your documents, a pasted CV, or an interview |
-| **`/scrape`** | Searches job portals for postings that match your profile |
-| **`/apply`** | Evaluates fit, then drafts, reviews, and compiles a tailored CV and cover letter |
-| `/rank` | Batch-scores a scrape into a ranked shortlist |
-| `/interview` | Builds a stage-specific prep pack and runs a mock interview |
-| `/outcome` | Records results, archives what you sent, and drafts follow-ups |
-| `/gmail-sync` | Proposes application status updates from your Gmail |
-| `/notion-sync` | Publishes a read-only view of your pipeline to Notion |
-| `/html-report` | Generates an offline dashboard of your applications |
-| `/expand` | Adds competencies found in your public profiles and course syllabi |
-| `/upskill` | Maps your skill gaps and builds a learning plan |
-| `/add-template` | Registers your own CV or cover letter template |
-| `/add-portal` | Generates a search skill for a job board in your market |
-| `/reset` | Wipes profile data or documents - see [Starting over](#starting-over) |
+| `start-web.cmd` | Installs the app's packages and starts Pip (Windows) |
+| `cd web && bun run server.ts` | Starts the local server |
+| `cd web && bun test` | The app's tests |
+| `python -m pytest tests` | The tools' tests |
+| `python templates/cv/one-page-clean/build.py <company>_<role>` | Builds one CV, checks it fits one page, and saves the PDF |
+| `bun installer/build.ts` | Builds `PipSetup.exe` (needs Inno Setup 6) |
+| `bun site/server.ts` | Runs the phone-access site locally, on port 4180 |
+| `bun site/deploy.ts --yes` | Deploys the site to Railway (needs the Railway CLI) |
 
-<details>
-<summary><b>Full command reference</b></summary>
+## Commands
 
-- **`/interview`** preps you for a scheduled interview on a tracked application. It builds a stage-specific prep pack from the application's archive (the exact posting, the CV and cover letter the interviewer actually read, feedback recorded from earlier rounds), researches the company and interviewers with a verify-before-use rule, maps likely questions to your STAR examples, and offers a mock interview following the roleplay protocol in `user/profile/07-interview-prep.md`. Gaps get honest bridge answers, never invented experience.
-- **`/outcome`** records what happened to an application - interview stages, offers, rejections, silence. It archives the submitted CV, cover letter, and posting text into `user/documents/applications/<company>_<role>/`, keeps `outcome.md` in the format `/setup` Path A parses, and updates the tracker. It also owns the stretch before there is an outcome to record: `/outcome followup` surfaces open applications that have gone quiet (default 10 days), drafts a short channel-appropriate follow-up in your writing style using only claims from the materials you already submitted (drafts only, never sends; at most twice per application), and offers a thank-you note in the same turn an interview stage is recorded. Once a few applications resolve, it points you back to `/setup` to calibrate the fit framework from what actually got interviews.
-- **`/notion-sync`** publishes a one-way, read-only view of the pipeline into a Notion database via the official Notion MCP server (OAuth, no API keys) - one row per ranked job plus every tracked application, with a write-once briefing page per row. The repo files stay the system of record: nothing syncs back, and documents sync as filenames only. Complements `/html-report`: that is the deep offline dashboard you regenerate at your desk; this is the glanceable live view from anywhere Notion runs (desktop, web, phone).
-- **`/gmail-sync`** reads your Gmail (via the Gmail connector) for status signals on your open applications - interview invites, assessment links, offers, rejections - and proposes them as a batch for you to approve before anything is written to the tracker or `outcome.md`, citing the source email on every proposed change. Offers stop short of proposing `hired`/`offer_declined` since that's your call; conflicting or unmatched signals get flagged for a manual `/outcome` pass instead of guessed.
-- **`/rank`** bridges `/scrape` and `/apply`: it batch-scores all newly scraped postings against the fit framework (parallel agents fetch each posting and score the five evaluation dimensions) and returns a ranked shortlist with honest per-job strengths and gaps. Deal-breakers veto, deadlines get urgency flags, dead postings get marked expired. Pick a number and it hands off to the full `/apply` workflow.
-- **`/expand`** enriches your profile by scanning public sources you've already linked in it (GitHub repos, portfolio site, Kaggle, Google Scholar) and looking up syllabi for named courses and certifications. Discovered competencies are added to your profile with a source tag. Useful right after `/setup` to surface skills that documents alone don't make explicit.
-- **`/upskill`** analyzes the gap between your profile, your tracked job postings, and your ranked-but-untracked postings (`/rank`'s recorded gaps in `user/job_scraper/seen_jobs.json`) — or a single posting via `/upskill <URL>`. Produces a prioritized heatmap of skill gaps and a learning plan with web-searched study resources and time estimates. Useful for career planning between applications.
-- **`/html-report`** generates a self-contained HTML dashboard from `user/job_search_tracker.csv` and the application archives — stat cards, status/sector/channel/funnel charts (inline SVG, no external dependencies), and a filterable applications table. Opens directly in a browser, fully offline. Re-run it any time after `/apply` or `/outcome` adds new entries.
-- **`/add-template`** registers your own CV or cover letter template (LaTeX, Typst, or another toolchain) in place of the stock ones. It captures the template's instructions (source extension, compile command, fonts, style rules, page limit), runs a mandatory test compile, and wires the template into `/apply`. See [Custom templates](#custom-templates) below.
-- **`/add-portal`** generates a job-portal search skill for a job board in your market. It investigates the portal (search URL pattern, result structure, access rules), scaffolds the CLI skill from the same structure as the shipped ones, and test-runs a live query before registering. See [Job search tools](#job-search-tools) below.
+The Claude Code commands work in a conversation with Pip or in a terminal
+opened in the repository.
 
-</details>
+| Command | What it does |
+|---|---|
+| `/setup` | Builds your profile from your CV, LinkedIn export and answers |
+| `/apply` | Evaluates a posting, then writes and checks a tailored CV |
+| `/rank` | Scores the jobs the search collected |
+| `/interview` | Prepares you for a scheduled interview |
+| `/expand` | Finds competencies hidden in your documents and public profiles |
+| `/outcome` | Records what happened to an application |
+| `/gmail-sync` | Reads application updates from your Gmail |
+| `/add-portal` | Adds a search skill for another job board |
+| `/portfolio` | Picks your best projects and builds a portfolio |
+| `/readme` | Writes a README like this one for a project |
 
-## How `/apply` works
+## Routes
 
-<p align="center">
-  <img src="assets/readme/apply.svg" alt="A job posting passes an integrity gate and fit evaluation, then loops through draft, review, revise, and compile plus inspect until the CV is exactly two pages, the cover letter one page, and the ATS text layer is checked." width="100%">
-</p>
+| Route | Page |
+|---|---|
+| `/` | Home: the next step and the journey |
+| `/jobs` | Searching for jobs |
+| `/saved` | My jobs: what Pip found and what you saved |
+| `/job/<id>` | A job's own page |
+| `/apps` | Your applications |
+| `/chat` | Conversations with Pip |
+| `/profile` | Your profile |
+| `/portals` | The boards and career pages Pip reads |
+| `/portfolio` | Your portfolio |
+| `/settings` | Search, AI, daily run, phone access |
 
-The `/apply` command runs a **drafter-reviewer workflow** with mandatory PDF compilation:
+## API
 
-1. **Parse** the job posting (URL or text)
-2. **Evaluate fit** against your profile (skills, experience, culture, location, career alignment)
-3. **Draft** a tailored CV and cover letter in LaTeX
-4. **Spawn a reviewer agent** that researches the company and critiques the drafts
-5. **Revise** based on the reviewer's feedback
-6. **Compile and inspect** both PDFs: lualatex for the CV, xelatex for the cover letter. Claude reads the rendered pages and iterates on the LaTeX until the CV is exactly 2 pages with no orphaned entry titles, and the cover letter is exactly 1 page with the signature visible and fonts consistent.
-7. **ATS-check the CV**: extract the PDF's text layer (`pdftotext`, optional dependency) and verify it the way an ATS parser sees it — contact details present as literal text, no garbled glyphs, sane reading order — then score the posting's keyword coverage against the extraction. Keywords the profile genuinely supports get added; genuine gaps stay visible, never stuffed.
-8. **Present** the final output with a verification checklist
+The local server answers the interface under `/api`, behind the account's
+sign-in. The parts, grouped:
 
-All claims in the CV and cover letter are verified against your actual profile. The system never fabricates skills or experience.
-
-<details>
-<summary><b>What makes this workflow different</b></summary>
-
-- **PDF verification loop.** Most LaTeX-resume templates produce "looks fine in the .tex" output that breaks in the PDF: job titles orphan to the next page, cover letters spill onto page 2, bullet fonts silently fall back to the body font. The `/apply` command compiles and visually inspects every PDF and applies targeted fixes (`\needspace`, `\enlargethispage`, font-matching wrappers for list items) until the layout is clean. This runs automatically on every application.
-- **ATS verification on the PDF text layer.** An ATS reads the PDF's embedded text, not the rendered page — and LaTeX can silently produce PDFs whose text extracts as garbage (icon glyphs where the email should be, interleaved lines from multi-column layouts). `/apply` extracts the compiled CV's text layer with `pdftotext` and verifies contact details, reading order, and the posting's keyword coverage against what a parser actually sees. Honesty rule enforced: a keyword the profile doesn't support is acknowledged as a gap, never stuffed in.
-- **Relevance-weighted CV cutting.** When a CV overflows 2 pages, the workflow does not cut mechanically from the "oldest" section. It scores each candidate line by (a) relevance to the target posting, (b) uniqueness in the document, and (c) whether the cover letter depends on it, and cuts the lowest-total-score line first. An older-role bullet that hits posting keywords survives ahead of a recent-role bullet that does not.
-- **Drafter-reviewer separation.** The drafter writes; a second Claude agent, spawned with a fresh context, researches the company and critiques the drafts. The drafter then revises. This catches missed keywords, weak framing, and generic language that a single pass often leaves in.
-- **Token-efficient reviewer dispatch.** The reviewer agent receives drafts inline rather than re-reading them, and the verification checklist runs once at the end of the workflow rather than being duplicated by both agents. Note: the new compile-and-inspect step in Step 5 spends some of those savings on PDF rendering and layout iteration — the workflow trades some end-to-end token cost for a real reduction in broken PDFs reaching the user.
-
-</details>
-
-## Customization
-
-### Which files to edit manually
-
-If you prefer editing files directly instead of using `/setup`:
-
-| File | What to change |
-|------|---------------|
-| `user/CLAUDE.md` | Your full profile (name, education, experience, skills, goals) |
-| `user/profile/01-candidate-profile.md` | Structured version of your CV data |
-| `user/profile/02-behavioral-profile.md` | Your behavioral assessment or self-assessment |
-| `user/profile/04-job-evaluation.md` | Skill match areas, career goals, motivation filters |
-| `user/profile/05-cv-templates.md` | Profile statement templates for different role types |
-| `user/profile/07-interview-prep.md` | Your STAR examples from actual experience |
-| `user/search-queries.md` | Job search queries for your skills and location |
-
-### Updating your search queries
-
-As your priorities evolve, you can reconfigure just the job search without re-running the full profile setup:
-
-```
-/setup --section search
+```text
+State      state, settings, profile, rules, files, file, uploads
+Jobs       search, scrape, rank, saved, sources, portals
+A job      job/open, job/<id>, job/<id>/again, job/<id>/ai
+Applying   applications, ats-terms, checks, transcript
+Pip        sessions, automation, portfolio
+Setup      intro, ai-login, remote
 ```
 
-This re-runs the search configuration interview: which roles to target, which skills to search for, which locations, and which portals. It also suggests role types you may not have considered based on your profile.
+## Architecture
 
-### Custom templates
-
-The CV uses [moderncv](https://ctan.org/pkg/moderncv) (banking style). The cover letter uses a custom `cover.cls` with Lato/Raleway fonts. Both are LaTeX — the reference engine this repo ships and maintains.
-
-To use your own template instead — LaTeX, [Typst](https://typst.app/), or any other toolchain that compiles to PDF from the command line — run:
-
-```
-/add-template
-```
-
-Point it at your source file (a `.tex` file plus any `.cls`/`.sty` files or bundled fonts; a `.typ` file plus any local packages; or an equivalent for another toolchain). The command interviews you for the template's instructions — source extension, compile command, fonts and where they live, style rules to preserve, hard page limit — stores everything under `templates/`, runs a mandatory test compile, and activates the template so `/apply` drafts and compiles from it. Templates are stored with `[PLACEHOLDER]` tokens instead of personal data, so they're safe to commit and share.
-
-- `/add-template --list` shows registered templates
-- `/add-template --use <name>` switches between them
-- `/add-template --use default` reverts to the stock moderncv / cover.cls templates
-
-If you prefer doing it by hand, the manual route still works: update the guidance in `user/profile/05-cv-templates.md` and `user/profile/06-cover-letter-templates.md`.
-
-### Job search tools
-
-The four Danish CLI tools in `.agents/skills/` (Jobbank, Jobdanmark, Jobindex, Jobnet) demonstrate the pattern for building a job-portal integration for a specific market. If you're in a different country, run:
-
-```
-/add-portal
+```text
+ phone ──HTTPS──▶ site (site/, Railway) ◀──WebSocket── ┐
+                                                       │
+ browser ──HTTP + SSE──▶ Bun server (web/server.ts) ───┤
+      React UI (web/ui)        │                       │
+                               ├─▶ user/  profile, CVs, job list, postings (never committed)
+                               ├─▶ AI     Claude Agent SDK, Codex (your own login)
+                               ├─▶ tools/ fetch_page, posting_guard, rank_state, scrape_state (Python)
+                               ├─▶ boards, career pages, Telegram (web/boards.ts, web/portals.ts, .agents/)
+                               └─▶ LuaLaTeX (templates/cv/one-page-clean/build.py)
 ```
 
-Give it your local job board's URL. The command investigates the portal (search-URL pattern, result-page structure, robots.txt/access rules), scaffolds a CLI skill with the same structure, commands, and output contract as the shipped ones, and test-runs a live query before registering anything. Auth-walled portals are declined, and portals with restrictive terms get a prominent personal-use-only warning in the generated skill. The generated skill is market-specific and lives in your fork; the generator itself is the universal part.
+### Code map
 
-Maintaining a fork adapted to your market or language? Add it to the [Community forks & adaptations](https://github.com/ai-job-search-dev/ai-job-search/discussions/78) thread so others can find it.
+| Path | What it does |
+|---|---|
+| `web/server.ts` | The local server: the API, live updates, the daily run, the job list's writes |
+| `web/ui/` | The React interface; `views/` holds one file per page |
+| `web/postings.ts` | A job's own page: reading it, the AI on request, the background reading |
+| `web/posting-read.ts` | Readers for sites' own posting data |
+| `web/posting-words.ts` | Skills and work facts from a posting's words |
+| `web/experience.ts` | The years a posting asks for, senior titles, the junior filter |
+| `web/ranker.ts` | The ranking run and its instructions to the AI |
+| `web/boards.ts`, `web/portals.ts`, `web/discover.ts` | Israeli boards, listed career sites and channels, newly found employers |
+| `web/scraper.ts` | The smart search |
+| `web/agent.ts`, `web/ai.ts`, `web/codex.ts` | Conversations and the AI engines |
+| `web/automation.ts` | The daily run and its email |
+| `web/auth.ts`, `web/sync.ts`, `web/remote.ts` | Accounts, syncing between computers, the connection to the site |
+| `site/` | The phone-access site and its deploy |
+| `installer/` | The Windows installer, its tray launcher and the macOS install script |
+| `templates/cv/one-page-clean/` | The one-page CV template, its build and its checks |
+| `tools/` | Python tools: fetching, the posting guard, the job list's state |
+| `.claude/`, `.agents/` | Claude Code commands and skills, the job boards' command-line readers |
+| `user/` | Your own data, made from `templates/user/`; never committed |
 
-For **country-agnostic** starting points outside Denmark, the repo ships two portal skills alongside the Danish demos:
+## Notes
 
-- **`linkedin-search`** — built on LinkedIn's public, unauthenticated `jobs-guest` endpoints. Field-agnostic, **zero runtime dependencies** (runs with just `bun`), and takes the search location as an explicit flag, so it works for any market out of the box (`-l "Berlin, Germany"`, `-l "Mumbai, Maharashtra, India"`, `-l "Remote"`, …). Intended for **personal use only** — automated access is against LinkedIn's Terms of Service, so keep volume low. See `.agents/skills/linkedin-search/SKILL.md`.
-- **`freehire-search`** — queries the [freehire.me](https://freehire.me) aggregator's public REST API (JSON, no API key). Tech-focused (software, data, engineering, DevOps, remote), multi-market via facet flags (`--region`, `--country`, `--remote`), and **zero runtime dependencies**. Unlike the HTML-scraping Danish portals, results come back structured (skills, seniority, category). The backend is MIT-licensed and [self-hostable](https://github.com/strelov1/freehire) — point `FREEHIRE_API_URL` at your own instance if you prefer. See `.agents/skills/freehire-search/SKILL.md`.
+- The installer isn't code-signed, so Windows Defender's cloud check can flag
+  it.
+- The AI runs on your own Claude or ChatGPT plan, so its limits are your
+  plan's.
+- The interface and the job sources are built for the Israeli market. The CVs
+  are written in English.
+- The macOS installer and its menu-bar app have been tested on one Mac.
+- LinkedIn is read only when you open or rank a job, never in the background.
+- Each computer keeps its own `user/` folder; the site syncs an account's
+  files between its computers but doesn't store them.
 
-### Extending the framework: portals, templates, criteria - and borrowing from other forks
+## Data and credits
 
-Everything above adds up to an extension model, so here it is stated plainly. The framework has three extension points, and none of them require touching upstream:
+- **Built on [ai-job-search](https://github.com/ai-job-search-dev/ai-job-search)**
+  by Mads Lorentzen and its contributors (MIT). From it come the Claude Code
+  commands and skills (`/apply`, `/rank`, `/setup`, `/interview` and the rest),
+  the evaluation framework, the job-list tools (`rank_state.py`,
+  `scrape_state.py`, `posting_guard.py`, `fetch_page.py`), the LinkedIn,
+  freehire and Danish job-board readers, the cover-letter template and most of
+  the Python tests. The name Pip comes from that project's courier-bird
+  mascot; this Pip is a fox drawn for this app. Its README is kept in
+  [docs/framework-README.md](docs/framework-README.md).
+- **humanizer** by Siqi Chen (MIT), unchanged in `.claude/skills/humanizer/`.
+- **Fonts:** Rubik, Fredoka and Handjet (SIL Open Font License), through
+  Fontsource.
+- **Icons:** Lucide (ISC).
+- **Common passwords:** the entries of 8 characters or more from SecLists'
+  10,000 most common (MIT).
+- **AI:** the Claude Agent SDK (Anthropic) and Codex (OpenAI).
+- **PDF:** pdf-lib (MIT).
+- **Hosting:** Railway, for the phone-access site.
 
-1. **Portal skills** - the module system for job boards. Every `*-search` skill is a self-contained folder under `.agents/skills/` with the same contract (a `search`/`detail` CLI, `--format json|table|plain` output, an `enabled:` flag in its `SKILL.md`, its own tests). `/scrape` auto-discovers any installed skill that follows the contract - nothing to register, nothing to wire up. `/add-portal` generates new ones; the [community portal index](https://github.com/ai-job-search-dev/ai-job-search/discussions/78) catalogs the ones other forks have built.
-2. **Document templates** - `/add-template` registers any CV or cover-letter toolchain that compiles to PDF from the command line, LaTeX or otherwise.
-3. **Evaluation criteria** - deal-breakers and preferences in your profile are free-form, and the evaluation rubric scores against whatever you put there. "Strong parental-leave terms", "minimum salary X per my union's scale", "no on-call" - each is one profile line, no code, and it carries real weight in `/rank` and `/apply` fit evaluations.
-
-<details>
-<summary>How the Language Gate handles language deal-breakers</summary>
-
-Language is the one deal-breaker type with dedicated, structured handling: `/setup` captures every language you work in and your level (asked directly, or inferred from your CV/LinkedIn export) into a `Languages` table, and the Language Gate (`user/profile/04-job-evaluation.md`) hard-rejects a posting that requires a language you haven't declared at all, while flagging - not auto-rejecting - one that asks for a higher level than you declared in a language you do work in, so a borderline case (a strict "fluent" bar against your own B1/B2, say) gets your judgment instead of a silent drop.
-
-</details>
-
-**Borrowing a portal skill from another fork** is the intended way to get a board that upstream doesn't ship: find it in the [portal index](https://github.com/ai-job-search-dev/ai-job-search/discussions/78), open that fork, and copy the one folder into your own `.agents/skills/`. Before you run it:
-
-- **Read the code.** All of it - these CLIs run pre-approved on your machine (`.claude/settings.json` allowlists them) against your career data. Check that the only network calls go to the job board it claims to search, that `package.json` has no `dependencies` and no lifecycle scripts (`postinstall` etc.), and that nothing reads or writes outside its own folder.
-- **Run its tests offline** (`bun test` in the skill's `cli/` directory) - a well-built skill's tests pass with no network access.
-- Check the `enabled:` flag and the skill's own ToS notes.
-
-The copy step is manual on purpose. Your settings already allow installed portal skills to run without asking each time - so an installer that fetched them from third-party repos for you would skip the one check that matters: you, reading the code first. There isn't one, and that's a security decision rather than a missing feature.
-
-Market-specific *data sources* (a national salary database, local award-rate tables) follow the same pattern as portals: they belong in a market fork, shared via [#78](https://github.com/ai-job-search-dev/ai-job-search/discussions/78), not upstream.
-
-### Salary benchmarking
-
-The salary tool works with any salary data you provide (union statistics, Glassdoor exports, personal research, etc.). See `tools/README_SALARY_TOOL.md` for the expected format and setup. If you don't have salary data, the salary step is simply skipped.
-
-### Starting over
-
-To wipe your profile data and start fresh:
-
-```
-/reset profile    # clears skill files, preserves framework rules
-/reset documents  # deletes files from user/documents/ folder
-/reset all        # both
-```
-
-`/reset` shows exactly what will be deleted and requires you to type `RESET` to confirm. Nothing is deleted until you do.
-
-### Staying up to date
-
-Upstream moves fast. Rather than pulling raw `master` and hoping, update your fork to a tagged [release](../../releases) - a weekly checkpoint that passed CI, with its changes listed on the release page. `python3 tools/check_upstream_updates.py` previews exactly which of your personalized files an update touches before you merge, and `python3 tools/upstream_triage.py` sorts the commits you're behind into "worth reviewing" vs "probably skip" (a weekly workflow can post this to a rolling issue). Full walkthrough in [SETUP.md, section 8](SETUP.md#8-pulling-upstream-updates-into-your-fork).
-
-## Tips for better results
-
-### Profile depth matters
-
-The single biggest factor in output quality is how much detail you put into your profile. A thin profile produces generic applications; a detailed one enables genuinely tailored results.
-
-- **Role descriptions:** Don't just list job titles. Describe what you actually did in each position: specific projects, tools used, responsibilities, and measurable achievements. The more material you provide, the more precisely the system can reframe your experience for different roles.
-- **Skills in context:** Instead of listing "Python" or "project management," describe how and where you applied them. "Built ML pipelines for customer churn prediction in Python using scikit-learn" gives the system far more to work with than "Python, machine learning."
-- **All onboarding paths work:** Whether you point `/setup` at your `user/documents/` folder, paste a single CV, or walk through the interview, the principle is the same: richer input produces sharper output.
-
-### Career path discovery
-
-The framework supports two distinct modes of job searching:
-
-- **Explicit targeting:** You know which roles or sectors you want. The system helps refine and prioritize based on fit.
-- **Latent opportunity discovery:** By analyzing your full history (not just job titles, but the actual work you did), the system can surface career paths you haven't considered. Transferable skills that map to unexpected industries, patterns in what you enjoyed or excelled at, or emerging roles that combine your domain expertise with new technology.
-
-To get the most from this, invest time during `/setup` in describing not just your experience, but what energized you, what drained you, and what you'd want more of. This context directly shapes how the system evaluates fit and which roles it surfaces during `/scrape`.
-
-## File structure
-
-<details>
-<summary>Show the repository layout</summary>
-
-```
-ai-job-search/
-├── CLAUDE.md                          # Workflow rules; imports user/CLAUDE.md
-├── user/                              # Everything about you; never committed (made by tools/init_user.py)
-│   ├── CLAUDE.md                      # Main candidate profile + search settings
-│   ├── profile.json                   # Your name, for the CV file name
-│   ├── CV_RULES.md                    # Your CV rules
-│   ├── cv_checks.json                 # Your CV limits and banned wording
-│   ├── search-queries.md              # Your job search queries
-│   ├── profile/
-│   │   ├── 01-candidate-profile.md    # Your education, experience, skills
-│   │   ├── 02-behavioral-profile.md   # PI/DISC/personality assessment
-│   │   ├── 04-job-evaluation.md       # Scoring framework for job fit
-│   │   ├── 05-cv-templates.md         # LaTeX CV structure + tailoring rules
-│   │   ├── 06-cover-letter-templates.md # LaTeX cover letter templates
-│   │   └── 07-interview-prep.md       # STAR examples + interview framework
-│   ├── cv/                            # Your master CV (main_example.tex) and each tailored CV
-│   ├── cover_letters/                 # Your cover letters
-│   ├── documents/                     # Career source materials for /setup Path A and /expand
-│   │   ├── README.md                  # Folder layout instructions
-│   │   ├── cv/                        # Master CV (PDF or .tex)
-│   │   ├── linkedin/                  # LinkedIn profile export (PDF)
-│   │   ├── diplomas/                  # Degree certificates and transcripts
-│   │   ├── references/                # Reference letters
-│   │   └── applications/              # Past application records (<company>_<role>/)
-│   ├── job_search_tracker.csv         # Application tracking spreadsheet
-│   ├── job_scraper/                   # Scraper state (seen jobs, results)
-│   ├── company_research/              # Company research cache
-│   ├── gmail_sync/                    # /gmail-sync state (processed message IDs, last sync date)
-│   ├── upskill/                       # /upskill report output (markdown reports per run)
-│   ├── reports/                       # /html-report dashboards
-│   └── app/                           # The web interface's conversations, settings and access token
-├── .claude/
-│   ├── commands/
-│   │   ├── apply.md                   # /apply workflow (drafter-reviewer)
-│   │   ├── setup.md                   # /setup onboarding (documents folder, CV import, or interview)
-│   │   ├── expand.md                  # /expand competency enrichment from documents and online presence
-│   │   ├── add-template.md            # /add-template register custom templates (LaTeX, Typst, ...)
-│   │   ├── add-portal.md              # /add-portal generate a job-portal search skill for your market
-│   │   ├── rank.md                    # /rank triage scraped jobs into a ranked shortlist
-│   │   ├── outcome.md                 # /outcome record application results, archive materials
-│   │   ├── gmail-sync.md              # /gmail-sync auto-detect application status from Gmail
-│   │   ├── interview.md               # /interview stage-specific prep pack + mock interview
-│   │   ├── html-report.md             # /html-report generate application tracker dashboard
-│   │   ├── notion-sync.md             # /notion-sync one-way pipeline view in a Notion database
-│   │   └── reset.md                   # /reset wipe profile data or documents folder
-│   ├── skills/
-│   │   ├── job-application-assistant/  # Core application skill
-│   │   │   ├── SKILL.md               # Skill definition
-│   │   │   ├── 03-writing-style.md    # Tone, structure, do's and don'ts
-│   │   │   ├── 08-application-forms.md # Answering application forms
-│   │   │   ├── 09-web-research.md     # Company and posting research
-│   │   │   ├── 10-cv-best-practices.md # What makes a CV work, section by section
-│   │   │   └── cv-research/           # The evidence behind each CV rule, with sources
-│   │   ├── job-scraper/               # Job search orchestration
-│   │   └── upskill/                   # /upskill skill gap analysis and learning plan
-│   └── settings.json                  # Claude Code permissions (shared, scoped)
-├── .agents/skills/                    # Job portal CLI tools
-│   ├── jobbank-search/                # Akademikernes Jobbank (Denmark)
-│   ├── jobdanmark-search/             # Jobdanmark.dk (Denmark)
-│   ├── jobindex-search/               # Jobindex.dk (Denmark)
-│   ├── jobnet-search/                 # Jobnet.dk (Denmark, government portal)
-│   ├── linkedin-search/               # LinkedIn public job listings (country-agnostic)
-│   └── freehire-search/               # freehire.me tech job aggregator (multi-market, REST API)
-├── assets/                            # README artwork (Pip the mascot, animated SVG diagrams)
-├── cover_letters/
-│   ├── cover.cls                      # Custom cover letter LaTeX class
-│   ├── cover_example.tex              # Example cover letter (structural reference + CI smoke test)
-│   └── OpenFonts/                     # Lato + Raleway fonts
-├── templates/                         # Custom templates registered via /add-template
-│   ├── README.md                      # Folder layout instructions
-│   └── user/                          # The clean starting files a new user/ folder is made from (cv/main_example.tex is the moderncv example)
-├── .github/workflows/ci.yml           # CI: LaTeX smoke compiles, skill lint, CLI typechecks
-├── salary_lookup.py                   # Salary benchmarking tool (BYO data)
-├── tools/
-│   ├── check_framework_version.py     # CI check: framework_version bumped when skill files change
-│   ├── check_upstream_updates.py      # Preview which personalized files an upstream update touches
-│   ├── convert_salary_excel.py        # Convert salary Excel to JSON
-│   ├── fetch_page.py                  # GET-only browser-header retry for 403s (robots.txt enforced)
-│   ├── install_portal_clis.py         # Install every discovered portal CLI (bun install)
-│   ├── lint_skills.py                 # CI lint for skills, commands, settings.json
-│   ├── posting_guard.py               # Integrity gate: strip hidden text, flag injection-shaped lines
-│   ├── robots_check.py                # Gate the browser-header retry against robots.txt
-│   ├── security_guards.py             # CI guards: permission allow/ask/deny, skill grants, gitignore, manifests
-│   ├── upstream_triage.py             # Sort upstream commits into worth-reviewing vs probably-skip
-│   ├── verify_layout.py               # Measure a compiled PDF's page layout (holes, orphans, footer collisions)
-│   ├── verify_pdf.py                  # Verify a compiled PDF's page count and extractable text
-│   └── README_SALARY_TOOL.md          # Salary tool setup instructions
-└── SETUP.md                           # Detailed setup guide
-```
-
-</details>
-
-## Contributing
-
-Thinking about a PR? Read [CONTRIBUTING.md](CONTRIBUTING.md) first - it explains what gets merged, what lives in forks, and why.
-
-## Acknowledgements
-
-- [Mikkel Krogholm](https://github.com/mikkelkrogsholm) ([skills repo](https://github.com/mikkelkrogsholm/skills)) for the job search CLI skills
-- Built with [Claude Code](https://claude.com/claude-code) by [Anthropic](https://anthropic.com)
-
-## License
-
-MIT
-
-<p align="center">
-  <img src="assets/mascot/pip_flight_loop.gif" alt="Pip, the courier bird" width="120"><br>
-  <sub>Pip delivers. Good luck out there.</sub>
-</p>
+Released under the [MIT license](LICENSE).
