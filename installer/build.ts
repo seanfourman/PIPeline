@@ -1,7 +1,7 @@
 // Builds installer/out/PipSetup.exe from pip.iss. It stages the program's files into installer/stage/app as git sees
 // them, tracked or new and not ignored (so nothing in user/, and no keys, PDFs or packages), less what is personal or
 // only for working on the program: links/ (chats), tests/, site/ (the phone site, which runs elsewhere), .github/,
-// assets/ (the README's pictures) and this folder. With them go the lockfiles git ignores, so a computer installing it
+// assets/ and media/ (the READMEs' pictures), docs/ and this folder. With them go the lockfiles git ignores, so a computer installing it
 // gets the very versions of the packages tried here. Beside them goes the build's version (version.ts), which an
 // installed Pip updates itself by. Then it draws the installer's pictures (art.ts), builds the launcher (launcher.cs)
 // and runs Inno Setup's compiler. Run from the repository: bun installer/build.ts (Inno Setup 6, or its ISCC.exe as
@@ -14,7 +14,7 @@ import { VERSION_FILE, versions } from "./version";
 
 const ROOT = path.resolve(import.meta.dir, "..");
 const STAGE = path.join(import.meta.dir, "stage");
-const LEFT_OUT = ["links/", "tests/", "site/", ".github/", "assets/", "installer/", ".pytest_cache/", ".cz.toml"];
+const LEFT_OUT = ["links/", "tests/", "site/", ".github/", "assets/", "media/", "docs/", "installer/", ".pytest_cache/", ".cz.toml"];
 
 const listed = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], { cwd: ROOT, encoding: "utf8" });
 if (listed.status !== 0) throw new Error(`git ls-files: ${listed.stderr}`);

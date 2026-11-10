@@ -8,11 +8,11 @@
 @font-face { font-family: "Handjet"; src: url("fonts/handjet-hebrew.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
 @font-face { font-family: "Handjet"; src: url("fonts/handjet-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
-/* Black and white, like a social site: white with black words by day, black with white words at night. The main
-   colour is a sea green, as Microsoft's careers site has it: mint for what is filled (the main buttons, badges, a
-   check's circle), with dark words on it; the same green deeper for links, words in colour and outlines, which
-   white has to carry (--accent); and the palest mint behind what is done (--good-soft). A full profile's ring takes
-   a deep green of its own (--full). The home page's banner keeps its own pixel art colours, last below. */
+/* Black and white, like a social site: white with black words by day, black with white words at night. The
+   main buttons, links and marks of where you are take one forest colour: forest green by day, the night
+   forest's turquoise at night (--accent is the same colour, for words and outlines). The profile page keeps
+   Microsoft's sea green, below with the profile. The home page's banner keeps its own pixel art colours, last
+   below. */
 :root {
   color-scheme: light;
   --bg: #ffffff;
@@ -25,17 +25,15 @@
   --hover: rgb(15 20 25 / 6%);
   /* A lighter one for the round choices, which a light ink tint shows less on at night. */
   --hover-soft: rgb(15 20 25 / 3%);
-  --primary: #b9f4e4;
-  --primary-ink: #1a212e;
-  --primary-edge: #8fdcc6;
-  --accent: #137c60;
-  --good-soft: #f0fefa;
-  --full: #2b715f;
+  --primary: #2f7a3a;
+  --primary-ink: #ffffff;
+  --primary-edge: #225c2b;
+  --accent: #2f7a3a;
   --soft: #f1f4f5;
   --cta: #ffc94a;
   --cta-ink: #2b2a1c;
   --cta-edge: #d6962a;
-  --good: #1fa37f;
+  --good: #2f7a3a;
   --warn: #a86b00;
   --bad: #d0302f;
   --live: #2f6fb0;
@@ -61,8 +59,8 @@
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
     --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%); --hover-soft: rgb(231 233 234 / 7%);
-    --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --soft: #16181c; --accent: #5fe3c0; --good-soft: #0d2620; --full: #5fc4a8;
-    --good: #3fcf9e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
+    --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --soft: #16181c; --accent: #3fd0e0;
+    --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
     --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
     --board-panel: #161a45; --board-ink: #eef0ff; --board-ink-2: #aab3e8; --hero-sky: #0b0a22;
     /* The night forest's: moss, glowing mushrooms, deep blue, violet, flowers, fireflies. */
@@ -74,8 +72,8 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%); --hover-soft: rgb(231 233 234 / 7%);
-  --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --soft: #16181c; --accent: #5fe3c0; --good-soft: #0d2620; --full: #5fc4a8;
-  --good: #3fcf9e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
+  --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --soft: #16181c; --accent: #3fd0e0;
+  --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
   --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
   --board-panel: #161a45; --board-ink: #eef0ff; --board-ink-2: #aab3e8; --hero-sky: #0b0a22;
   --sky-1: #3fcf8e; --sky-2: #3fd0e0; --sky-3: #5f6ff0; --sky-4: #b07cff; --sky-5: #ff6fc0; --sky-6: #ffd56b;
@@ -2161,7 +2159,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .portal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .portal-name { font-weight: 600; }
 .portal-how { padding: 1px 9px; border-radius: 999px; background: var(--soft); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
-.portal-how.search, .portal-how.read { background: var(--good-soft); color: var(--accent); }
+.portal-how.search, .portal-how.read { background: color-mix(in srgb, var(--primary) 12%, var(--surface)); color: var(--primary-edge); }
 .portal-how.web, .portal-how.channel { background: color-mix(in srgb, var(--live) 12%, var(--surface)); color: var(--live); }
 .portal-status { color: var(--ink-3); font-size: 13px; }
 .portal-actions { display: flex; align-items: center; gap: 10px; flex: none; }
@@ -3421,6 +3419,15 @@ a.ai-pill { text-decoration: none; }
 }
 
 /* ---------- the profile (views/profile.tsx) ---------- */
+
+/* The profile keeps Microsoft's sea green (Sean, 2026-11-10), while the rest of the site is forest green: mint for
+   what is filled with dark words on it, the same green deeper for words and outlines, the palest mint behind what
+   is done, and a full profile's ring in a deep green of its own. */
+.prof-page { --primary: #b9f4e4; --primary-ink: #1a212e; --primary-edge: #8fdcc6; --accent: #137c60; --good: #1fa37f; --good-soft: #f0fefa; --full: #2b715f; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .prof-page { --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --accent: #5fe3c0; --good: #3fcf9e; --good-soft: #0d2620; --full: #5fc4a8; }
+}
+:root[data-theme="dark"] .prof-page { --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --accent: #5fe3c0; --good: #3fcf9e; --good-soft: #0d2620; --full: #5fc4a8; }
 
 /* Under the jobs' moving sky, like "My jobs": the title, and the ways to change the profile as text or by talking. */
 .page.prof-page { max-width: 1200px; padding-inline: 0; padding-top: 0; gap: 0; }
