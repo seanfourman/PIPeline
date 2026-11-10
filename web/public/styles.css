@@ -8,9 +8,11 @@
 @font-face { font-family: "Handjet"; src: url("fonts/handjet-hebrew.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
 @font-face { font-family: "Handjet"; src: url("fonts/handjet-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
-/* Black and white, like a social site: white with black words by day, black with white words at night. The
-   main buttons, links and marks of where you are take one forest colour: forest green by day, the night
-   forest's turquoise at night. The home page's banner keeps its own pixel art colours, last below. */
+/* Black and white, like a social site: white with black words by day, black with white words at night. The main
+   colour is a sea green, as Microsoft's careers site has it: mint for what is filled (the main buttons, badges, a
+   check's circle), with dark words on it; the same green deeper for links, words in colour and outlines, which
+   white has to carry (--accent); and the palest mint behind what is done (--good-soft). A full profile's ring takes
+   a deep green of its own (--full). The home page's banner keeps its own pixel art colours, last below. */
 :root {
   color-scheme: light;
   --bg: #ffffff;
@@ -23,14 +25,17 @@
   --hover: rgb(15 20 25 / 6%);
   /* A lighter one for the round choices, which a light ink tint shows less on at night. */
   --hover-soft: rgb(15 20 25 / 3%);
-  --primary: #2f7a3a;
-  --primary-ink: #ffffff;
-  --primary-edge: #225c2b;
+  --primary: #b9f4e4;
+  --primary-ink: #1a212e;
+  --primary-edge: #8fdcc6;
+  --accent: #137c60;
+  --good-soft: #f0fefa;
+  --full: #2b715f;
   --soft: #f1f4f5;
   --cta: #ffc94a;
   --cta-ink: #2b2a1c;
   --cta-edge: #d6962a;
-  --good: #2f7a3a;
+  --good: #1fa37f;
   --warn: #a86b00;
   --bad: #d0302f;
   --live: #2f6fb0;
@@ -56,8 +61,8 @@
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
     --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%); --hover-soft: rgb(231 233 234 / 7%);
-    --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --soft: #16181c;
-    --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
+    --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --soft: #16181c; --accent: #5fe3c0; --good-soft: #0d2620; --full: #5fc4a8;
+    --good: #3fcf9e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
     --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
     --board-panel: #161a45; --board-ink: #eef0ff; --board-ink-2: #aab3e8; --hero-sky: #0b0a22;
     /* The night forest's: moss, glowing mushrooms, deep blue, violet, flowers, fireflies. */
@@ -69,8 +74,8 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%); --hover-soft: rgb(231 233 234 / 7%);
-  --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --soft: #16181c;
-  --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
+  --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --soft: #16181c; --accent: #5fe3c0; --good-soft: #0d2620; --full: #5fc4a8;
+  --good: #3fcf9e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
   --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
   --board-panel: #161a45; --board-ink: #eef0ff; --board-ink-2: #aab3e8; --hero-sky: #0b0a22;
   --sky-1: #3fcf8e; --sky-2: #3fd0e0; --sky-3: #5f6ff0; --sky-4: #b07cff; --sky-5: #ff6fc0; --sky-6: #ffd56b;
@@ -87,7 +92,7 @@ canvas { pointer-events: none; }
 [hidden] { display: none !important; }
 html, body, #root { height: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 15.5px/1.6 "Rubik", "Segoe UI", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-a { color: var(--primary); font-weight: 500; }
+a { color: var(--accent); font-weight: 500; }
 h1, h2, h3 { font-family: var(--head); line-height: 1.2; margin: 0; }
 h1 { font-size: 34px; font-weight: 700; }
 h2 { font-size: 20px; font-weight: 600; }
@@ -247,7 +252,7 @@ main:focus, main:focus-visible { outline: none; }
 .error-line { color: var(--bad); font-size: 14px; }
 .warn-line { color: var(--warn); font-size: 14px; }
 .empty { text-align: center; padding: 30px 18px; color: var(--ink-2); display: flex; flex-direction: column; gap: 14px; align-items: center; }
-.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.9s linear infinite; }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Buttons are chunky, with an edge that presses in. */
@@ -269,7 +274,7 @@ input[type="text"], input[type="search"], input[type="number"], input[type="emai
   font: inherit; color: var(--ink); background: var(--surface); min-height: 42px; border: 1.5px solid var(--line); border-radius: 11px; padding: 8px 12px;
 }
 input:hover, select:hover, textarea:hover { border-color: var(--ink-3); }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--soft); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--soft); }
 textarea { resize: vertical; width: 100%; }
 /* A list to pick from (Select in select.tsx): a box like the text boxes, its chevron turning over as it opens,
    and a round panel like the jobs page's menus, its rows lit softly under the pointer or the arrow keys and the
@@ -280,7 +285,7 @@ textarea { resize: vertical; width: 100%; }
   background: var(--surface); color: var(--ink); font: inherit; text-align: start; cursor: pointer; transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .select:hover { border-color: var(--ink-3); }
-.select:focus-visible, .select.open { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--soft); }
+.select:focus-visible, .select.open { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--soft); }
 .select:disabled { opacity: 0.55; cursor: default; }
 .select-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .select-blank { color: var(--ink-3); }
@@ -358,7 +363,7 @@ textarea { resize: vertical; width: 100%; }
 .add-go .icon { width: 20px; height: 20px; }
 .add-link {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; padding-block: 6px; padding-inline: 10px 14px; border: 0; border-radius: 999px;
-  background: none; color: var(--primary); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 0.2s ease;
+  background: none; color: var(--accent); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 0.2s ease;
 }
 .add-link:hover { background: var(--hover-soft); }
 /* A section's heading with a shortcut at the line's other end (remote work, by the markets' heading). */
@@ -373,8 +378,8 @@ textarea { resize: vertical; width: 100%; }
 .ai-row-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .ai-state { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--hover-soft); color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
 .ai-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); }
-.ai-state.on { color: var(--primary); }
-.ai-state.on::before { background: var(--primary); }
+.ai-state.on { color: var(--accent); }
+.ai-state.on::before { background: var(--accent); }
 .ai-sign-in { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .ai-key { display: flex; flex-direction: column; gap: 8px; }
 .ai-key > summary { width: fit-content; color: var(--ink-2); font-size: 13px; cursor: pointer; }
@@ -385,16 +390,16 @@ textarea { resize: vertical; width: 100%; }
 /* A key for ChatGPT: its box and, once one is saved, a way to remove it; under them, where to get one. */
 .key-row { display: flex; align-items: center; gap: 8px; }
 .key-row input { flex: 1; min-width: 0; }
-.key-link { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; color: var(--primary); font-size: 13.5px; font-weight: 600; text-decoration: none; }
+.key-link { align-self: flex-start; display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-size: 13.5px; font-weight: 600; text-decoration: none; }
 .key-link:hover { text-decoration: underline; }
 .key-link .icon { width: 14px; height: 14px; }
 /* A saved key: marked on the fold, and inside it a line of its own beside the button that removes it. */
-.key-saved { display: inline-flex; align-items: center; gap: 5px; margin-inline-start: 8px; color: var(--primary); font-weight: 600; }
+.key-saved { display: inline-flex; align-items: center; gap: 5px; margin-inline-start: 8px; color: var(--accent); font-weight: 600; }
 .key-saved .icon { width: 14px; height: 14px; }
 .key-saved-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .key-saved-row .key-saved { margin-inline-start: 0; }
 .check { display: flex; align-items: center; gap: 9px; font-weight: 500; cursor: pointer; }
-.check input { width: 18px; height: 18px; accent-color: var(--primary); }
+.check input { width: 18px; height: 18px; accent-color: var(--accent); }
 .row input[type="text"], .row input[type="email"], .row input[type="password"] { flex: 1 1 200px; min-width: 0; }
 
 .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--ink-2); white-space: nowrap; }
@@ -423,10 +428,10 @@ textarea { resize: vertical; width: 100%; }
 .role-pick[aria-pressed="true"] { border-color: var(--primary); background: var(--primary); color: var(--primary-ink); }
 .role-pick[aria-pressed="true"]::before { content: "✓"; font-weight: 700; }
 .chip { background: var(--surface); border: 1.5px solid var(--line); border-radius: 999px; padding: 4px 14px; font: inherit; font-size: 14px; font-weight: 500; color: var(--ink-2); cursor: pointer; }
-.chip:hover { border-color: var(--primary); color: var(--primary); }
+.chip:hover { border-color: var(--accent); color: var(--accent); }
 .list-link { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none; font-weight: 400; }
 .list-link:last-child { border-bottom: 0; }
-.list-link:hover { color: var(--primary); }
+.list-link:hover { color: var(--accent); }
 .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; unicode-bidi: plaintext; text-align: start; }
 
 /* Pip */
@@ -622,8 +627,8 @@ textarea { resize: vertical; width: 100%; }
 .best-head { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-bottom: 12px; text-align: center; }
 .best-head h2 { font-family: var(--pixel); font-size: 30px; font-weight: 800; line-height: 1.1; }
 /* The banner's block size: 39 blocks wide. */
-.best-ledge { display: block; width: calc(var(--px) * 39); max-width: 100%; height: auto; color: var(--primary); }
-.best-all { color: var(--primary); text-decoration: none; font-size: 15px; font-weight: 500; }
+.best-ledge { display: block; width: calc(var(--px) * 39); max-width: 100%; height: auto; color: var(--accent); }
+.best-all { color: var(--accent); text-decoration: none; font-size: 15px; font-weight: 500; }
 .best-all:hover { text-decoration: underline; }
 /* The jobs on shelves with no sides: a plank under each row of squares, as many as the jobs need, in the banner's
    wood by day and its blue at night, lit along its top and shaded along its bottom. */
@@ -684,7 +689,7 @@ textarea { resize: vertical; width: 100%; }
 .tabs { display: flex; gap: 4px; border-bottom: 1.5px solid var(--line); }
 .tab { background: none; border: 0; border-bottom: 3px solid transparent; padding: 9px 14px; font: inherit; font-weight: 600; color: var(--ink-2); cursor: pointer; margin-bottom: -1.5px; }
 .tab:hover { color: var(--ink); }
-.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--primary); }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 /* The jobs search, plain like a chat app's first screen (Quick in jobs.tsx): a question, one round box with Pip
    lying on its top edge, and a row of glass roles under it, over a forest rainbow of moving gradients. It stands
    in the middle of the page, top to bottom (the page's padding is 38 above and 80 below); once a search is asked,
@@ -732,7 +737,7 @@ textarea { resize: vertical; width: 100%; }
   position: relative; display: flex; align-items: center; gap: 6px; width: min(760px, 100%); min-height: 60px; padding: 7px 8px; padding-inline-start: 24px;
   border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); box-shadow: 0 6px 24px rgb(0 0 0 / 6%); transition: border-color 0.2s ease;
 }
-.seek-box:focus-within { border-color: var(--primary); }
+.seek-box:focus-within { border-color: var(--accent); }
 .seek-box input, .seek-box input:hover, .seek-box input:focus { flex: 1; min-width: 0; min-height: 44px; padding: 0; border: 0; background: none; box-shadow: none; font-size: 16.5px; }
 /* Without the browser's blue clearing cross. */
 .seek-box input::-webkit-search-cancel-button { display: none; }
@@ -1041,7 +1046,7 @@ textarea { resize: vertical; width: 100%; }
     0 0 0 1px rgb(0 0 0 / 6%), 0 10px 28px rgb(0 0 0 / 14%);
 }
 .seek-pill:hover::before, .seek-pill:hover::after { opacity: 1; }
-.seek-pill:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.seek-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .role-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .role-stack { position: relative; flex: none; --fan-side: -1; }
 :root[dir="rtl"] .role-stack { --fan-side: 1; }
@@ -1087,7 +1092,7 @@ textarea { resize: vertical; width: 100%; }
   color: var(--ink); font: inherit; font-size: 15px; text-align: start; cursor: pointer; transition: background-color 0.2s ease;
 }
 .role-list-row:hover { background: var(--hover); }
-.role-list-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.role-list-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .seek-note { color: var(--ink-2); text-align: center; }
 /* While it searches: in the middle of the page (the jobs page fills the window), Pip's head mark in grey,
    breathing, inside a thin grey ring that turns. Nothing is written; its label is for screen readers. It fades in
@@ -1180,7 +1185,7 @@ textarea { resize: vertical; width: 100%; }
 }
 .result-act:hover { background: color-mix(in srgb, var(--ink) 7%, var(--surface)); color: var(--ink); }
 /* Saved, the bookmark is filled in the main colour, wherever the job is listed. */
-.result-act.save.on { color: var(--primary); }
+.result-act.save.on { color: var(--accent); }
 /* Applying is the AI's work: a white round button like its neighbours, its paper plane in their grey, and the AI's
    colours as a soft light along the inside of its rim, turning slowly. Under the pointer, or reached by the keyboard,
    the light grows in toward the middle and the plane darkens to ink, fading in and out. A list has one on every row,
@@ -1204,7 +1209,7 @@ textarea { resize: vertical; width: 100%; }
 /* At work on a project (the portfolio page), the light stays grown in and turns faster. */
 .result-act.ai-act.busy .apply-rim::before { animation-duration: 1.4s; }
 .result-act .icon { width: 18px; height: 18px; }
-.result-act:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.result-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .act-label {
   position: absolute; z-index: 5; bottom: calc(100% + 10px); left: 50%; padding: 6px 13px; border: 1px solid var(--line); border-radius: 999px;
   background: var(--surface); color: var(--ink-2); box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
@@ -1323,7 +1328,7 @@ textarea { resize: vertical; width: 100%; }
 .rank-pill:disabled { opacity: 0.6; cursor: default; }
 .rank-pill:disabled::after { display: none; }
 .rank-pill:disabled .ai-sky { filter: none; }
-.rank-pill:focus-visible { outline: 2px solid var(--primary); outline-offset: 4px; }
+.rank-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 .rank-orb { position: relative; isolation: isolate; display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 50%; color: #fff; }
 .rank-orb .icon { width: 20px; height: 20px; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
 .rank-ring { position: absolute; inset: -5px; border: 2px solid color-mix(in srgb, var(--ink) 10%, transparent); border-top-color: var(--ink-2); border-radius: 50%; animation: spin 0.9s linear infinite; }
@@ -1598,7 +1603,7 @@ select.status { font-weight: 600; }
   min-height: 58px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
   box-shadow: 0 6px 24px rgb(0 0 0 / 6%); transition: border-color 0.2s ease;
 }
-.composer-box:focus-within { border-color: var(--primary); }
+.composer-box:focus-within { border-color: var(--accent); }
 .composer-box.tall { grid-template-areas: "files files files" "text text text" "attach . tools"; row-gap: 2px; padding-top: 10px; border-radius: 28px; }
 .composer-files { grid-area: files; }
 .composer textarea, .composer textarea:hover, .composer textarea:focus {
@@ -1642,7 +1647,7 @@ select.status { font-weight: 600; }
 .composer-attach { grid-area: attach; }
 .composer-attach:hover, .select.circle:hover, .select.circle.open { background: var(--hover); color: var(--ink); }
 .select.circle.open, .select.circle:focus-visible { box-shadow: none; }
-.select.circle:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.select.circle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .composer-attach .icon { width: 22px; height: 22px; }
 .select.circle > .icon { width: 20px; height: 20px; }
 .select.circle.access-full { background: color-mix(in srgb, var(--bad) 11%, var(--surface)); color: var(--bad); }
@@ -1677,14 +1682,14 @@ select.status { font-weight: 600; }
 .voice-bars i:nth-child(4) { --b: var(--b3, 0); }
 .voice-go:hover .ai-sky { filter: saturate(1.3) brightness(1.04); }
 .voice-go:active:where(:not(:disabled)) { scale: 0.94; }
-.voice-go:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.voice-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .voice-lang {
   position: relative; flex: none; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: none;
   color: var(--ink-2); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
   animation: say-in 0.2s cubic-bezier(0.22, 0.8, 0.3, 1) both;
 }
 .voice-lang:hover { background: var(--hover); color: var(--ink); }
-.voice-lang:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.voice-lang:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 /* The glow behind the box while it listens (VoiceGlow): a canvas over the whole conversation, or the whole new one,
    under everything in it, so the messages and the box stay over it, and it takes no clicks. */
 .convo, .chat-new { position: relative; isolation: isolate; }
@@ -1734,7 +1739,7 @@ select.status { font-weight: 600; }
 .md pre, .pre { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; overflow-x: auto; font: 13px/1.5 Consolas, "Courier New", monospace; direction: ltr; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
 .md code { background: var(--surface-2); border-radius: 5px; padding: 1px 5px; font: 13px Consolas, monospace; }
 .md pre code { background: none; padding: 0; }
-.md blockquote { margin: 0; padding-inline-start: 12px; border-inline-start: 3px solid var(--primary); color: var(--ink-2); }
+.md blockquote { margin: 0; padding-inline-start: 12px; border-inline-start: 3px solid var(--accent); color: var(--ink-2); }
 .tablebox { overflow-x: auto; }
 .tablebox th, .tablebox td { padding: 8px 10px; }
 .doc-text { text-align: left; }
@@ -2041,7 +2046,7 @@ html.forest .boot-paws { color: #ffffff; }
 .boot-dust i { position: absolute; bottom: 0; width: 6px; height: 6px; background: var(--ink-3); opacity: 0; animation: boot-dust 0.72s steps(1) infinite; }
 .boot-dust i:first-child { left: 16px; --dir: -1; }
 .boot-dust i:last-child { left: 110px; --dir: 1; }
-.boot-paws { --turn: 90deg; display: flex; gap: 20px; color: var(--primary); }
+.boot-paws { --turn: 90deg; display: flex; gap: 20px; color: var(--accent); }
 :root[dir="rtl"] .boot-paws { --turn: -90deg; }
 .boot-paws svg { --lift: -8px; width: 36px; height: 32px; opacity: 0.14; transform: translateY(var(--lift)) rotate(var(--turn)); animation: boot-paw 1.44s steps(1) infinite; }
 .boot-paws svg:nth-child(even) { --lift: 8px; }
@@ -2156,7 +2161,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .portal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .portal-name { font-weight: 600; }
 .portal-how { padding: 1px 9px; border-radius: 999px; background: var(--soft); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
-.portal-how.search, .portal-how.read { background: color-mix(in srgb, var(--primary) 12%, var(--surface)); color: var(--primary-edge); }
+.portal-how.search, .portal-how.read { background: var(--good-soft); color: var(--accent); }
 .portal-how.web, .portal-how.channel { background: color-mix(in srgb, var(--live) 12%, var(--surface)); color: var(--live); }
 .portal-status { color: var(--ink-3); font-size: 13px; }
 .portal-actions { display: flex; align-items: center; gap: 10px; flex: none; }
@@ -2177,13 +2182,13 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 /* A switch: a round track with a knob that moves to the end when on, in the forest colour. */
 .switch { appearance: none; position: relative; width: 38px; height: 22px; margin: 0; border-radius: 999px; background: var(--line); cursor: pointer; transition: background 0.2s; flex: none; }
 .switch::after { content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 25%); transition: inset-inline-start 0.2s; }
-.switch:checked { background: var(--primary); }
+.switch:checked { background: var(--accent); }
 .switch:checked::after { inset-inline-start: 19px; }
-.switch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .low-tech { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding-top: 6px; }
 .low-tech .stack { flex: 1 1 260px; }
 .stack.tight { gap: 3px; }
-.portal-link { align-self: flex-start; color: var(--primary); font-weight: 600; text-decoration: none; }
+.portal-link { align-self: flex-start; color: var(--accent); font-weight: 600; text-decoration: none; }
 .portal-link:hover { text-decoration: underline; }
 @media (max-width: 520px) {
   .portal-row { flex-wrap: wrap; }
@@ -3215,7 +3220,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .pf-play::after { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; background: var(--hover); opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
 .pf-play:hover::after { opacity: 1; }
 .pf-play .icon { width: 15px; height: 15px; fill: currentColor; }
-.pf-play:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+.pf-play:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 /* A Featured project, large, one under another: its picture across the list, then its name, tagline and story beside
    what stands out in it, each point marked in one of the forest's colours; its chips and buttons under them. */
 .pf-list { display: flex; flex-direction: column; gap: 48px; margin-top: 12px; }
@@ -3253,7 +3258,7 @@ a.ai-pill { text-decoration: none; }
   transition: color 0.2s ease, text-decoration-color 0.2s ease;
 }
 .pf-text-btn:hover { color: var(--ink); text-decoration-color: currentColor; }
-.pf-text-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; border-radius: 4px; }
+.pf-text-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 /* Those left out, folded under a group's heading that opens them, each with why. */
 .pf-skipped { margin-top: 40px; }
 .pf-skipped summary.saved-group-head {
@@ -3262,7 +3267,7 @@ a.ai-pill { text-decoration: none; }
 }
 .pf-skipped summary::-webkit-details-marker { display: none; }
 .pf-skipped summary:hover { background: var(--hover); color: var(--ink); }
-.pf-skipped summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.pf-skipped summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pf-skipped summary .icon { width: 16px; height: 16px; transition: rotate 0.25s ease; }
 .pf-skipped[open] summary .icon { rotate: 180deg; }
 .pf-skipped ul { display: flex; flex-direction: column; margin: 6px 0 0; padding: 0 12px; list-style: none; }
@@ -3285,4 +3290,278 @@ a.ai-pill { text-decoration: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .pf-play::after, .pf-text-btn, .pf-skipped summary, .pf-skipped summary .icon { transition: none !important; }
+}
+
+/* ---------- a job's own page (views/job.tsx) ---------- */
+
+/* A job's row opens it: its title is the link, stretched over the whole row, so a click anywhere on the row opens the
+   job; its buttons stay above that. */
+.result.opens { cursor: pointer; }
+.result-open { color: inherit; text-decoration: none; outline: none; }
+.result-open::after { content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit; }
+.result-open:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -2px; }
+.result.opens .result-actions { position: relative; z-index: 1; }
+
+/* The page: as wide as a careers page reads, under the jobs' moving sky, with the way back above it. */
+.page.job-page { max-width: 920px; padding-top: 0; gap: 0; }
+.job-page-top { position: relative; isolation: isolate; display: flex; padding: 24px 0 12px; overflow-x: clip; }
+.job-page-top .seek-sky { top: 120px; opacity: 0.5; }
+.job-back {
+  display: inline-flex; align-items: center; gap: 4px; padding: 7px 14px 7px 12px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--ink-2); font: inherit; font-size: 14.5px; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+}
+.job-back:hover { background: var(--hover); color: var(--ink); }
+.job-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.job-back .icon { width: 18px; height: 18px; }
+:root[dir="ltr"] .job-back .icon { scale: -1 1; }
+
+.job-view { position: relative; display: flex; flex-direction: column; gap: 22px; }
+.job-body { display: flex; flex-direction: column; gap: 26px; animation: job-in 0.3s ease; }
+@keyframes job-in { from { opacity: 0; translate: 0 6px; } }
+.job-head { display: flex; align-items: flex-start; gap: 16px; }
+.job-head .result-mark { width: 56px; height: 56px; font-size: 22px; }
+.job-head-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.job-title { margin: 0; font-size: 26px; font-weight: 600; line-height: 1.3; unicode-bidi: plaintext; overflow-wrap: anywhere; }
+:root[dir="rtl"] .job-title { text-align: right; }
+:root[dir="ltr"] .job-title { text-align: left; }
+.job-head .result-meta { white-space: normal; font-size: 15px; }
+.job-head .result-actions { align-self: flex-start; padding-top: 6px; }
+.job-part-title { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+
+/* Applied, from the applications, which it leads to: green, or amber for a draft; the colour deepens under the pointer. */
+.job-applied {
+  display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-radius: 14px; text-decoration: none; font-size: 15px; font-weight: 600;
+  background: color-mix(in srgb, var(--good) 11%, var(--surface)); color: color-mix(in srgb, var(--good) 75%, var(--ink)); transition: background-color 0.2s ease;
+}
+.job-applied:hover { background: color-mix(in srgb, var(--good) 17%, var(--surface)); }
+.job-applied.draft { background: color-mix(in srgb, var(--warn) 13%, var(--surface)); color: color-mix(in srgb, var(--warn) 60%, var(--ink)); }
+.job-applied.draft:hover { background: color-mix(in srgb, var(--warn) 19%, var(--surface)); }
+.job-applied:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.job-applied > .icon { flex: none; width: 19px; height: 19px; }
+.job-applied-text { flex: 1; min-width: 0; }
+.job-applied-go { display: inline-flex; align-items: center; gap: 2px; font-size: 14px; font-weight: 500; opacity: 0.85; white-space: nowrap; }
+.job-applied-go .icon { width: 16px; height: 16px; }
+:root[dir="ltr"] .job-applied-go .icon { scale: -1 1; }
+
+/* How well it fits: a plain card whose score sits on the AI's moving sky, as the AI's own buttons do. */
+.job-match { display: flex; flex-direction: column; gap: 16px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.job-match.none { padding: 12px 14px; }
+.job-match.none .rank-row { margin: 0; }
+/* Above the level searched for: why the job isn't on the list, in the left-out chips' red. */
+.job-above { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--bad) 9%, var(--surface)); color: color-mix(in srgb, var(--bad) 72%, var(--ink)); font-size: 14.5px; font-weight: 600; line-height: 1.45; }
+.job-above .icon { flex: none; width: 18px; height: 18px; }
+.match-top { display: flex; align-items: center; gap: 16px; }
+.match-orb { position: relative; isolation: isolate; flex: none; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; color: #fff; }
+.match-orb .ai-sky.orb > i { --cloud-w: 58px; --cloud-h: 50px; }
+.match-orb b { font-family: var(--head); font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgb(0 0 0 / 30%); }
+.match-verdict { margin: 0; font-size: 20px; font-weight: 600; }
+.match-note { margin: 2px 0 0; color: var(--ink-3); font-size: 13.5px; }
+.match-lists { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px 28px; }
+.match-list h3 { margin: 0 0 8px; color: var(--ink-2); font-size: 13.5px; font-weight: 600; }
+.match-list ul { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.match-list li { display: flex; align-items: flex-start; gap: 8px; font-size: 15px; line-height: 1.5; }
+.match-list li .icon { flex: none; width: 17px; height: 17px; margin-top: 3px; }
+.match-list.good .icon { color: var(--good); }
+.match-list.gap .icon { color: var(--warn); }
+
+/* The facts, a name over each value, as many to a row as fit. */
+.job-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 18px 24px; margin: 0; padding: 0 2px; }
+.job-facts > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.job-facts dt { color: var(--ink-3); font-size: 13.5px; }
+.job-facts dd { margin: 0; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* The skills it asks for: a tick and the green tint on those the profile shows, ink on the required ones. */
+.skill-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.skill-chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+.skill-chip.must { border-color: color-mix(in srgb, var(--ink) 22%, var(--surface)); color: var(--ink); }
+.skill-chip.have { border-color: transparent; background: color-mix(in srgb, var(--good) 13%, var(--surface)); color: color-mix(in srgb, var(--good) 75%, var(--ink)); }
+.skill-chip .icon { width: 15px; height: 15px; }
+.skill-chip small { color: var(--ink-3); font-size: 12px; }
+.skill-chip.have small { color: inherit; opacity: 0.75; }
+.skill-key { display: flex; align-items: center; gap: 5px; margin: 12px 0 0; color: var(--ink-3); font-size: 13px; }
+.skill-key .icon { width: 14px; height: 14px; color: var(--good); }
+
+/* The posting in its own words, each part under its heading, at a reading width. */
+.job-desc { display: flex; flex-direction: column; }
+.job-desc-part { display: flex; flex-direction: column; gap: 8px; max-width: 76ch; margin-bottom: 18px; }
+.job-desc-part h3 { margin: 4px 0 0; font-size: 16.5px; font-weight: 600; }
+.job-desc-part h4 { margin: 8px 0 0; font-size: 15.5px; font-weight: 600; }
+.job-desc-part p { margin: 0; font-size: 15.5px; line-height: 1.75; overflow-wrap: anywhere; }
+.job-desc-part ul { display: flex; flex-direction: column; gap: 5px; margin: 0; padding-inline-start: 22px; }
+.job-desc-part li { font-size: 15.5px; line-height: 1.65; overflow-wrap: anywhere; }
+.job-desc-part li::marker { color: var(--ink-3); }
+.job-desc-part a { color: var(--accent); }
+.job-raw-note { margin: 0 0 12px; color: var(--ink-3); font-size: 13.5px; }
+.job-raw-more { align-self: flex-start; }
+
+/* While it is read: Pip at work, what he is doing, and the AI's sky in a thin line along the card's foot. */
+.job-reading, .job-notread { position: relative; display: flex; align-items: center; gap: 18px; padding: 22px 22px 26px; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }
+.job-reading-pip, .job-notread-pip { flex: none; width: 66px; height: auto; }
+.job-reading-text, .job-notread-text { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.job-reading-text strong, .job-notread-text strong { font-size: 16.5px; font-weight: 600; }
+.job-reading-text small { color: var(--ink-3); font-size: 13.5px; }
+.job-notread-text small { color: var(--ink-2); font-size: 14px; }
+.job-reading-bar { position: absolute; isolation: isolate; inset-inline: 0; bottom: 0; height: 4px; overflow: hidden; }
+.job-notread-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+@media (max-width: 640px) {
+  .page.job-page { padding-inline: 16px; }
+  .job-head { flex-wrap: wrap; gap: 12px; }
+  .job-head .result-mark { width: 48px; height: 48px; font-size: 19px; }
+  .job-head .result-actions { order: 3; width: 100%; padding-top: 0; }
+  .job-title { font-size: 22px; }
+  .job-match { padding: 16px; }
+  .match-orb { width: 56px; height: 56px; }
+  .job-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .job-reading, .job-notread { padding: 18px; gap: 14px; }
+  .job-reading-pip, .job-notread-pip { width: 52px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .job-body { animation: none; }
+}
+
+/* ---------- the profile (views/profile.tsx) ---------- */
+
+/* Under the jobs' moving sky, like "My jobs": the title, and the ways to change the profile as text or by talking. */
+.page.prof-page { max-width: 1200px; padding-inline: 0; padding-top: 0; gap: 0; }
+.prof-top { position: relative; isolation: isolate; display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 70px 38px 30px; overflow-x: clip; }
+.prof-top .seek-sky { top: 110px; }
+.prof-top-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.prof-text { width: 100%; max-width: 1000px; margin: 0 auto; padding: 0 38px 40px; }
+
+/* A card: its title and its pencil, then what it holds. */
+.prof-card { position: relative; display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 20px 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.prof-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.prof-card-head h2 { margin: 0; font-size: 19px; font-weight: 600; }
+.prof-card-head .result-act { width: 36px; height: 36px; }
+.prof-card-head .result-act .icon { width: 16px; height: 16px; }
+.prof-editor { display: flex; flex-direction: column; gap: 10px; }
+.prof-empty { margin: 0; color: var(--ink-3); font-size: 14px; }
+.prof-more-line { display: flex; }
+.prof-more { padding: 4px 10px; border: 0; border-radius: 999px; background: transparent; color: var(--accent); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; transition: background-color 0.2s ease; }
+.prof-more:hover { background: var(--hover); }
+.prof-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.prof-sub { display: flex; flex-direction: column; gap: 8px; }
+.prof-sub h3 { margin: 0; color: var(--ink-2); font-size: 13.5px; font-weight: 600; }
+
+/* Who: the initials on their forest colour, the name and status, and how to reach them. */
+.prof-person { display: flex; align-items: center; gap: 18px; }
+.prof-avatar {
+  flex: none; display: grid; place-items: center; width: 84px; height: 84px; border-radius: 50%; font-family: var(--head); font-size: 30px; font-weight: 700;
+  background: color-mix(in srgb, var(--tint) 24%, var(--surface)); color: color-mix(in srgb, var(--tint) 50%, var(--ink));
+}
+.prof-person-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.prof-name { margin: 0; font-size: 22px; font-weight: 600; }
+.prof-status { margin: 0; color: var(--ink-2); font-size: 14.5px; }
+.prof-contact { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 6px 0 0; padding: 0; list-style: none; }
+.prof-contact li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--ink-2); font-size: 14px; }
+.prof-contact .icon { flex: none; width: 16px; height: 16px; color: var(--ink-3); }
+.prof-contact a { color: inherit; text-decoration: none; overflow-wrap: anywhere; }
+.prof-contact a:hover { color: var(--accent); text-decoration: underline; }
+.prof-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px 20px; margin: 0; }
+.prof-facts dt { color: var(--ink-3); font-size: 13px; }
+.prof-facts dd { margin: 2px 0 0; font-size: 14.5px; font-weight: 600; overflow-wrap: anywhere; }
+
+/* Chips: languages with their level, interests, skills; a skill with a note opens it under its group. */
+.prof-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.prof-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; line-height: 1.45; }
+.prof-chip small { color: var(--ink-3); font-size: 12.5px; }
+button.prof-chip { cursor: pointer; transition: background-color 0.2s ease, border-color 0.2s ease; }
+button.prof-chip:hover { border-color: color-mix(in srgb, var(--ink) 18%, var(--line)); background: var(--hover-soft); }
+button.prof-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.prof-chip .icon { width: 14px; height: 14px; color: var(--ink-3); transition: rotate 0.2s ease; }
+.prof-chip.on { border-color: var(--primary-edge); background: var(--good-soft); }
+.prof-chip.on .icon { rotate: 180deg; }
+.prof-note { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--surface-2); color: var(--ink-2); font-size: 14px; line-height: 1.6; }
+
+/* Roles and studies: a tile, the title and where, how long it lasted on a sunny badge, the dates, then the points. */
+.prof-items { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.prof-item { position: relative; display: flex; gap: 14px; padding: 14px 0; }
+.prof-item + .prof-item { border-top: 1px solid var(--line); }
+.prof-icon { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--sky-4) 24%, var(--surface)); color: color-mix(in srgb, var(--sky-4) 45%, var(--ink)); }
+.prof-icon .icon { width: 22px; height: 22px; }
+.prof-item-text { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.prof-item-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.prof-item-title { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.prof-item-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 2px 0 0; color: var(--accent); font-size: 14.5px; font-weight: 500; }
+.prof-badge { padding: 1px 9px; border-radius: 999px; background: color-mix(in srgb, var(--cta) 45%, var(--surface)); color: var(--cta-ink); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.prof-dates { flex: none; padding-top: 2px; color: var(--ink-3); font-size: 13.5px; white-space: nowrap; }
+.prof-item-body { color: var(--ink-2); font-size: 14.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.prof-item-body ul, ul.prof-item-body { display: flex; flex-direction: column; gap: 4px; margin: 0; padding-inline-start: 20px; }
+.prof-item-note { margin: 0 0 6px; color: var(--ink-3); font-size: 13.5px; line-height: 1.55; overflow-wrap: anywhere; }
+
+/* Projects: the name with its links, a few lines of it, the rest on asking. */
+.prof-project-list { display: flex; flex-direction: column; gap: 16px; margin: 0; padding: 0; list-style: none; }
+.prof-project { display: flex; flex-direction: column; gap: 6px; }
+.prof-project + .prof-project { padding-top: 16px; border-top: 1px solid var(--line); }
+.prof-project-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.prof-link { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); font-size: 12.5px; text-decoration: none; transition: background-color 0.2s ease, color 0.2s ease; }
+.prof-link:hover { background: var(--hover); color: var(--ink); }
+.prof-link .icon { width: 13px; height: 13px; }
+.prof-project-text { margin: 0; color: var(--ink-2); font-size: 14.5px; line-height: 1.6; overflow-wrap: anywhere; }
+.prof-project-text.clamped { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.prof-list { display: flex; flex-direction: column; gap: 5px; margin: 0; padding-inline-start: 20px; color: var(--ink-2); font-size: 14.5px; }
+
+/* The profile's health, as Microsoft's careers site shows it: the score in a clean figure inside a ring that fills in
+   its colour (green from 80, amber from 50, red below), Pip peeking over the ring from behind its white disc, his feet
+   hidden; then each check under its group, a solid tick or an amber plus on a tinted row, in bold. */
+.prof-health { align-items: center; gap: 16px; padding: 22px 20px 20px; text-align: center; }
+.prof-health.full { --hx: var(--full); }
+.prof-health.good { --hx: var(--good); }
+.prof-health.mid { --hx: var(--warn); }
+.prof-health.low { --hx: var(--bad); }
+.prof-health-top { position: relative; display: grid; place-items: center; padding-top: 76px; }
+.prof-health-pip { position: absolute; top: 0; left: 50%; width: 92px; height: auto; translate: -50% 0; }
+.prof-ring { position: relative; z-index: 1; width: 156px; height: 156px; }
+.prof-ring::before { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--surface); }
+.prof-ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; rotate: -90deg; }
+.prof-ring-track { fill: none; stroke: color-mix(in srgb, var(--hx) 15%, var(--surface)); }
+.prof-ring-fill { fill: none; stroke: var(--hx); stroke-linecap: round; animation: prof-ring 0.5s cubic-bezier(0.2, 0.8, 0.3, 1) both; }
+@keyframes prof-ring { from { stroke-dashoffset: var(--round); } }
+.prof-ring-inner { position: absolute; inset: 0; display: grid; place-items: center; }
+.prof-health-num { color: var(--hx); font-family: var(--head); font-size: 54px; font-weight: 500; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.prof-health-label { margin: 0; color: var(--ink); font-size: 16px; font-weight: 700; }
+.prof-tick { flex: none; width: 22px; height: 22px; }
+.prof-tick.ok circle { fill: var(--primary); }
+.prof-tick.ok path { fill: none; stroke: var(--primary-ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.prof-tick.todo circle { fill: var(--surface); stroke: var(--warn); stroke-width: 2; }
+.prof-tick.todo path { fill: none; stroke: var(--warn); stroke-width: 2.2; stroke-linecap: round; }
+.prof-checks { display: flex; flex-direction: column; gap: 16px; align-self: stretch; margin-top: 4px; text-align: start; }
+.prof-check-group { display: flex; flex-direction: column; gap: 8px; }
+.prof-check-head {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 0 0 9px; border: 0; border-bottom: 1px solid var(--line); background: none;
+  color: var(--ink); font: inherit; font-size: 16.5px; font-weight: 700; text-align: start; cursor: pointer;
+}
+.prof-check-head:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.prof-check-name { flex: 1; }
+.prof-chev { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--surface-2); color: var(--ink-2); transition: background-color 0.2s ease; }
+.prof-check-head:hover .prof-chev { background: var(--hover); }
+.prof-chev .icon { width: 16px; height: 16px; transition: rotate 0.2s ease; }
+.prof-check-head[aria-expanded="true"] .prof-chev .icon { rotate: 180deg; }
+.prof-check-rows { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.prof-check-rows li {
+  display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 9px 12px; border-radius: 12px;
+  background: var(--good-soft); color: var(--ink); font-size: 15px; font-weight: 600; line-height: 1.35;
+}
+.prof-check-rows li.todo { background: color-mix(in srgb, var(--warn) 11%, var(--surface)); }
+.prof-check-text { flex: 1; }
+.prof-check-add { flex: none; color: var(--warn); font-size: 13.5px; font-weight: 700; }
+
+/* The cards in a column, the health beside them, staying in view. */
+.prof-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; gap: 20px; padding: 0 38px 48px; }
+.prof-main { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.prof-side { position: sticky; top: 20px; }
+
+@media (max-width: 1000px) {
+  .prof-grid { grid-template-columns: minmax(0, 1fr); }
+  .prof-side { position: static; order: -1; }
+}
+@media (max-width: 640px) {
+  .prof-top { padding: 34px 16px 22px; }
+  .prof-grid, .prof-text { padding-inline: 16px; }
+  .prof-card { padding: 16px; }
+  .prof-person { flex-direction: column; align-items: flex-start; }
+  .prof-avatar { width: 72px; height: 72px; font-size: 26px; }
+  .prof-item-head { flex-direction: column; gap: 2px; }
+  .prof-dates { padding-top: 0; }
 }

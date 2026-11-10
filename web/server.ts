@@ -17,10 +17,12 @@ import { foundPortals } from "./discover";
 import { answerFile, answerManifest, syncAccount } from "./sync";
 import { deriveKey, loadKey, openWith, saveKey, sealWith } from "./synckey";
 import { INDUSTRIES, PORTALS } from "./portals";
-import { rankJobs, type Steps } from "./ranker";
+import { rankJobs, runTool, type Steps } from "./ranker";
+import { applyThroughTool, createPostings, seenReader } from "./postings";
+import { JOB_ID } from "./ui/jobid";
 import { readPortalChecks, scanPortals, scrapeJobs } from "./scraper";
 import { applyJob } from "./applier";
-import { conversationFiles, loadState, resolveDocument, searchJobs } from "./data";
+import { conversationFiles, loadState, parseCsv, resolveDocument, searchJobs } from "./data";
 import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, listSources, readChecks, readDocument, readEditableFile, readSource, saveChecks, saveDocument, saveEditableFile, saveSource, setApplicationStatus } from "./edit";
 import { REPO } from "./policy";
 import { createRemote, RemoteError } from "./remote";
@@ -122,6 +124,33 @@ const automationStatus = () => ({ running: automation.isRunning(), runs: automat
 const auth = createAuth();
 // The server's own run on the job list going now, "rank" or "scrape", or "" for none.
 let listBusy = "";
+
+// Jobs' own pages (postings.ts): each posting kept in the account's folder, read with no AI when the job is opened (or
+// in the background, for a junior search's list), and scored by the settings' AI only when the user asks. A listed
+// job's score, or its leaving the list, is written through rank_state.py one write at a time, and held while a run
+// over the list is writing the list, to go when it is done (startList).
+let heldScores: Record<string, unknown>[] = [];
+let writing: Promise<void> = Promise.resolve();
+const writeScores = (rows: Record<string, unknown>[]) => { writing = writing.then(() => applyThroughTool(rows, runTool)).catch(() => {}); };
+const TRACKER = path.join(REPO, "user", "job_search_tracker.csv");
+const postings = createPostings({
+  dir: path.join(USER_DIR, "job_scraper", "postings"),
+  run: runTool,
+  ask: (system, prompt, signal) => askInOrder(engineOrder(loadSettings().aiPrimary), system, [{ role: "user", text: prompt }], { signal })
+    .then((r) => ({ text: r.text, by: ENGINE_NAMES[r.engine] })),
+  lang: () => language(),
+  seniority: () => loadSettings().seniority,
+  profile: () => { try { return readFileSync(path.join(USER_DIR, "profile", "01-candidate-profile.md"), "utf8"); } catch { return ""; } },
+  seen: seenReader(path.join(USER_DIR, "job_scraper", "seen_jobs.json")),
+  tracker: () => (existsSync(TRACKER) ? parseCsv(readFileSync(TRACKER, "utf8")) : []),
+  apply: (rows) => { if (listBusy) heldScores.push(...rows); else writeScores(rows); },
+});
+// The list's postings read in the background for a junior search (postings.ts crawl): a minute after start, then
+// every twenty minutes for what was found since; it pauses while a run over the list is going.
+const CRAWL_EVERY_MS = 20 * 60_000;
+const crawlList = () => { if (!listBusy) void postings.crawl(() => listBusy !== ""); };
+setTimeout(crawlList, 60_000);
+setInterval(crawlList, CRAWL_EVERY_MS);
 
 const loggedIn = (id: string) => new Response(JSON.stringify({ ok: true }), { headers: { ...SECURITY_HEADERS, "Content-Type": "application/json", "Set-Cookie": sessionCookie(id) } });
 
@@ -497,10 +526,29 @@ async function api(req: Request, url: URL): Promise<Response> {
         return json({ error: String((err as Error).message) }, 400);
       }
     }
+    // A job's page as it stands, asked again while it is being read (postings.ts).
+    if (parts[0] === "job" && parts[1] && !parts[2]) {
+      const view = JOB_ID.test(parts[1]) ? postings.view(parts[1]) : null;
+      return view ? json(view) : json({ error: "not found" }, 404);
+    }
     return json({ error: "not found" }, 404);
   }
 
   const body = await req.json().catch(() => ({})) as Record<string, any>;
+  // A job opened from a list, a search or the saved ones: its page, read now when it hasn't been; or read again.
+  if (parts[0] === "job" && parts[1] === "open") {
+    const view = postings.open({ url: String(body.url ?? ""), title: String(body.title ?? ""), company: String(body.company ?? ""), location: String(body.location ?? ""), date: body.date ? String(body.date) : undefined });
+    return view ? json(view) : json({ error: "bad_url" }, 400);
+  }
+  if (parts[0] === "job" && parts[1] && parts[2] === "again") {
+    const view = JOB_ID.test(parts[1]) ? postings.again(parts[1]) : null;
+    return view ? json(view) : json({ error: "not found" }, 404);
+  }
+  // The AI asked to read a job, by its page's button: its score, and its posting laid out.
+  if (parts[0] === "job" && parts[1] && parts[2] === "ai") {
+    const view = JOB_ID.test(parts[1]) ? postings.analyze(parts[1]) : null;
+    return view ? json(view) : json({ error: "not found" }, 404);
+  }
   // A file attached in the chat, its bytes in base64 inside the JSON, like every other write here.
   if (parts[0] === "uploads" && !parts[1]) {
     try {
@@ -610,7 +658,8 @@ const JOB_KEY = /^[a-z0-9][a-z0-9_-]{0,199}$/;
 let rankNext: string[] = [];
 
 // A run over the job list, in a conversation of its own, one at a time; once it is done, the jobs asked to be ranked
-// meanwhile go next.
+// meanwhile go next. It starts once a job page's score being written is in, and the scores held while it ran go
+// when it is done. A ranking run keeps each job's posting for its page (postings.ts keepRanked).
 function startList(job: "rank" | "scrape" | "portals", keys: string[] = []) {
   listBusy = job;
   const settings = loadSettings();
@@ -618,11 +667,12 @@ function startList(job: "rank" | "scrape" | "portals", keys: string[] = []) {
   const title = job === "rank" ? "/rank" : job === "scrape" ? "/job-scraper" : lang === "he" ? "בדיקת פורטלים" : "Portals check";
   return createTaskSession(title, (steps, signal) => {
     const ask = askFor(steps);
-    const work = job === "rank" ? rankJobs({ steps, signal, lang, ask, keys })
+    const work = writing.then(() => job === "rank" ? rankJobs({ steps, signal, lang, ask, keys, keep: postings.keepRanked })
       : job === "scrape" ? scrapeJobs({ steps, signal, lang, ask, settings })
-      : scanPortals({ steps, signal, lang, ask, settings, discover: true });
+      : scanPortals({ steps, signal, lang, ask, settings, discover: true }));
     return work.finally(() => {
       listBusy = "";
+      if (heldScores.length) { writeScores(heldScores); heldScores = []; }
       if (!rankNext.length) return;
       const next = rankNext;
       rankNext = [];

@@ -919,3 +919,43 @@ class Unreachable(RankStateCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Filtered(RankStateCase):
+    """A job left out before scoring for the level its posting asks (web/experience.ts): no model involved."""
+
+    def results(self, payload):
+        path = self.tmp / "results.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return str(path)
+
+    def test_a_filtered_job_is_stored_with_why_and_not_selected_again(self):
+        self.write_state({"a": entry(fetch_attempts=1, first_unreachable="2026-09-02T09:00:00Z"), "b": entry()})
+        out = self.run_tool(
+            "apply", "--results", self.results([{"key": "a", "status": "filtered", "reason": "years", "years": 4}])
+        )
+        stored = self.read_state()["a"]
+        self.assertEqual(stored["status"], "filtered")
+        self.assertEqual(stored["filter_reason"], "years")
+        self.assertEqual(stored["experience_min"], 4)
+        self.assertNotIn("fetch_attempts", stored, "read after all: the retry history is moot")
+        self.assertEqual([(r["key"], r["reason"], r["years"]) for r in out["filtered"]], [("a", "years", 4)])
+        self.assertEqual(out["ranked"], [])
+        out = self.run_tool("candidates", "--tracker", str(self.tmp / "none.csv"))
+        self.assertEqual([row["key"] for row in out["selected"]], ["b"])
+        out = self.run_tool("candidates", "--all", "--tracker", str(self.tmp / "none.csv"))
+        self.assertEqual(sorted(row["key"] for row in out["selected"]), ["a", "b"], "--all can bring it back")
+
+    def test_a_senior_title_needs_no_years_and_an_unknown_reason_is_an_error(self):
+        self.write_state({"a": entry(), "b": entry()})
+        out = self.run_tool(
+            "apply",
+            "--results",
+            self.results([{"key": "a", "status": "filtered", "reason": "senior"}, {"key": "b", "status": "filtered", "reason": "vibes"}]),
+            expect=1,
+        )
+        state = self.read_state()
+        self.assertEqual((state["a"]["status"], state["a"]["filter_reason"]), ("filtered", "senior"))
+        self.assertNotIn("experience_min", state["a"])
+        self.assertEqual(state["b"]["status"], "new")
+        self.assertEqual([e["key"] for e in out["errors"]], ["b"])

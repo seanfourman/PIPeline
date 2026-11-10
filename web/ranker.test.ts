@@ -12,7 +12,7 @@ const guardOut = (text: string, verdict = "posting_guard: clean") => `${verdict}
 const SCORE = { status: "scored", scores: { technical: 80, experience: 70, behavioral: 60, career: 75 }, location_verdict: "PASS", language_gate: "PASS", deadline: null, strengths: ["React and TypeScript match"], gaps: ["asks for 3 years"], language: "English" };
 
 // The tools as this test tells them to answer, each call kept.
-function fakeTools(answers: { detail?: { code: number; out: string }; page?: { code: number; out: string }; candidates?: unknown; applied?: unknown }) {
+function fakeTools(answers: { detail?: { code: number; out: string }; page?: { code: number; out: string }; pageText?: string; candidates?: unknown; applied?: unknown }) {
   const calls: { argv: string[]; stdin?: string; results?: unknown }[] = [];
   const run: Run = async (argv, options = {}) => {
     const call: (typeof calls)[number] = { argv, stdin: options.stdin };
@@ -27,7 +27,7 @@ function fakeTools(answers: { detail?: { code: number; out: string }; page?: { c
     // freehire's detail takes only its own links, and its jobs carry the employer's, as the real one does.
     if (argv.includes("detail")) return has("freehire") ? { code: 1, out: "", err: "BAD_ID" } : { ...(answers.detail ?? { code: 1, out: "" }), err: "" };
     if (has("fetch_page.py")) return { ...(answers.page ?? { code: 0, out: "HTTP 200 size=10 saved=x" }), err: "" };
-    if (has("posting_guard.py")) return { code: 0, out: guardOut(options.stdin ?? POSTING), err: "" };
+    if (has("posting_guard.py")) return { code: 0, out: guardOut(options.stdin ?? answers.pageText ?? POSTING), err: "" };
     return { code: 2, out: "", err: "unexpected" };
   };
   return { run, calls };
@@ -100,7 +100,7 @@ describe("ranker", () => {
     const steps: string[] = [];
     const prompts: string[] = [];
     const text = await rankJobs({
-      run, lang: "he", signal: never, system: "rules",
+      run, lang: "he", signal: never, system: "rules", seniority: "any",
       ask: async (_system, prompt) => { prompts.push(prompt); return JSON.stringify(SCORE); },
       steps: { start: (id, target) => steps.push(`start ${target}`), done: (id, ok, preview) => steps.push(`${ok ? "ok" : "no"} ${preview}`) },
     });
@@ -119,17 +119,39 @@ describe("ranker", () => {
     expect(text).toContain("עוד 3 מחכות");
   });
 
+  test("leaves out a junior search's senior title before reading it, and a posting asking three years or more before the AI", async () => {
+    const jobs = [
+      { key: "s", title: "Senior Backend Engineer", company: "Acme", url: "https://careers.acme.com/s", portal: "careers-page" },
+      { key: "y", title: "Backend Engineer", company: "Beta", url: "https://careers.beta.com/y", portal: "careers-page" },
+      { key: "ok", title: "Junior Dev", company: "Gamma", url: "https://il.linkedin.com/jobs/view/9", portal: "linkedin-search" },
+    ];
+    const pageText = ["Backend Engineer at Beta. We build payment services in Node.js for banks across Europe.", "• 4+ years of experience with Node.js", "• SQL and Redis", ""].join("\n").repeat(2);
+    const applied = { ranked: [], vetoed: [], expired: [], unreachable: [], gave_up: [], filtered: [{ key: "s", title: "Senior Backend Engineer", company: "Acme", url: "https://careers.acme.com/s", reason: "senior", years: null }, { key: "y", title: "Backend Engineer", company: "Beta", url: "https://careers.beta.com/y", reason: "years", years: 4 }], errors: [] };
+    const { run, calls } = fakeTools({ candidates: { selected: jobs, deferred: 0 }, detail: { code: 0, out: POSTING }, pageText, applied });
+    const prompts: string[] = [];
+    const text = await rankJobs({ run, lang: "he", signal: never, system: "rules", seniority: "junior", ask: async (_s, prompt) => { prompts.push(prompt); return JSON.stringify(SCORE); }, steps: { start: () => {}, done: () => {} } });
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain("Junior Full Stack Developer");
+    expect(calls.some((c) => c.argv.some((a) => a.includes("careers.acme.com")))).toBe(false);
+    const written = calls.find((c) => c.argv.includes("apply"))!.results as any[];
+    expect(written.find((r) => r.key === "s")).toEqual({ key: "s", status: "filtered", reason: "senior" });
+    expect(written.find((r) => r.key === "y")).toEqual({ key: "y", status: "filtered", reason: "years", years: 4 });
+    expect(written.find((r) => r.key === "ok")).toMatchObject({ status: "scored" });
+    expect(text).toContain("Backend Engineer, Beta: דורשת 4+ שנות ניסיון");
+    expect(text).toContain("Senior Backend Engineer, Acme: משרה בכירה");
+  });
+
   test("stops on a key the provider refused, and keeps the jobs not reached as new", async () => {
     const jobs = ["a", "b", "c", "d"].map((key) => ({ key, title: key, company: "X", url: `https://il.linkedin.com/jobs/view/${key}`, portal: "linkedin-search" }));
     const { run, calls } = fakeTools({ candidates: { selected: jobs, deferred: 0 }, detail: { code: 0, out: POSTING } });
-    const failing = rankJobs({ run, lang: "en", signal: never, system: "rules", ask: async () => { throw new ChatbotError("ai_key_bad"); }, steps: { start: () => {}, done: () => {} } });
+    const failing = rankJobs({ run, lang: "en", signal: never, system: "rules", seniority: "any", ask: async () => { throw new ChatbotError("ai_key_bad"); }, steps: { start: () => {}, done: () => {} } });
     await expect(failing).rejects.toMatchObject({ code: "ai_key_bad" });
     expect(calls.some((c) => c.argv.includes("apply"))).toBe(false);
   });
 
   test("says so when there is nothing to rank", async () => {
     const { run } = fakeTools({ candidates: { selected: [], deferred: 0 } });
-    const text = await rankJobs({ run, lang: "he", signal: never, system: "rules", ask: async () => "", steps: { start: () => {}, done: () => {} } });
+    const text = await rankJobs({ run, lang: "he", signal: never, system: "rules", seniority: "any", ask: async () => "", steps: { start: () => {}, done: () => {} } });
     expect(text).toContain("אין משרות חדשות לדרג");
   });
 

@@ -6,11 +6,13 @@ import { AccountDialog } from "./accounts";
 import { Pip, PipMark, type Mood } from "./pip";
 import { Apps } from "./views/apps";
 import { Chat } from "./views/chat";
-import { Editor, Files, Profile, Rules, Tools } from "./views/docs";
+import { Editor, Files, Rules, Tools } from "./views/docs";
 import { Home, Sprite } from "./views/home";
 import { Login, type SiteInfo } from "./login";
+import { JobPage } from "./views/job";
 import { Jobs, SavedJobs } from "./views/jobs";
 import { Portals } from "./views/portals";
+import { ProfilePage } from "./views/profile";
 import { Portfolio } from "./views/portfolio";
 import { Settings } from "./views/settings";
 import { Welcome } from "./views/welcome";
@@ -121,8 +123,9 @@ const NAV: [string, string][] = [
   ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"], ["portfolio", "portfolio"],
 ];
 const SHOWN = 10;
-// Every page an address can open: the sidebar's, a CV or a letter in the editor, and the introduction.
-const PAGES = new Set([...NAV.map(([id]) => id), "cv", "letter", "welcome"]);
+// Every page an address can open: the sidebar's, a CV or a letter in the editor, the introduction, and a job's own
+// page (views/job.tsx).
+const PAGES = new Set([...NAV.map(([id]) => id), "cv", "letter", "welcome", "job"]);
 
 // The sidebar. Language and theme live on the settings page; the foot is the account, with its menu (AccountMenu).
 // Beside the logo, here only, a tag that says Pip is still in beta.
@@ -411,12 +414,13 @@ function Screen() {
   switch (view) {
     case "jobs": return <Jobs />;
     case "saved": return <SavedJobs />;
+    case "job": return <JobPage />;
     case "portals": return <Portals />;
     case "apps": return <Apps />;
     case "chat": return <Chat id={arg ?? (lastChat || "new")} />;
     case "tools": return <Tools />;
     case "portfolio": return <Portfolio />;
-    case "profile": return <Profile />;
+    case "profile": return <ProfilePage />;
     case "rules": return <Rules />;
     case "files": return <Files />;
     case "settings": return <Settings />;

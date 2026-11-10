@@ -33,12 +33,12 @@ export function Tools() {
   );
 }
 
-type Doc = { text: string; version: string; markdown: string };
+export type Doc = { text: string; version: string; markdown: string };
 
 // The profile or the rules: read as a page, or edited in place, each change saving itself a moment later (from
 // the version it was read at, so a change a conversation made meanwhile is never written over), until going
 // back to the page.
-function DocumentCard({ kind }: { kind: "profile" | "rules" }) {
+export function DocumentCard({ kind }: { kind: "profile" | "rules" }) {
   const { t, err } = useApp();
   const [doc, setDoc] = useState<Doc | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -70,14 +70,9 @@ function DocumentCard({ kind }: { kind: "profile" | "rules" }) {
   );
 }
 
-function ViaChat({ draftKey }: { draftKey: string }) {
+export function ViaChat({ draftKey }: { draftKey: string }) {
   const { t, draft } = useApp();
   return <Btn onClick={() => { draft.current = t(draftKey); goTo("/chat/new"); }}>{t("common.viaChat")}</Btn>;
-}
-
-export function Profile() {
-  const { t } = useApp();
-  return <Page title={t("docs.profileTitle")} sub={t("docs.profileSub")} actions={<ViaChat draftKey="docs.profileDraft" />}><DocumentCard kind="profile" /></Page>;
 }
 
 const LIMITS: [string, number, number][] = [["summaryLines", 1, 8], ["summaryFill", 0, 100], ["skillLines", 1, 10], ["skillItems", 1, 40]];

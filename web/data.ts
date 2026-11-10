@@ -4,6 +4,7 @@ import path from "node:path";
 import { BOARDS, pageFetcher, searchBoard, type Board, type Fetch } from "./boards";
 import { REPO } from "./policy";
 import { boardOn } from "./portals";
+import { levelGate } from "./experience";
 import { boardQueries } from "./roles";
 import { inEnglish, linkedinPlace, REMOTE, type Area, type Market, type Settings } from "./settings";
 import { asksForTranscript, TRANSCRIPT } from "./transcript";
@@ -54,9 +55,14 @@ export function classifyLocation(location: string, areas: Area[]): Area["tier"] 
 
 const httpUrl = (u: unknown) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : "");
 
-function seenJobs(areas: Area[]) {
+function seenJobs(areas: Area[], seniority: Settings["seniority"]) {
   const seen: Record<string, any> = readJson(path.join(REPO, "user", "job_scraper", "seen_jobs.json"))?.seen ?? {};
-  return Object.entries(seen).map(([key, j]) => ({
+  return Object.entries(seen).map(([key, j]) => {
+    // Above the level searched for: left out before scoring for the years its posting asks or its senior title
+    // (rank_state.py's "filtered", written as it was read), or a senior title seen here, for a junior search.
+    const level = j.status === "filtered" ? { verdict: "FAIL", why: j.filter_reason === "senior" ? "senior" : "years", years: j.experience_min } : levelGate({ title: String(j.title ?? ""), years: null, seniority });
+    const levelOut = level.verdict === "FAIL";
+    return {
     key,
     title: String(j.title ?? ""),
     company: String(j.company ?? ""),
@@ -68,13 +74,15 @@ function seenJobs(areas: Area[]) {
     status: String(j.status ?? ""),
     score: typeof j.rank_score === "number" ? j.rank_score : null,
     verdict: String(j.rank_verdict ?? ""),
-    veto: j.location_verdict === "FAIL" || j.language_gate === "FAIL",
-    // Which check left it out: its place, or its language.
-    gate: j.location_verdict === "FAIL" ? "location" : j.language_gate === "FAIL" ? "language" : "",
+    veto: j.location_verdict === "FAIL" || j.language_gate === "FAIL" || levelOut,
+    // Which check left it out: its place, its language, the years it asks, or its senior title; years how many.
+    gate: j.location_verdict === "FAIL" ? "location" : j.language_gate === "FAIL" ? "language" : levelOut ? level.why ?? "years" : "",
+    years: levelOut && typeof level.years === "number" ? level.years : null,
     fit: String(j.fit ?? ""),
     // Where it was found: a job site's search, an employer's own page (careers-page), or another.
     portal: String(j.portal ?? ""),
-  }));
+    };
+  });
 }
 
 function listFiles() {
@@ -154,7 +162,7 @@ export function loadState(settings: Settings) {
   const trackerFile = path.join(REPO, "user", "job_search_tracker.csv");
   const applications = (existsSync(trackerFile) ? parseCsv(readFileSync(trackerFile, "utf8")) : [])
     .map((row) => ({ ...row, ats: readAts(row.cv_file), card: readCard(row.cv_file), asksTranscript: postingAsksTranscript(row.cv_file) }));
-  return { applications, jobs: seenJobs(settings.areas), files: listFiles(), profileReady: profileReady() };
+  return { applications, jobs: seenJobs(settings.areas, settings.seniority), files: listFiles(), profileReady: profileReady() };
 }
 
 // Only finished documents from the output folders are ever served.

@@ -1,8 +1,8 @@
 // Shared building blocks. Text from postings and from the agent always goes in as text, never as HTML.
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  ArrowUp, Bookmark, BookOpenText, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, Gauge,
-  Gem, Globe, LayoutGrid, Leaf, ListChecks, LogIn, LogOut, MapPin, MessageCircle, Mic, Moon, Pause, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
+  ArrowUp, Award, Bookmark, BookOpenText, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, Gauge,
+  Gem, Globe, GraduationCap, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, Mic, Minus, Moon, Pause, Pencil, Phone, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
   Sparkles, Square, Sun, TriangleAlert, User, UserPlus, X, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -217,10 +217,10 @@ const Case = createLucideIcon("briefcase-front", [
 const ICONS: Record<string, LucideIcon> = {
   home: House, jobs: Search, saved: Bookmark, apps: FileText, chat: MessageCircle, profile: User, settings: Settings,
   rules: ListChecks, tools: LayoutGrid, files: Folder, more: CircleEllipsis, dots: Ellipsis, plus: Plus, sun: Sun, moon: Moon, login: LogIn, logout: LogOut, signup: UserPlus, filters: SlidersHorizontal,
-  ai: Sparkles, open: ExternalLink, apply: Send, pin: MapPin, close: X, onward: ChevronLeft, back: ChevronRight, down: ChevronDown, check: Check, find: Search,
+  ai: Sparkles, open: ExternalLink, apply: Send, pin: MapPin, close: X, onward: ChevronLeft, back: ChevronRight, down: ChevronDown, check: Check, minus: Minus, find: Search,
   warn: TriangleAlert, send: ArrowUp, stop: Square, download: Download, file: FileText, portals: Office, refresh: RefreshCw, gauge: Gauge,
   portfolio: Case, repo: FolderGit2, video: Clapperboard, readme: BookOpenText, site: Globe, play: Play, pause: Pause,
-  mic: Mic,
+  mic: Mic, mail: Mail, phone: Phone, link: Link, school: GraduationCap, edit: Pencil, award: Award,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,
   "model-default": Cpu, "model-opus": Gem, "model-sonnet": Feather, "model-haiku": Leaf,
 };

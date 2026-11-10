@@ -14,8 +14,9 @@ This moves the state-file traffic into code. Three subcommands:
   sweep        rule 6's expiry pass over entries this run did not re-score -
                a stored-date comparison, no fetch, no agent
   apply        write scoring results back to seen_jobs.json and print the
-               ranked/vetoed/expired/unreachable/gave_up rows Step 5's
-               report is built from
+               ranked/vetoed/expired/unreachable/gave_up/filtered rows
+               Step 5's report is built from (filtered: left out before
+               scoring for the level its posting asks, web/experience.ts)
 
 Selection and projection follow Step 1's existing rules exactly (status
 filter, tracker exclusion, focus filter, `--limit`/`--all`); the write-back
@@ -74,6 +75,10 @@ ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # owns the set; tests/test_rank_command.py asserts rank.md's JSON contract
 # names exactly these, so the spec and the tool cannot drift apart.
 AGENT_STATUSES = ("scored", "expired", "unreachable")
+# A job left out before any scoring, by the web app's own code rather than a scoring agent, read from the posting's
+# words (web/experience.ts): it asks for more years than a junior search keeps, or its title is a senior one.
+FILTERED = "filtered"
+FILTER_REASONS = ("years", "senior")
 
 # The values the two veto gates may take (rank.md Step 2). Step 5's veto is an
 # exact match on "FAIL", so any other spelling would shortlist a deal-breaker.
@@ -347,7 +352,7 @@ def cmd_apply(args) -> int:
     if not isinstance(results, list):
         sys.exit("results file must be a JSON array of scoring objects")
 
-    rows, expired, unreachable, gave_up, errors = [], [], [], [], []
+    rows, expired, unreachable, gave_up, filtered, errors = [], [], [], [], [], []
     for result in results:
         if not isinstance(result, dict):
             errors.append({"key": None, "error": "result is not an object"})
@@ -361,9 +366,9 @@ def cmd_apply(args) -> int:
         # A missing status is a score, as it always was; a misspelt one is an
         # error rather than a fall-through that reports a "missing score".
         status = result.get("status", "scored")
-        if status not in AGENT_STATUSES:
+        if status not in (*AGENT_STATUSES, FILTERED):
             errors.append(
-                {"key": key, "error": f"unknown status {status!r}; expected one of {', '.join(AGENT_STATUSES)}"}
+                {"key": key, "error": f"unknown status {status!r}; expected one of {', '.join((*AGENT_STATUSES, FILTERED))}"}
             )
             continue
 
@@ -409,6 +414,34 @@ def cmd_apply(args) -> int:
             else:
                 entry["status"] = "unreachable"
                 unreachable.append(row)
+            continue
+
+        if status == FILTERED:
+            # Above the level the candidate looks for, read from the posting's own words with no model: left out of
+            # the list as a gate's veto is, with why. --all selects it again, so a changed search can bring it back.
+            reason = result.get("reason")
+            if reason not in FILTER_REASONS:
+                errors.append({"key": key, "error": f"unknown filter reason {reason!r}; expected one of {', '.join(FILTER_REASONS)}"})
+                continue
+            entry["status"] = "filtered"
+            entry["filter_reason"] = reason
+            years = result.get("years")
+            if isinstance(years, int) and not isinstance(years, bool) and 0 <= years <= 40:
+                entry["experience_min"] = years
+            else:
+                entry.pop("experience_min", None)
+            for field in (*RETRY_FIELDS, "expired_reason"):
+                entry.pop(field, None)
+            filtered.append(
+                {
+                    "key": key,
+                    "title": entry.get("title"),
+                    "company": entry.get("company"),
+                    "url": entry.get("url"),
+                    "reason": reason,
+                    "years": entry.get("experience_min"),
+                }
+            )
             continue
 
         if status == "expired":
@@ -529,6 +562,7 @@ def cmd_apply(args) -> int:
                 "expired": expired,
                 "unreachable": unreachable,
                 "gave_up": gave_up,
+                "filtered": filtered,
                 "errors": errors,
                 "written": not args.dry_run,
             },

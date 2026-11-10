@@ -113,7 +113,7 @@ export function nextStep(s: AppState, t: ReturnType<typeof useApp>["t"], start: 
   if (interview) return step("interview", () => start(`/interview ${interview.company} ${interview.role}`), { company: interview.company });
   const drafted = s.applications.find((a) => status(a) === "drafted");
   if (drafted) return step("drafted", go("/apps"), { company: drafted.company });
-  const top = s.jobs.filter((j) => j.status === "ranked" && j.score !== null && j.tier !== "far" && j.url).sort((a, b) => b.score - a.score)[0];
+  const top = s.jobs.filter((j) => j.status === "ranked" && j.score !== null && j.tier !== "far" && !j.veto && j.url).sort((a, b) => b.score - a.score)[0];
   if (top) return step("top", () => start(`/apply ${top.url}`), { title: top.title, company: top.company, score: top.score });
   const fresh = s.jobs.filter((j) => j.status === "new" || j.status === "unreachable").length;
   if (fresh) return step("fresh", go("/saved/found"), { n: fresh });

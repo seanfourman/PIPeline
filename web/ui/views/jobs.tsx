@@ -5,10 +5,12 @@ import { SaveNote, useAutoSave } from "../autosave";
 import { useMore } from "../more";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
+import { jobId } from "../jobid";
 import { MAKERS, useFirstAi } from "./chat";
+import { openJob, sendOpen } from "./job";
 import { areaName, AreasEditor, marketLabel, MarketsEditor } from "./settings";
 
-type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; verdict?: string; status?: string };
+export type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; verdict?: string; status?: string };
 
 // How many jobs a list of them shows at first, and how many more each time its end comes near the bottom of the
 // screen (ui/more.tsx): each row has its own live AI button.
@@ -25,7 +27,7 @@ const search = { q: null as string | null, days: "14", market: "all", mode: "", 
 export const TIER_TONE: Record<string, string> = { near: "good", ok: "good", edge: "warn", far: "bad", unknown: "" };
 
 // Whether a job is among those the user saved, and a click that saves it or takes it off (saved.ts).
-function useSave() {
+export function useSave() {
   const { s, refresh } = useApp();
   const urls = new Set((s.saved ?? []).map((j) => j.url));
   const toggle = (job: Pick<Job, "url" | "title" | "company" | "location" | "date">) =>
@@ -34,7 +36,7 @@ function useSave() {
 }
 
 // How long ago a job was posted, in words: today, yesterday, so many days or weeks ago; past two months, the date.
-function postedAgo(date: string, t: (key: string, params?: Record<string, string | number>) => string) {
+export function postedAgo(date: string, t: (key: string, params?: Record<string, string | number>) => string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date ?? "");
   if (!m) return date ?? "";
   const today = new Date();
@@ -70,42 +72,63 @@ export function Initial({ name }: { name: string }) {
 // floats over it. index is its place in the list, for rising in one after another; faded, a job just taken off the
 // saved list, kept in its place.
 // rank: a job of Pip's not ranked yet has a button that ranks it on its own (RankOne), turning while that runs.
+// The title opens the job's own page (views/job.tsx), and so does a click anywhere on the row but its buttons.
 function JobRow({ job, index, lead, chips, faded = false, rank }: {
   job: Job; index: number; lead: React.ReactNode; chips?: React.ReactNode; faded?: boolean; rank?: { busy: boolean; onRank: () => void };
 }) {
+  const id = jobId(job.url);
+  const basics = { url: job.url, title: job.title, company: job.company, location: job.location, date: job.date };
+  return (
+    <article className={`result ${faded ? "faded" : ""} ${id ? "opens" : ""}`} style={{ "--i": Math.min(index, 12) } as React.CSSProperties}>
+      {lead}
+      <div className="result-text">
+        <h3 className="result-title">
+          {id ? (
+            <a className="result-open" href={`/job/${id}`}
+              onClick={(e) => {
+                // A new tab or window opens the page there; the job is told to the server first, so it has it.
+                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { sendOpen(basics); return; }
+                e.preventDefault();
+                openJob(basics);
+              }}
+              onAuxClick={() => sendOpen(basics)}>{job.title}</a>
+          ) : job.title}
+        </h3>
+        <p className="result-meta"><Spaced parts={[job.company, job.location].filter(Boolean)} /></p>
+        <div className="result-chips">{chips}</div>
+      </div>
+      <JobActions job={job} rank={rank} />
+    </article>
+  );
+}
+
+// A job's round buttons, on its row and on its own page: save it, open its posting on its site, rank it (a job of
+// Pip's not ranked yet, on its row), and apply.
+export function JobActions({ job, rank }: { job: Pick<Job, "url" | "title" | "company" | "location" | "date">; rank?: { busy: boolean; onRank: () => void } }) {
   const { t, start } = useApp();
   const { isSaved, toggle } = useSave();
   const on = isSaved(job.url);
   const href = safeUrl(job.url);
+  if (!href) return null;
   return (
-    <article className={`result ${faded ? "faded" : ""}`} style={{ "--i": Math.min(index, 12) } as React.CSSProperties}>
-      {lead}
-      <div className="result-text">
-        <h3 className="result-title">{job.title}</h3>
-        <p className="result-meta"><Spaced parts={[job.company, job.location].filter(Boolean)} /></p>
-        <div className="result-chips">{chips}</div>
-      </div>
-      {href && (
-        <div className="result-actions">
-          <button type="button" className={`result-act save ${on ? "on" : ""}`} aria-pressed={on} aria-label={`${on ? t("jobs.unsave") : t("jobs.save")}: ${job.title}`} onClick={() => toggle(job)}>
-            <Icon name="saved" filled={on} /><span className="act-label" aria-hidden="true">{on ? t("jobs.savedOne") : t("jobs.save")}</span>
-          </button>
-          <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}>
-            <Icon name="open" /><span className="act-label" aria-hidden="true">{t("jobs.open")}</span>
-          </a>
-          {rank && (
-            <button type="button" className={`result-act rank-one ${rank.busy ? "busy" : ""}`} aria-label={`${t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}: ${job.title}`}
-              aria-busy={rank.busy} disabled={rank.busy} onClick={rank.onRank}>
-              {rank.busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="gauge" />}
-              <span className="act-label" aria-hidden="true">{t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}</span>
-            </button>
-          )}
-          <button type="button" className="result-act apply" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}>
-            <span className="apply-rim" aria-hidden="true" /><Icon name="apply" /><span className="act-label" aria-hidden="true">{t("jobs.apply")}</span>
-          </button>
-        </div>
+    <div className="result-actions">
+      <button type="button" className={`result-act save ${on ? "on" : ""}`} aria-pressed={on} aria-label={`${on ? t("jobs.unsave") : t("jobs.save")}: ${job.title}`} onClick={() => toggle(job)}>
+        <Icon name="saved" filled={on} /><span className="act-label" aria-hidden="true">{on ? t("jobs.savedOne") : t("jobs.save")}</span>
+      </button>
+      <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}>
+        <Icon name="open" /><span className="act-label" aria-hidden="true">{t("jobs.open")}</span>
+      </a>
+      {rank && (
+        <button type="button" className={`result-act rank-one ${rank.busy ? "busy" : ""}`} aria-label={`${t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}: ${job.title}`}
+          aria-busy={rank.busy} disabled={rank.busy} onClick={rank.onRank}>
+          {rank.busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="gauge" />}
+          <span className="act-label" aria-hidden="true">{t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}</span>
+        </button>
       )}
-    </article>
+      <button type="button" className="result-act apply" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}>
+        <span className="apply-rim" aria-hidden="true" /><Icon name="apply" /><span className="act-label" aria-hidden="true">{t("jobs.apply")}</span>
+      </button>
+    </div>
   );
 }
 
@@ -981,9 +1004,9 @@ export const Jobs = () => <div className="page jobs-page"><Quick /></div>;
 // ---------- the saved jobs page ----------
 
 type Saved = AppState["saved"][number];
-// A job Pip found: gate is the check it failed, its place or its language, when the ranking left it out; portal is
-// where it was found (seen_jobs.json).
-type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string; portal?: string; fit?: string };
+// A job Pip found: gate is the check it failed when it was left out: its place or its language (the ranking's), or the
+// years it asks (years) or its senior title, above a junior search; portal is where it was found (seen_jobs.json).
+export type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string; years?: number | null; portal?: string; fit?: string };
 
 // The background runs the page waits on, by their conversations' titles (server.ts).
 const RANK = "/rank";
@@ -991,16 +1014,16 @@ const SMART = "/job-scraper";
 
 // Pip's bands for a score (BANDS in tools/rank_state.py): a strong fit from 75, a good one from 60, a fair one from
 // 45, and less below that.
-const bandOf = (score: number) => (score >= 75 ? "strong" : score >= 60 ? "good" : score >= 45 ? "fair" : "low");
+export const bandOf = (score: number) => (score >= 75 ? "strong" : score >= 60 ? "good" : score >= 45 ? "fair" : "low");
 
 // The groups Pip's list is shown in, in this order: the strong fits; the good and fair ones; the rest; those with
-// nothing to go on yet; and those the ranking left out, for their place or their language. A job ranked goes by its
+// nothing to go on yet; and those left out, for their place, their language or the level they ask. A job ranked goes by its
 // score; one not ranked yet by the fit the smart search gave it as it was found (scraper.ts: high, medium, low), so
 // a list of a thousand not yet ranked is still in its order, the best first.
 const GROUPS = ["strong", "worth", "less", "waiting", "out"] as const;
 function groupOf(job: Found): (typeof GROUPS)[number] {
-  if (typeof job.score !== "number") return job.fit === "high" ? "strong" : job.fit === "medium" ? "worth" : job.fit === "low" ? "less" : "waiting";
   if (job.veto) return "out";
+  if (typeof job.score !== "number") return job.fit === "high" ? "strong" : job.fit === "medium" ? "worth" : job.fit === "low" ? "less" : "waiting";
   const band = bandOf(job.score);
   return band === "strong" ? "strong" : band === "low" ? "less" : "worth";
 }
@@ -1009,7 +1032,7 @@ function groupOf(job: Found): (typeof GROUPS)[number] {
 // initial: green for a strong or good fit, amber for a fair one, grey below, or when the ranking left the job out
 // (out). A job not ranked yet has its company's initial there, as everywhere else. fresh is a score just come in
 // while the page is open, which pops up.
-function Score({ score, fresh = false, out = false }: { score: number; fresh?: boolean; out?: boolean }) {
+export function Score({ score, fresh = false, out = false }: { score: number; fresh?: boolean; out?: boolean }) {
   const { t } = useApp();
   return (
     <span className={`result-mark score-mark ${out ? "low" : bandOf(score)} ${fresh ? "fresh" : ""}`} role="img" aria-label={t("jobs.score", { n: score })}>
@@ -1019,7 +1042,7 @@ function Score({ score, fresh = false, out = false }: { score: number; fresh?: b
 }
 
 // Days from today to a date given as YYYY-MM-DD, or null without one.
-function daysTo(date: string | undefined) {
+export function daysTo(date: string | undefined) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(date ?? "");
   if (!m) return null;
   const today = new Date();
@@ -1035,7 +1058,8 @@ function FoundChips({ job }: { job: Found }) {
   const showTier = Boolean(job.tier) && !(job.tier === "unknown" && !s.settings.areas?.length);
   return <>
     {job.status === "unreachable" && <span className="result-chip warn">{t("jobs.flags.unreachable")}</span>}
-    {job.veto && (job.gate === "location" || job.gate === "language") && <span className="result-chip bad">{t(`jobs.flags.${job.gate}`)}</span>}
+    {job.veto && (job.gate === "location" || job.gate === "language" || job.gate === "senior") && <span className="result-chip bad">{t(`jobs.flags.${job.gate}`)}</span>}
+    {job.veto && job.gate === "years" && <span className="result-chip bad">{typeof job.years === "number" ? t("jobs.flags.years", { n: job.years }) : t("jobs.flags.yearsSome")}</span>}
     {days !== null && days >= 0 && days <= 7 && (
       <span className="result-chip warn">{days === 0 ? t("jobs.flags.closesToday") : days === 1 ? t("jobs.flags.closesTomorrow") : t("jobs.flags.closesIn", { n: days })}</span>
     )}

@@ -43,7 +43,12 @@ never blocks. The archive gets counts only (see /apply Step 6b); excerpts are
 for the terminal.
 
 Usage:
-  python3 tools/posting_guard.py [--in FILE] [--html|--text] [--out FILE] [--json]
+  python3 tools/posting_guard.py [--in FILE] [--html|--text] [--marks] [--out FILE] [--json]
+
+--marks keeps a page's shape in the cleaned text: a heading's line starts with
+"## " and a list item's with "• ", so a reader can show the posting with its
+headings and bullets (the job page, web/postings.ts). Hidden content is removed
+and scanned exactly as without it.
 
 Input is `--in FILE` or stdin, decoded as UTF-8 with replacement. With --html,
 bytes that are not valid UTF-8 are decoded by the charset the page declares
@@ -125,6 +130,7 @@ BLOCK = {"p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr",
          "aside", "figure", "form", "fieldset", "legend", "address", "hr", "td", "th", "option"}
 IMPLIED_END = {"p", "li", "dd", "dt", "tr", "td", "th", "option"}  # an open one is closed by a sibling
 CLOSES_P = BLOCK - {"br"}  # an open <p> is closed by any block-level opener
+MARKS = {**{f"h{n}": "## " for n in range(1, 7)}, "li": "• "}  # with --marks: what starts the element's line
 HTML_HINT = re.compile(r"<\s*(html|body|div|p)\b", re.I)
 
 URL = re.compile(r"https?://[^\s<>\"')\]]+")
@@ -268,7 +274,7 @@ def _is_hidden(raw_attrs: str) -> bool:
     return bool(COLLAPSED_BOX.search(style) and CLIPPED.search(style))
 
 
-def clean_html(markup: str):
+def clean_html(markup: str, marks: bool = False):
     """Visible text and the hidden content that was removed.
 
     Returns (text, findings) with findings["hidden_blocks"] (excerpts of hidden
@@ -277,7 +283,8 @@ def clean_html(markup: str):
     a stray closer cannot end a hidden element early and an unclosed <li> or
     <p> inside one cannot swallow the rest of the page; a `/>` on a non-void
     tag is ignored, as browsers do; unterminated comments and script/style
-    blocks hide to the end of input, as browsers do.
+    blocks hide to the end of input, as browsers do. With marks, a heading's
+    line starts with "## " and a list item's with "• ".
     """
     hidden_parts = []
     hidden_blocks = []
@@ -345,6 +352,9 @@ def clean_html(markup: str):
         stack.append(name)
         if hidden_at is None and _is_hidden(raw_attrs):
             hidden_at = len(stack) - 1
+        # After the hidden check, so a hidden heading's mark goes with it.
+        if marks and name in MARKS:
+            emit(MARKS[name])
     emit(markup[pos:])
     if hidden_at is not None:
         flush_hidden()
@@ -439,12 +449,12 @@ def verdict(findings: dict) -> str:
     return "posting_guard: clean"
 
 
-def guard(raw: str, mode: str):
+def guard(raw: str, mode: str, marks: bool = False):
     """Run the whole gate. mode: "html", "text" or "auto". Returns (cleaned, findings)."""
     if mode == "auto":
         mode = "html" if HTML_HINT.search(raw) else "text"
     if mode == "html":
-        text, hf = clean_html(raw)
+        text, hf = clean_html(raw, marks)
         hidden_text, hidden_blocks = hf["hidden_text"], hf["hidden_blocks"]
     else:
         text, hidden_text, hidden_blocks = raw, "", []
@@ -505,6 +515,7 @@ def main(argv=None) -> int:
     mode.add_argument("--text", action="store_const", const="text", dest="mode")
     parser.add_argument("--out", type=Path, default=None, help="write the cleaned text here instead of stdout")
     parser.add_argument("--json", action="store_true", help="print findings as JSON")
+    parser.add_argument("--marks", action="store_true", help="start a heading's line with '## ' and a list item's with '• ' (HTML input)")
     parser.set_defaults(mode="auto")
     args = parser.parse_args(argv)
 
@@ -523,7 +534,7 @@ def main(argv=None) -> int:
         print(f"posting_guard: cannot read input: {exc}", file=sys.stderr)
         return 2
 
-    cleaned, findings = guard(raw, args.mode)
+    cleaned, findings = guard(raw, args.mode, args.marks)
     print(findings["verdict"])
     print("--- findings ---")
     print(json.dumps(findings, ensure_ascii=False, indent=2) if args.json else _plain_findings(findings))
