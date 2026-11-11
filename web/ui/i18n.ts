@@ -342,6 +342,11 @@ const he = {
   },
   chat: {
     new: "שיחה חדשה", notFound: "השיחה לא נמצאה.", list: "שיחות", openList: "כל השיחות", closeList: "סגירת רשימת השיחות",
+    search: "חיפוש בשיחות", results: "מה נמצא", searchNone: "לא נמצאה שיחה", pinned: "מוצמדות", projects: "פרויקטים", newProject: "פרויקט חדש",
+    projectName: "שם הפרויקט", projectEmpty: "עוד אין כאן שיחות", menu: "אפשרויות לשיחה", projectMenu: "אפשרויות לפרויקט", rename: "שינוי שם",
+    pin: "הצמדה", unpin: "ביטול הצמדה", moveTo: "העברה לפרויקט", noProject: "בלי פרויקט", archive: "העברה לארכיון", unarchive: "החזרה מהארכיון",
+    delete: "מחיקה", deleteAsk: "למחוק את השיחה?", deleteProjectAsk: "למחוק? השיחות בו יישארו", cancel: "ביטול", back: "חזרה",
+    archived: "ארכיון ({n})", archiveEmpty: "הארכיון ריק", hideList: "הסתרת השיחות", showList: "הצגת השיחות",
     groups: { today: "היום", yesterday: "אתמול", week: "בשבוע האחרון", earlier: "קודם" },
     newTitle: "במה נעבוד היום?", newPlaceholder: "אפשר לכתוב חופשי, או להדביק קישור למשרה…", suggest: "או להתחיל מכאן",
     models: { default: "ברירת המחדל שלך", opus: "Opus 5.5", sonnet: "Sonnet 5.5, חסכוני יותר", haiku: "Haiku 5.5, הכי חסכוני" },
@@ -360,7 +365,13 @@ const he = {
     },
     message: "אפשר לכתוב כאן…", send: "שליחה", stop: "עצירה",
     steps: "{n} צעדים", step: "צעד אחד", working: "עובד…",
+    // The step under way, by its number, and how long a run took.
+    stepN: "צעד {n}", second: "שנייה", secs: "{n} שניות", minute: "דקה", mins: "{n} דקות",
     files: "קבצים מהשיחה", open: "פתיחה", download: "הורדה",
+    // What a document the conversation made is (answer-parts.ts docKind), and one still being written.
+    doc: { cv: "קורות חיים", letter: "מכתב מקדים", report: "דוח", doc: "מסמך", writing: "נכתב עכשיו" },
+    // Questions to prepare as cards that turn over.
+    cards: { turn: "להפוך לתשובה", how: "איך לענות", back: "חזרה לשאלה" },
     upload: {
       attach: "צירוף תמונה או קובץ", remove: "הסרת {name}", many: "אפשר לצרף עד {n} קבצים להודעה.",
       type: "אי אפשר לצרף את {name}: אפשר תמונות (PNG, JPG, GIF, WebP), PDF וקבצי טקסט.", size: "{name} גדול מדי, אפשר עד {max} MB.", failed: "ההעלאה של {name} נכשלה.",
@@ -947,6 +958,11 @@ const en: Dict = {
   },
   chat: {
     new: "New conversation", notFound: "Conversation not found.", list: "Conversations", openList: "All conversations", closeList: "Close the conversation list",
+    search: "Search conversations", results: "Found", searchNone: "No conversation found", pinned: "Pinned", projects: "Projects", newProject: "New project",
+    projectName: "Project name", projectEmpty: "No conversations here yet", menu: "Conversation options", projectMenu: "Project options", rename: "Rename",
+    pin: "Pin", unpin: "Unpin", moveTo: "Move to project", noProject: "No project", archive: "Archive", unarchive: "Unarchive",
+    delete: "Delete", deleteAsk: "Delete this conversation?", deleteProjectAsk: "Delete? Its conversations stay", cancel: "Cancel", back: "Back",
+    archived: "Archive ({n})", archiveEmpty: "The archive is empty", hideList: "Hide conversations", showList: "Show conversations",
     groups: { today: "Today", yesterday: "Yesterday", week: "Past week", earlier: "Earlier" },
     newTitle: "What shall we work on today?", newPlaceholder: "Write anything, or paste a link to a job…", suggest: "Or start here",
     models: { default: "Your default", opus: "Opus 5.5", sonnet: "Sonnet 5.5, uses less", haiku: "Haiku 5.5, uses least" },
@@ -965,7 +981,10 @@ const en: Dict = {
     },
     message: "Write here…", send: "Send", stop: "Stop",
     steps: "{n} steps", step: "One step", working: "Working…",
+    stepN: "Step {n}", second: "a second", secs: "{n} seconds", minute: "a minute", mins: "{n} minutes",
     files: "Files from this conversation", open: "Open", download: "Download",
+    doc: { cv: "CV", letter: "Cover letter", report: "Report", doc: "Document", writing: "Being written now" },
+    cards: { turn: "Turn over for the answer", how: "How to answer", back: "Back to the question" },
     upload: {
       attach: "Attach an image or a file", remove: "Remove {name}", many: "You can attach up to {n} files to a message.",
       type: "{name} can't be attached: images (PNG, JPG, GIF, WebP), PDFs and text files can.", size: "{name} is too big, up to {max} MB.", failed: "Uploading {name} failed.",

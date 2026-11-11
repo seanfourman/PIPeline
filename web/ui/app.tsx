@@ -23,7 +23,9 @@ export type AppState = {
   saved: { url: string; title: string; company: string; location: string; date: string; saved: string }[];
   // plain: chat only, answered by the settings' AI (agent.ts); engine: the name of the one that answered last.
   // agent: "codex" when ChatGPT works in it as an agent, through Codex (codex.ts).
-  sessions: { id: string; title: string; status: string; createdAt: number; model?: string; access?: string; plain?: boolean; engine?: string; agent?: string }[];
+  sessions: { id: string; title: string; status: string; createdAt: number; model?: string; access?: string; plain?: boolean; engine?: string; agent?: string; pinned?: number; archived?: boolean; project?: string }[];
+  // The conversations' projects (projects.ts); a Pip from before them has none.
+  projects?: { id: string; name: string; createdAt: number }[];
   settings: Record<string, any>; presets: Record<string, { name: string; places: string[] }[]>; profileReady: boolean;
   // Whether a key for ChatGPT (openai) is saved (chatbots.ts); the keys never come here. aiLogins: whether it is
   // signed in with the account, through Codex (clis.ts).
@@ -230,8 +232,10 @@ function AccountMenu() {
 // it (styles.css). It is a popover, so it stands above everything, and a click outside, Escape, an item picked in it,
 // the page scrolling or the window changing size close it, as they do Select's list. Opened with the keys, its first
 // item takes the focus, the arrow keys go up and down it, and Tab out of either end closes it. face is what the button
-// shows, and label names one that shows only an icon.
-function PopMenu({ className, face, label, children }: { className: string; face: React.ReactNode; label?: string; children: React.ReactNode }) {
+// shows, and label names one that shows only an icon. near: a small menu beside its button instead of one as wide as
+// the sidebar (a conversation's ⋯), under the button or above it where there is no room, kept on the screen; an item
+// marked data-keep (one that opens the menu's next level) leaves it open; onToggle hears it open and close.
+export function PopMenu({ className, face, label, children, near = false, onToggle }: { className: string; face: React.ReactNode; label?: string; children: React.ReactNode; near?: boolean; onToggle?: (open: boolean) => void }) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -243,7 +247,7 @@ function PopMenu({ className, face, label, children }: { className: string; face
   useEffect(() => {
     const el = menu.current;
     if (!el) return;
-    const toggled = (e: Event) => setOpen((e as ToggleEvent).newState === "open");
+    const toggled = (e: Event) => { const now = (e as ToggleEvent).newState === "open"; setOpen(now); onToggle?.(now); };
     el.addEventListener("toggle", toggled);
     return () => el.removeEventListener("toggle", toggled);
   }, []);
@@ -258,6 +262,7 @@ function PopMenu({ className, face, label, children }: { className: string; face
   }, [open]);
 
   const show = (keys: boolean) => {
+    if (near) { showNear(keys); return; }
     const el = button.current, pop = menu.current, side = el?.closest<HTMLElement>(".side");
     if (!el || !pop || !side) return;
     if (pop.matches(":popover-open")) { pop.hidePopover(); return; }
@@ -273,6 +278,19 @@ function PopMenu({ className, face, label, children }: { className: string; face
     const top = height <= above || above > innerHeight - at.bottom - MORE_GAP - MORE_EDGE ? at.top - MORE_GAP - height : at.bottom + MORE_GAP;
     Object.assign(pop.style, { left: `${left}px`, top: `${top}px`, transformOrigin: `${at.left + at.width / 2 - left}px ${at.top + at.height / 2 - top}px` });
     if (keys) pop.querySelector<HTMLElement>("a, button")?.focus({ preventScroll: true });
+  };
+  const showNear = (keys: boolean) => {
+    const el = button.current, pop = menu.current;
+    if (!el || !pop) return;
+    if (pop.matches(":popover-open")) { pop.hidePopover(); return; }
+    pop.style.width = "";
+    pop.showPopover();
+    const at = el.getBoundingClientRect(), width = pop.offsetWidth, height = pop.offsetHeight;
+    const rtl = getComputedStyle(el).direction === "rtl";
+    const left = Math.max(MORE_EDGE, Math.min(innerWidth - width - MORE_EDGE, rtl ? at.left : at.right - width));
+    const top = at.bottom + MORE_GAP + height <= innerHeight - MORE_EDGE ? at.bottom + MORE_GAP : Math.max(MORE_EDGE, at.top - MORE_GAP - height);
+    Object.assign(pop.style, { left: `${left}px`, top: `${top}px`, transformOrigin: `${at.left + at.width / 2 - left}px ${at.top + at.height / 2 - top}px` });
+    if (keys) pop.querySelector<HTMLElement>("a, button, input")?.focus({ preventScroll: true });
   };
   const keys = (e: React.KeyboardEvent) => {
     const links = [...(menu.current?.querySelectorAll<HTMLElement>("a, button") ?? [])];
@@ -299,8 +317,8 @@ function PopMenu({ className, face, label, children }: { className: string; face
       </button>
       {/* popover is not in React 18's types yet, so it goes in as a plain attribute. */}
       <div
-        ref={menu} id={`${id}-menu`} {...{ popover: "auto" }} className="more-menu" onKeyDown={keys}
-        onClick={(e) => { if ((e.target as Element).closest("a, button")) menu.current?.hidePopover(); }}
+        ref={menu} id={`${id}-menu`} {...{ popover: "auto" }} className={`more-menu ${near ? "near" : ""}`} onKeyDown={keys}
+        onClick={(e) => { const hit = (e.target as Element).closest("a, button"); if (hit && !hit.hasAttribute("data-keep")) menu.current?.hidePopover(); }}
       >
         {children}
       </div>

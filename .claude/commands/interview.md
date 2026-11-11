@@ -82,7 +82,7 @@ The phone/video tips from `07` when the format calls for them, plus date and int
 
 Before saving, give the answers and talking points the humanizer pass: read `.claude/skills/humanizer/SKILL.md` and apply it in its embedded mode. The candidate will say these aloud, so they must sound like a person talking. Every fact stays exactly as the profile and the submitted documents state it, and the STAR structure stays.
 
-Save the pack in the archive folder derived in Step 1 as `interview_prep_<stage>.md` (create the folder if this application predates `/outcome`). The folder is gitignored, so the pack stays personal; one file per stage, so earlier packs remain as history. Present the pack in chat as well - the file is the artifact, the conversation is the delivery.
+Save the pack in the archive folder derived in Step 1 as `interview_prep_<stage>.md` (create the folder if this application predates `/outcome`). The folder is gitignored, so the pack stays personal; one file per stage, so earlier packs remain as history. Present the pack in chat as well - the file is the artifact, the conversation is the delivery. In the chat, write the likely and tough questions as a numbered list, each item the question in bold ending with its question mark, and its talking points on the indented lines under it: Pip's chat shows such a list as cards that turn over to the answer.
 
 ---
 

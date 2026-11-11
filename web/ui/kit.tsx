@@ -1,9 +1,9 @@
 // Shared building blocks. Text from postings and from the agent always goes in as text, never as HTML.
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  ArrowUp, Award, Bookmark, BookOpenText, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, Gauge,
-  Gem, Globe, GraduationCap, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, Mic, Minus, Moon, Pause, Pencil, Phone, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
-  Sparkles, Square, Sun, TriangleAlert, User, UserPlus, X, Zap,
+  Archive, ArchiveRestore, ArrowUp, Award, Bookmark, BookOpenText, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, FolderInput, FolderOpen, FolderPlus, Gauge,
+  Gem, Globe, GraduationCap, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, Mic, Minus, Moon, PanelLeft, PanelRight, Pause, Pencil, Phone, Pin, PinOff, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
+  Sparkles, Square, Sun, Trash2, TriangleAlert, User, UserPlus, X, Zap,
   type LucideIcon,
 } from "lucide-react";
 import { translate, type Lang } from "./i18n";
@@ -221,6 +221,8 @@ const ICONS: Record<string, LucideIcon> = {
   warn: TriangleAlert, send: ArrowUp, stop: Square, download: Download, file: FileText, portals: Office, refresh: RefreshCw, gauge: Gauge,
   portfolio: Case, repo: FolderGit2, video: Clapperboard, readme: BookOpenText, site: Globe, play: Play, pause: Pause,
   mic: Mic, mail: Mail, phone: Phone, link: Link, school: GraduationCap, edit: Pencil, award: Award,
+  "thread-pin": Pin, unpin: PinOff, archive: Archive, unarchive: ArchiveRestore, trash: Trash2, folder: Folder, "folder-open": FolderOpen,
+  "folder-plus": FolderPlus, move: FolderInput, "panel-left": PanelLeft, "panel-right": PanelRight,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,
   "model-default": Cpu, "model-opus": Gem, "model-sonnet": Feather, "model-haiku": Leaf,
 };
@@ -230,6 +232,11 @@ export const Icon = ({ name, filled = false }: { name: string; filled?: boolean 
   const Glyph = ICONS[name];
   return <Glyph className={`icon icon-${name}${filled ? " filled" : ""}`} aria-hidden="true" />;
 };
+
+// A button's name floating over it on hover or keyboard focus: the page's own label (.act-label in styles.css), never
+// the browser's title= tooltip, and the same pill everywhere: it carries its own font, so the button it sits in can't
+// change it. The button needs position: relative, an aria-label of its own, and a place in the .act-label hover rule.
+export const ActLabel = ({ children, dir }: { children: React.ReactNode; dir?: string }) => <span className="act-label" dir={dir} aria-hidden="true">{children}</span>;
 
 // The AI's colours, as the sparkles have them on the jobs page (.ai-sky in styles.css): the forest rainbow in clouds
 // drifting over the sky's blue, behind whatever stands for the AI, a button or a round mark, and in its shape. orb is

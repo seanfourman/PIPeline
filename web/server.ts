@@ -5,7 +5,7 @@ import "./upgrade";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { createSession, createTaskSession, getSession, isAccess, listSessions, runTask, runUnattended } from "./agent";
+import { createSession, createTaskSession, deleteSession, getSession, isAccess, leaveProject, listSessions, runTask, runUnattended, searchSessions } from "./agent";
 import { AccountError, clearedCookie, createAuth, openedByHand, rememberedCookie, rememberedOf, sessionCookie, sessionOf } from "./auth";
 import { buildInterface, watchInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
@@ -27,6 +27,8 @@ import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, list
 import { REPO } from "./policy";
 import { createRemote, RemoteError } from "./remote";
 import { byteRange, MEDIA_TYPES, mediaFile, PORTFOLIO_DIR, readPortfolio } from "./portfolio";
+import { createProjects } from "./projects";
+import { metaChange } from "./threads";
 import { readSaved, setSaved } from "./saved";
 import { loadSettings, REGION_PRESETS, saveSettings, syncWorkspace } from "./settings";
 import { joinWithTranscript, removeTranscript, saveTranscript, TRANSCRIPT, TranscriptError, transcriptInfo } from "./transcript";
@@ -151,6 +153,9 @@ const CRAWL_EVERY_MS = 20 * 60_000;
 const crawlList = () => { if (!listBusy) void postings.crawl(() => listBusy !== ""); };
 setTimeout(crawlList, 60_000);
 setInterval(crawlList, CRAWL_EVERY_MS);
+
+// The conversations' projects (projects.ts), in the account's folder.
+const projects = createProjects(path.join(APP_DIR, "projects.json"));
 
 const loggedIn = (id: string) => new Response(JSON.stringify({ ok: true }), { headers: { ...SECURITY_HEADERS, "Content-Type": "application/json", "Set-Cookie": sessionCookie(id) } });
 
@@ -485,7 +490,7 @@ async function api(req: Request, url: URL): Promise<Response> {
       const kept = rememberedOf(req.headers.get("cookie"));
       const accounts = others.map((a) => a.name);
       const remembered = others.filter((a) => kept.has(a.id)).map((a) => a.name);
-      return json({ ...loadState(settings), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), accounts, remembered, computer: COMPUTER, intro, remote: remote.status(), transcript: transcriptInfo() });
+      return json({ ...loadState(settings), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), projects: projects.list(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), accounts, remembered, computer: COMPUTER, intro, remote: remote.status(), transcript: transcriptInfo() });
     }
     if (parts[0] === "profile" || parts[0] === "rules") return json(readDocument(parts[0]));
     if (parts[0] === "checks") return json(readChecks());
@@ -526,6 +531,8 @@ async function api(req: Request, url: URL): Promise<Response> {
         return json({ error: String((err as Error).message) }, 400);
       }
     }
+    // The conversations a search finds, by their titles and their words (threads.ts).
+    if (parts[0] === "sessions-search" && !parts[1]) return json({ ids: searchSessions(String(url.searchParams.get("q") ?? "").slice(0, 200)) });
     // A job's page as it stands, asked again while it is being read (postings.ts).
     if (parts[0] === "job" && parts[1] && !parts[2]) {
       const view = JOB_ID.test(parts[1]) ? postings.view(parts[1]) : null;
@@ -695,6 +702,13 @@ function startList(job: "rank" | "scrape" | "portals", keys: string[] = []) {
     }
     return json(startList(parts[0] === "portals" ? "portals" : parts[0], keys).summary());
   }
+  // The conversations' projects: one made, renamed, or deleted (its conversations only leave it).
+  if (parts[0] === "projects") {
+    if (!parts[1]) { const made = projects.create(body.name); return made ? json(made) : json({ error: "bad name" }, 400); }
+    if (parts[2] === "delete") { if (!projects.remove(parts[1])) return json({ error: "not found" }, 404); leaveProject(parts[1]); return json({ ok: true }); }
+    if (!parts[2]) { const renamed = projects.rename(parts[1], body.name); return renamed ? json(renamed) : json({ error: "bad name" }, 400); }
+    return json({ error: "not found" }, 404);
+  }
   if (parts[0] === "sessions" && !parts[1]) {
     const prompt = String(body.prompt ?? "").trim();
     const uploads = attached(body.files);
@@ -736,6 +750,14 @@ function startList(job: "rank" | "scrape" | "portals", keys: string[] = []) {
     return json(session.summary());
   }
   if (parts[2] === "interrupt") { await session.interrupt(); return json({ ok: true }); }
+  // Renamed, pinned, archived or moved to a project (threads.ts), or deleted.
+  if (parts[2] === "meta") {
+    const change = metaChange(body, projects.list().map((p) => p.id));
+    if (!change) return json({ error: "bad change" }, 400);
+    session.setMeta(change);
+    return json(session.summary());
+  }
+  if (parts[2] === "delete") { await deleteSession(session.id); return json({ ok: true }); }
   return json({ error: "not found" }, 404);
 }
 

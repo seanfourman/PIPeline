@@ -2,7 +2,7 @@
 // is a session too, with the same events: chat only, answered by the AI first in the settings' order, the next
 // taking over when one fails (ai.ts). So is work the server does itself with that AI, as the ranking.
 import { query, type PermissionResult, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { askInOrder, ENGINE_NAMES, engineOrder, type Engine } from "./ai";
 import { CHAT_SYSTEM, ChatbotError, providerOf, type Turn } from "./chatbots";
@@ -11,6 +11,7 @@ import { CodexAgent } from "./codex";
 import { documentPaths } from "./data";
 import { ACCESS, createPolicy, REPO, type Access } from "./policy";
 import { loadSettings } from "./settings";
+import { matches, type Meta } from "./threads";
 import { attachmentContent, getUpload, type Upload } from "./uploads";
 import { APP_DIR } from "./user";
 
@@ -54,6 +55,14 @@ class Session {
   // A conversation ChatGPT works in as an agent, through Codex (codex.ts), and its thread there.
   agentThreadId?: string;
   private external?: CodexAgent;
+  // Its place in the list (threads.ts): when it was pinned to the top, whether it is archived, the project it is in.
+  pinned?: number;
+  archived = false;
+  project?: string;
+  // Deleted (forget): nothing more of it is saved, nor handed over to another AI.
+  private gone = false;
+  // Stopped (interrupt): the end of the run that follows is the stop, not a failure to hand over to the next AI.
+  private stopped = false;
 
   constructor(public id: string, public title: string, public model: string | undefined, public createdAt: number, private unattended = false, public access: Access = "ask", public plain = false, public agent: "claude" | "codex" = "claude") {}
 
@@ -62,7 +71,16 @@ class Session {
 
   summary() {
     const engine = this.agent === "codex" ? ENGINE_NAMES.openai : this.engine;
-    return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model, access: this.access, plain: this.plain, engine, agent: this.agent };
+    return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model, access: this.access, plain: this.plain, engine, agent: this.agent, pinned: this.pinned, archived: this.archived, project: this.project };
+  }
+
+  // Renamed, pinned or not, archived or not, moved into a project or out of one (threads.ts metaChange).
+  setMeta(meta: Meta) {
+    if (meta.title !== undefined) this.title = meta.title;
+    if (meta.pinned !== undefined) this.pinned = meta.pinned ?? undefined;
+    if (meta.archived !== undefined) this.archived = meta.archived;
+    if (meta.project !== undefined) this.project = meta.project ?? undefined;
+    this.scheduleSave();
   }
 
   // A new access for what comes next; a request already waiting that it now allows goes ahead at once.
@@ -95,11 +113,13 @@ class Session {
   }
 
   private scheduleSave() {
+    if (this.gone) return;
     clearTimeout(this.saveTimer);
     this.saveTimer = setTimeout(() => this.save(), 250);
   }
 
   save() {
+    if (this.gone) return;
     writeFileSync(path.join(DATA, `${this.id}.json`), JSON.stringify({ ...this.summary(), claudeId: this.claudeId, agentThreadId: this.agentThreadId, metered: this.metered, events: this.events }));
   }
 
@@ -146,6 +166,8 @@ class Session {
   // first message, with what was attached to it, on the agent that can work now (pickAgent), the new message after
   // it; with none, it says again what to sign in to.
   send(text: string, uploads: (Upload & { file: string })[] = []) {
+    // A new run, not a message written while a stopped one ends.
+    if (this.status !== "running" && this.status !== "waiting") this.stopped = false;
     const again = !this.plain && !this.unattended && this.events.some((e) => e.t === "user") && !this.events.some((e) => WORKED.has(e.t));
     this.emit({ t: "user", text, ...(uploads.length ? { files: uploads.map(({ id, name, kind, size }) => ({ id, name, kind, size })) } : {}) });
     if (this.plain) { if (!this.replying) this.answer(); return; }
@@ -293,7 +315,7 @@ class Session {
   // agent (Codex) from the message Claude never got to, commands too, with what was attached to it and a line saying
   // so. Not in an unattended run, and not once a tool has run since the message, whose steps would run again.
   private toCodex() {
-    if (this.unattended || !cliSignedIn().openai) return false;
+    if (this.gone || this.unattended || !cliSignedIn().openai) return false;
     const lastUser = this.events.findLastIndex((e) => e.t === "user");
     if (this.events.slice(lastUser).some((e) => e.t === "tool")) return false;
     const asked = this.events[lastUser] ?? { t: "user" };
@@ -307,8 +329,10 @@ class Session {
 
   // When Claude fails on a plain message (its quota, say), and another AI is connected, the conversation goes on as
   // a plain one with the next in the order, which answers the message Claude didn't. Not for a command, which
-  // needs Claude's tools, not once a tool has run since the message, and never in an unattended run.
+  // needs Claude's tools, not once a tool has run since the message, and never in an unattended run. Nor when the run
+  // was stopped, or the conversation deleted.
   private handOver() {
+    if (this.gone || this.stopped) return false;
     const lastUser = this.events.findLastIndex((e) => e.t === "user");
     const asked = String(this.events[lastUser]?.text ?? "");
     const next = engineOrder(loadSettings().aiPrimary).find((e) => e !== "claude");
@@ -374,6 +398,7 @@ class Session {
   }
 
   async interrupt() {
+    this.stopped = true;
     this.replying?.abort();
     await this.external?.interrupt();
     for (const [id, request] of this.pending) {
@@ -410,7 +435,8 @@ class Session {
         }
         for (const block of message.message.content as any[]) {
           if (block.type === "text" && !parent && block.text.trim()) this.emit({ t: "text", text: block.text });
-          if (block.type === "tool_use") this.emit({ t: "tool", id: block.id, name: block.name, target: toolTarget(block.name, block.input), nested: Boolean(parent), files: toolFiles(block.name, block.input) });
+          // A step a helper ran inside another step says which, for the chat to hang it under that step (chat.tsx stepTree).
+          if (block.type === "tool_use") this.emit({ t: "tool", id: block.id, name: block.name, target: toolTarget(block.name, block.input), nested: Boolean(parent), ...(parent ? { parent } : {}), files: toolFiles(block.name, block.input) });
         }
       } else if (message.type === "user") {
         const content = (message.message as { content: unknown }).content;
@@ -421,11 +447,21 @@ class Session {
         this.cost += message.total_cost_usd ?? 0;
         const ok = message.subtype === "success" && !message.is_error;
         if (!ok && this.handOver()) return;
+        this.stopped = false;
         this.emit({ t: "result", ok, ...(this.metered ? { cost: message.total_cost_usd } : {}), durationMs: message.duration_ms });
         this.setStatus(ok ? "idle" : "error");
         this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
       }
     }
+  }
+
+  // Deleted (deleteSession): what it still had to save is dropped and nothing more is, nor is it handed over; its
+  // timers stop, and its process ends now rather than after IDLE_CLOSE_MS.
+  forget() {
+    this.gone = true;
+    clearTimeout(this.saveTimer);
+    clearTimeout(this.idleTimer);
+    this.close();
   }
 
   close() {
@@ -494,6 +530,9 @@ for (const name of readdirSync(DATA)) {
     session.agentThreadId = typeof saved.agentThreadId === "string" ? saved.agentThreadId : undefined;
     session.cost = saved.cost ?? 0;
     session.metered = typeof saved.metered === "boolean" ? saved.metered : undefined;
+    session.pinned = typeof saved.pinned === "number" ? saved.pinned : undefined;
+    session.archived = saved.archived === true;
+    session.project = typeof saved.project === "string" ? saved.project : undefined;
     // Saved before conversations knew how they were paid for: their ends showed the SDK's dollar figure, which on a
     // Claude plan is no bill, so it goes. On a key, that figure is all that is lost.
     if (session.metered === undefined) for (const e of session.events) if (e.t === "result") delete e.cost;
@@ -574,5 +613,22 @@ export const runTask = (title: string, work: Parameters<Session["task"]>[1], tim
   finished(createTaskSession(title, work), timeoutMs);
 
 export const getSession = (id: string) => sessions.get(id);
+// A conversation deleted: stopped first if it is working, then forgotten, so that what the stop still says is never
+// saved over its deletion, and its file and its place here gone.
+export async function deleteSession(id: string) {
+  const session = sessions.get(id);
+  if (!session) return false;
+  if (session.status === "running" || session.status === "waiting") await session.interrupt().catch(() => {});
+  session.forget();
+  sessions.delete(id);
+  rmSync(path.join(DATA, `${id}.json`), { force: true });
+  return true;
+}
+// The conversations a search finds (threads.ts matches), the newest first.
+export const searchSessions = (query: string) => [...sessions.values()].filter((s) => matches(s, query)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 100).map((s) => s.id);
+// A project deleted: its conversations leave it.
+export function leaveProject(project: string) {
+  for (const s of sessions.values()) if (s.project === project) s.setMeta({ project: null });
+}
 export const listSessions = () => [...sessions.values()].map((s) => s.summary()).sort((a, b) => b.createdAt - a.createdAt);
 export const sessionFileExists = (id: string) => existsSync(path.join(DATA, `${id}.json`));

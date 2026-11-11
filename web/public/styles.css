@@ -8,11 +8,12 @@
 @font-face { font-family: "Handjet"; src: url("fonts/handjet-hebrew.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; }
 @font-face { font-family: "Handjet"; src: url("fonts/handjet-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
-/* Black and white, like a social site: white with black words by day, black with white words at night. The
-   main buttons, links and marks of where you are take one forest colour: forest green by day, the night
-   forest's turquoise at night (--accent is the same colour, for words and outlines). The profile page keeps
-   Microsoft's sea green, below with the profile. The home page's banner keeps its own pixel art colours, last
-   below. */
+/* Black and white, like a social site: white with black words by day, black with white words at night. The main
+   colour is a sea green, as Microsoft's careers site has it: mint for what is filled (the main buttons, badges, a
+   check's circle), with dark words on it; the same green deeper for links, words in colour and outlines, which
+   white has to carry (--accent); and the palest mint behind what is done (--good-soft). A full profile's ring takes
+   a deep green of its own (--full). The pixel-art parts (the home page's banner, its boards and shelves, the login
+   and the introduction) keep the forest's green, set with them below. */
 :root {
   color-scheme: light;
   --bg: #ffffff;
@@ -25,15 +26,17 @@
   --hover: rgb(15 20 25 / 6%);
   /* A lighter one for the round choices, which a light ink tint shows less on at night. */
   --hover-soft: rgb(15 20 25 / 3%);
-  --primary: #2f7a3a;
-  --primary-ink: #ffffff;
-  --primary-edge: #225c2b;
-  --accent: #2f7a3a;
+  --primary: #b9f4e4;
+  --primary-ink: #1a212e;
+  --primary-edge: #8fdcc6;
+  --accent: #137c60;
+  --good-soft: #f0fefa;
+  --full: #2b715f;
   --soft: #f1f4f5;
   --cta: #ffc94a;
   --cta-ink: #2b2a1c;
   --cta-edge: #d6962a;
-  --good: #2f7a3a;
+  --good: #1fa37f;
   --warn: #a86b00;
   --bad: #d0302f;
   --live: #2f6fb0;
@@ -59,8 +62,8 @@
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
     --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%); --hover-soft: rgb(231 233 234 / 7%);
-    --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --soft: #16181c; --accent: #3fd0e0;
-    --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
+    --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --soft: #16181c; --accent: #5fe3c0; --good-soft: #0d2620; --full: #5fc4a8;
+    --good: #3fcf9e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
     --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
     --board-panel: #161a45; --board-ink: #eef0ff; --board-ink-2: #aab3e8; --hero-sky: #0b0a22;
     /* The night forest's: moss, glowing mushrooms, deep blue, violet, flowers, fireflies. */
@@ -72,8 +75,8 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #000000; --surface: #000000; --surface-2: #16181c; --ink: #e7e9ea; --ink-2: #8b9298; --ink-3: #71767b; --line: #2f3336; --hover: rgb(231 233 234 / 10%); --hover-soft: rgb(231 233 234 / 7%);
-  --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --soft: #16181c; --accent: #3fd0e0;
-  --good: #3fcf8e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
+  --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --soft: #16181c; --accent: #5fe3c0; --good-soft: #0d2620; --full: #5fc4a8;
+  --good: #3fcf9e; --warn: #f0b94b; --bad: #ff6b6b; --live: #6aaeff; --warn-soft: #1f1a0a;
   --edge: #05061a; --frame: #262c6e; --frame-hi: #3f4fb8; --frame-lo: #1a1f52;
   --board-panel: #161a45; --board-ink: #eef0ff; --board-ink-2: #aab3e8; --hero-sky: #0b0a22;
   --sky-1: #3fcf8e; --sky-2: #3fd0e0; --sky-3: #5f6ff0; --sky-4: #b07cff; --sky-5: #ff6fc0; --sky-6: #ffd56b;
@@ -180,6 +183,23 @@ legend { padding: 0; }
 /* The account's menu is the same menu (AccountMenu): another account's letter in its circle stands where a page's
    icon does, at its size, and the account's three dots stand upright as More's do. */
 .more-menu .avatar { width: 26px; height: 26px; font-size: 13px; }
+/* The same menu small, beside its button (a conversation's ⋯): rows of a line, a line between groups, a red delete,
+   and a field to name a new project in place. */
+.more-menu.near { min-width: 230px; max-width: 300px; padding-block: 6px; border-radius: 14px; }
+.more-menu.near :is(a, button) { gap: 12px; padding-block: 9px; padding-inline: 14px; font-size: 14.5px; font-weight: 500; }
+.more-menu.near .icon { flex: none; width: 18px; height: 18px; }
+.more-menu.near hr { width: 100%; margin: 5px 0; border: 0; border-top: 1px solid var(--line); }
+.more-menu .danger { color: var(--bad); }
+.more-menu .menu-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.more-menu .menu-form { display: flex; align-items: center; gap: 6px; padding: 6px 10px 8px; }
+.more-menu .menu-form input {
+  flex: 1; min-width: 0; height: 34px; padding-inline: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+  color: var(--ink); font: inherit; font-size: 14px;
+}
+.more-menu .menu-form input:focus { border-color: var(--accent); outline: none; }
+.more-menu .menu-form .menu-ok { flex: none; justify-content: center; width: 34px; height: 34px; padding: 0; border-radius: 50%; background: var(--ink); color: var(--bg); }
+.more-menu .menu-form .menu-ok:hover { background: color-mix(in srgb, var(--ink) 85%, var(--bg)); }
+.more-menu .menu-form .menu-ok:disabled { opacity: 0.35; cursor: default; }
 :is(.nav > button, .account) .icon { transition: rotate 0.38s cubic-bezier(0.34, 1.4, 0.64, 1); }
 :is(.nav > button, .account)[aria-expanded="true"] .icon { rotate: 90deg; }
 /* A count on the icon, like a notification. */
@@ -552,6 +572,15 @@ textarea { resize: vertical; width: 100%; }
 .peek.leaving .peek-say { animation: say-out 0.22s ease-in forwards; }
 @keyframes say-out { to { opacity: 0; scale: 0.4; } }
 
+/* The pixel-art parts keep the forest's green while the rest of the site is sea green (Sean, 2026-11-10): the home
+   page's banner and journey, its boards and its shelves, the login, the introduction, the loading screen's paws and
+   the offline screen. */
+:is(.hero, .stats, .best, .login, .welcome, .boot, .offline) { --primary: #2f7a3a; --primary-ink: #ffffff; --primary-edge: #225c2b; --accent: #2f7a3a; --good: #2f7a3a; }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) :is(.hero, .stats, .best, .login, .welcome, .boot, .offline) { --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --accent: #3fd0e0; --good: #3fcf8e; }
+}
+:root[data-theme="dark"] :is(.hero, .stats, .best, .login, .welcome, .boot, .offline) { --primary: #3fd0e0; --primary-ink: #03161a; --primary-edge: #1f8a9a; --accent: #3fd0e0; --good: #3fcf8e; }
+
 /* Home. The banner is the one place in the app in pixel art: the login's forest at rest, the next step on a
    board like the login's, and the journey along the ground, in blocks of --px and the pixel font. */
 /* A one-block outline in --ring-c with stepped corners. Declared on each element so its own --ring-c is used. */
@@ -777,8 +806,10 @@ textarea { resize: vertical; width: 100%; }
 :is(.seek-box, .composer-box).slot-open .seek-go-slot { width: 52px; margin-inline-start: 0; }
 /* Rolling: a turn of 135 degrees over the 52 pixels, about what a 44-pixel wheel turns. 0.45s each way, as
    ROLL_MS in jobs.tsx. */
+/* The search's go and the chat's send are black with a white icon (white with a black one at night), as the stop
+   that takes their place is. */
 .seek-go {
-  position: absolute; top: 7px; inset-inline-end: 8px; background: var(--primary); color: var(--primary-ink);
+  position: absolute; top: 7px; inset-inline-end: 8px; background: var(--ink); color: var(--bg);
   translate: calc(var(--out) * 52px) 0; rotate: calc(var(--out) * 135deg);
   transition: translate 0.45s cubic-bezier(0.5, 0, 0.75, 0.2), rotate 0.45s cubic-bezier(0.5, 0, 0.75, 0.2);
 }
@@ -1208,17 +1239,19 @@ textarea { resize: vertical; width: 100%; }
 .result-act.ai-act.busy .apply-rim::before { animation-duration: 1.4s; }
 .result-act .icon { width: 18px; height: 18px; }
 .result-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The page's own floating name over a button (ActLabel in kit.tsx). Its font is its own (the site's, at 12.5px),
+   never the button's: a button doesn't take the page's font, so a label that inherited it showed the browser's. */
 .act-label {
   position: absolute; z-index: 5; bottom: calc(100% + 10px); left: 50%; padding: 6px 13px; border: 1px solid var(--line); border-radius: 999px;
   background: var(--surface); color: var(--ink-2); box-shadow: 0 6px 18px rgb(0 0 0 / 10%);
-  font: inherit; font-size: 12.5px; font-weight: 600; line-height: 1.3; white-space: nowrap; pointer-events: none;
+  font: 600 12.5px/1.3 var(--head); letter-spacing: normal; text-transform: none; white-space: nowrap; pointer-events: none;
   opacity: 0; translate: -50% 4px; scale: 0.96; transform-origin: 50% 100%; transition: opacity 0.16s ease, translate 0.16s ease, scale 0.16s ease;
 }
 .act-label::after {
   content: ""; position: absolute; top: calc(100% - 4px); left: 50%; width: 8px; height: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
   background: var(--surface); translate: -50% 0; rotate: 45deg;
 }
-:is(.result-act, .seek-ai, .seek-icon, .voice-go, .voice-lang):is(:hover, :focus-visible) .act-label {
+:is(.result-act, .seek-ai, .seek-icon, .voice-go, .voice-lang, .threads-icon, .threads-add):is(:hover, :focus-visible) .act-label {
   opacity: 1; translate: -50% 0; scale: 1; transition-delay: 0.25s; transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 /* The sparkles' and the search settings' go as they are pressed: what they open says it all. */
@@ -1477,11 +1510,11 @@ select.status { font-weight: 600; }
 .thread-group { display: flex; flex-direction: column; gap: 1px; padding-top: 16px; }
 .thread-group h2 { padding: 0 12px 6px; color: var(--ink-3); font-family: inherit; font-size: 12.5px; font-weight: 600; }
 .thread {
-  display: flex; align-items: center; gap: 8px; min-height: 38px; padding-inline: 12px; border-radius: 10px; color: var(--ink); font-size: 14.5px;
+  position: relative; display: flex; align-items: center; gap: 8px; min-height: 38px; padding-inline: 12px; border-radius: 10px; color: var(--ink); font-size: 14.5px;
   text-decoration: none; transition: background-color 0.15s ease;
 }
 .thread:hover { background: var(--hover-soft); }
-.thread[aria-current="page"] { background: var(--hover); font-weight: 600; }
+.thread.current { background: var(--hover); font-weight: 600; }
 .thread-title, .chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [dir="rtl"] :is(.thread-title, .chat-title) { text-align: right; }
 [dir="ltr"] :is(.thread-title, .chat-title) { text-align: left; }
@@ -1492,6 +1525,94 @@ select.status { font-weight: 600; }
 .thread-dot.error { background: var(--bad); }
 @keyframes pulse { 50% { opacity: 0.35; } }
 .threads-shade { display: none; }
+
+/* The list's head: a new conversation, then its search and the button that hides the list, round; their names float
+   under them on hover (act-label), as they sit at the page's top. */
+.threads-head { display: flex; flex: none; align-items: center; gap: 4px; margin-top: 8px; }
+.threads-head .thread-new { flex: 1; min-width: 0; margin-top: 0; }
+.threads-icon, .threads-add {
+  position: relative; flex: none; display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: none;
+  color: var(--ink-2); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+}
+.threads-add { width: 28px; height: 28px; }
+.threads-icon:hover, .threads-icon[aria-pressed="true"], .threads-add:hover { background: var(--hover); color: var(--ink); }
+.threads-icon .icon { width: 19px; height: 19px; }
+.threads-add .icon { width: 16px; height: 16px; }
+.threads-head .act-label { bottom: auto; top: calc(100% + 10px); transform-origin: 50% 0; }
+.threads-head .act-label::after { top: -5px; rotate: 225deg; }
+/* At the list's outer edge, the hide button's name and the new project's grow inward from it, so they never stand past
+   the window. */
+:is(.threads-hide, .threads-add) .act-label { left: auto; inset-inline-end: -4px; translate: 0 4px; }
+:is(.threads-hide, .threads-add):is(:hover, :focus-visible) .act-label { translate: 0 0; }
+:is(.threads-hide, .threads-add) .act-label::after { left: auto; inset-inline-end: 16px; translate: 0 0; }
+/* The search: a soft pill over the list. */
+.threads-search { display: flex; flex: none; align-items: center; gap: 8px; height: 40px; padding-inline: 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--ink-3); }
+.threads-search:focus-within { border-color: var(--accent); }
+.threads-search .icon { flex: none; width: 16px; height: 16px; }
+.threads-search input, .threads-search input:hover, .threads-search input:focus {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink); font: inherit; font-size: 14.5px; outline: none;
+}
+/* A conversation in the list: its title leads to it from anywhere on the row; its ⋯ shows on hover, on the open one,
+   on focus and while its menu is open. */
+.thread-link {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; align-self: stretch; padding: 0; border: 0; background: none; color: inherit;
+  font: inherit; text-decoration: none; text-align: start; cursor: pointer;
+}
+.thread-link::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.thread-link:focus-visible { outline: none; }
+.thread-link:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -2px; }
+.thread-more {
+  position: relative; z-index: 1; flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-inline-end: -6px; border: 0;
+  border-radius: 8px; background: none; color: var(--ink-2); cursor: pointer; opacity: 0; transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+.thread:hover .thread-more, .thread.current .thread-more, .thread-more:focus-visible, .thread-more[aria-expanded="true"] { opacity: 1; }
+.thread-more:hover, .thread-more[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
+.thread-more .icon { width: 17px; height: 17px; }
+/* Renaming, the title becomes a field; deleting, the row asks first. */
+.thread.editing { padding-inline: 4px; }
+.thread.editing input {
+  flex: 1; min-width: 0; height: 32px; padding-inline: 8px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface);
+  color: var(--ink); font: inherit; font-size: 14.5px; outline: none;
+}
+.thread.asking { gap: 6px; padding-inline-end: 6px; background: color-mix(in srgb, var(--bad) 7%, var(--surface)); }
+.thread.asking .thread-title { font-size: 13.5px; font-weight: 600; white-space: normal; line-height: 1.3; }
+.thread-yes, .thread-no { flex: none; height: 28px; padding-inline: 10px; border: 0; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background-color 0.15s ease; }
+.thread-yes { background: var(--bad); color: #fff; }
+.thread-yes:hover { background: color-mix(in srgb, var(--bad) 85%, var(--ink)); }
+.thread-no { background: var(--hover); color: var(--ink); }
+.thread-no:hover { background: color-mix(in srgb, var(--ink) 12%, var(--surface)); }
+/* Projects: a folder before each and how many it holds; open, its conversations set in under it. */
+.thread-group-head { display: flex; align-items: center; justify-content: space-between; padding-inline-end: 6px !important; }
+.project-row .thread-link .icon { flex: none; width: 17px; height: 17px; color: var(--ink-2); }
+.project-count { flex: none; color: var(--ink-3); font-size: 12.5px; font-weight: 600; }
+.project-threads { display: flex; flex-direction: column; gap: 1px; padding-inline-start: 18px; }
+.project-empty { margin: 0; padding: 6px 12px; color: var(--ink-3); font-size: 13px; }
+.project-first { width: 100%; border: 0; background: none; color: var(--ink-2); font: inherit; font-size: 14px; cursor: pointer; }
+.project-first .icon { flex: none; width: 17px; height: 17px; }
+.threads-back button { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.threads-back button:hover { color: var(--ink); }
+.threads-back .icon { width: 15px; height: 15px; }
+/* The archive, at the list's foot. */
+.threads-archive {
+  display: flex; flex: none; align-items: center; gap: 10px; min-height: 40px; padding-inline: 12px; border: 0; border-radius: 10px; background: none;
+  color: var(--ink-2); font: inherit; font-size: 14px; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease;
+}
+.threads-archive:hover { background: var(--hover-soft); color: var(--ink); }
+.threads-archive .icon { width: 17px; height: 17px; }
+/* The list hidden beside the conversation, as a chat app folds it (ChatGPT's): a narrow rail at its side with the
+   button that opens it again, a new conversation and the search, round, one under the other, each saying its name
+   beside it on hover, toward the page. The list folds and opens quickly; the conversation takes the width. */
+@media (min-width: 1101px) {
+  .chat { transition: grid-template-columns 0.25s cubic-bezier(0.2, 0.8, 0.3, 1); }
+  .chat.threads-hidden { grid-template-columns: minmax(0, 1fr) 64px; }
+  .threads { overflow: hidden; }
+}
+.threads.folded { align-items: center; gap: 6px; padding: 16px 0; overflow: visible; }
+.threads.folded .act-label { top: 50%; bottom: auto; left: auto; inset-inline-end: calc(100% + 12px); translate: 4px -50%; transform-origin: 0 50%; }
+:root[dir="ltr"] .threads.folded .act-label { translate: -4px -50%; transform-origin: 100% 50%; }
+.threads.folded .threads-icon:is(:hover, :focus-visible) .act-label { translate: 0 -50%; }
+.threads.folded .act-label::after { top: 50%; left: auto; inset-inline-end: -5px; translate: 0 -50%; rotate: 135deg; }
+:root[dir="ltr"] .threads.folded .act-label::after { rotate: -45deg; }
 
 .chat-top { display: flex; flex: none; align-items: center; gap: 10px; min-height: 60px; padding: 10px 24px; }
 .chat-lists { display: none; flex: none; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 50%; background: none; color: var(--ink-2); cursor: pointer; }
@@ -1509,58 +1630,141 @@ select.status { font-weight: 600; }
 .chat-model { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--hover-soft); color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
 .chat-model .icon { width: 14px; height: 14px; }
 
-/* The messages in one column: yours in a soft round bubble at the column's end, Pip's as plain text beside a small
-   Pip; the tool calls between them as one folded line of steps; a request or a question as a card. */
+/* The messages in one column, as a chat app has them, with no Pip among them: yours in the site's mint at the
+   column's end, Pip's words plain across it; the tool calls between them one quiet folded line, with the AI's orb
+   and a passing light on it while Pip works; what Pip made after the answer that brought it, as what it is (a
+   document, questions to prepare as cards that turn over); a request or a question as a card. */
 .convo { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .log-frame { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .log { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
-.log-column { display: flex; flex-direction: column; gap: 18px; width: min(760px, 100% - 48px); margin: 0 auto; padding: 8px 0 28px; }
+.log-column { display: flex; flex-direction: column; gap: 22px; width: min(760px, 100% - 48px); margin: 0 auto; padding: 14px 0 32px; }
 .msg-user { display: flex; justify-content: flex-end; }
 .msg-bubble {
-  max-width: min(560px, 80%); padding: 10px 16px; border-radius: 20px; background: color-mix(in srgb, var(--ink) 5%, var(--surface));
-  line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-width: min(560px, 80%); padding: 10px 18px; border-radius: 22px; border-end-end-radius: 8px; background: var(--primary); color: var(--primary-ink);
+  font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere;
 }
-.msg-pip { display: flex; align-items: flex-start; gap: 14px; }
-.msg-avatar { flex: none; width: 30px; margin-top: 3px; }
-.msg-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.typing-text { padding-top: 5px; color: var(--ink-3); font-size: 14px; animation: pulse 1.4s ease-in-out infinite; }
+.msg-pip { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.msg-text { min-width: 0; font-size: 15.5px; line-height: 1.75; overflow-wrap: anywhere; }
+.msg-text.md > :first-child { margin-top: 0; }
+.msg-text.md :is(h2, h3) { margin-top: 20px; font-size: 18px; font-weight: 700; }
 .dots i { width: 7px; height: 7px; background: var(--ink-3); animation: dot 1.2s steps(1) infinite; }
 .dots i:nth-child(2) { animation-delay: 0.2s; } .dots i:nth-child(3) { animation-delay: 0.4s; }
 @keyframes dot { 0% { opacity: 0.25; } 30% { opacity: 1; } 60% { opacity: 0.25; } }
-.steps { align-self: flex-start; max-width: 100%; color: var(--ink-2); font-size: 13.5px; }
-.steps > summary {
-  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 6px 12px; border-radius: 999px; background: var(--hover-soft);
-  cursor: pointer; list-style: none; transition: background-color 0.2s ease;
+/* The AI's orb, small, by what Pip is doing: the ranking pill's orb (AiSky in kit.tsx), drawn at its size and
+   scaled down, so its clouds drift as there. */
+.steps-orb { position: relative; isolation: isolate; flex: none; width: 18px; height: 18px; border-radius: 50%; box-shadow: 0 0 10px color-mix(in srgb, var(--sky-3) 55%, transparent); }
+.steps-orb .ai-sky { inset: 50% auto auto 50%; width: 42px; height: 42px; margin: -21px 0 0 -21px; scale: 0.43; }
+/* The words of what is under way: a light passes over them again and again, the way the words read. */
+:is(.steps-now, .working-line .typing-text, .doc-card.ghost .doc-name) {
+  background: linear-gradient(90deg, var(--ink-3) 30%, var(--ink) 50%, var(--ink-3) 70%) 0 0 / 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; animation: pass-light 1.8s linear infinite;
 }
-.steps > summary::-webkit-details-marker { display: none; }
-.steps > summary:hover { background: var(--hover); }
-.steps .icon { flex: none; width: 15px; height: 15px; }
-.steps > summary > .icon-down { transition: rotate 0.2s ease; }
-.steps[open] > summary > .icon-down { rotate: 180deg; }
-.steps.failed > summary > .icon-warn { color: var(--bad); }
-.steps .spinner { flex: none; width: 13px; height: 13px; }
-.steps ol { display: flex; flex-direction: column; gap: 7px; margin: 8px 0 0; margin-inline-start: 14px; padding: 4px 0; padding-inline-start: 16px; border-inline-start: 2px solid var(--line); list-style: none; }
-.tool { min-width: 0; }
-.tool-row, .tool summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.tool summary { cursor: pointer; list-style: none; }
-.tool summary::-webkit-details-marker { display: none; }
-.tool .icon { width: 14px; height: 14px; }
-.tool.done .icon { color: var(--ink-3); }
-.tool.failed .icon { color: var(--bad); }
-.tool.nested { padding-inline-start: 16px; }
-.tool .pre { max-height: 240px; margin-top: 6px; overflow: auto; font-size: 12.5px; }
+:root[dir="ltr"] :is(.steps-now, .working-line .typing-text, .doc-card.ghost .doc-name) { animation-direction: reverse; }
+@keyframes pass-light { from { background-position: 0% 0; } to { background-position: 100% 0; } }
+/* Pip at work before any step: the orb and what he is doing. */
+.working-line { display: flex; align-items: center; gap: 10px; font-size: 14.5px; font-weight: 500; }
+/* The steps between two messages, as a chat app's work line (ToolSteps in chat.tsx; OpenAI's "Worked for 44s",
+   Sean's pick 2026-11-11): no box, a quiet line of words at the column's start (the kinds of steps as a stack of
+   coloured icons, how many there were and how long the run took, and an arrow that turns down when it opens), and a
+   hairline across the column under it, between the work and the answer. It opens and shuts by growing (.fold), the
+   steps as rows above the line. At work, the AI's orb, the step under way lit by the passing light, its number, and
+   the AI's colours running along the line. */
+.steps { position: relative; display: flex; flex-direction: column; margin-bottom: -8px; padding-bottom: 10px; color: var(--ink-3); font-size: 13.5px; }
+.steps::after { content: ""; position: absolute; inset-inline: 0; bottom: 0; height: 1px; background: var(--line); }
+/* A button in the page's font (a button takes the browser's), its words deepening on hover. */
+.steps-head {
+  display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; max-width: 100%; min-height: 30px; padding: 0; border: 0; border-radius: 6px;
+  background: none; color: inherit; font: inherit; text-align: start; cursor: pointer;
+}
+.steps-head > .icon { flex: none; width: 16px; height: 16px; color: var(--ink-3); transition: color 0.2s ease, rotate 0.25s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.steps-head > .icon-down { rotate: -90deg; }
+:root[dir="rtl"] .steps-head > .icon-down { rotate: 90deg; }
+:root[dir] .steps-head[aria-expanded="true"] > .icon-down { rotate: 0deg; }
+.steps-head > .icon-warn { color: var(--bad); }
+.steps-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.steps-title > :not(.steps-now) { transition: color 0.2s ease; }
+.steps-title strong { color: var(--ink-2); font-weight: 400; }
+.steps-title > span:not(.steps-now) { color: var(--ink-3); }
+.steps.working .steps-title { color: var(--ink-2); }
+.steps-head:hover .steps-title strong, .steps-head:hover > .icon-down { color: var(--ink); }
+.steps-head:hover .steps-title > span:not(.steps-now) { color: var(--ink-2); }
+.steps-count { flex: none; color: var(--ink-3); font-size: 12.5px; }
+.steps-stack { display: flex; flex: none; }
+.steps-stack .step-icon { width: 22px; height: 22px; box-shadow: 0 0 0 2px var(--surface); }
+.steps-stack .step-icon .icon { width: 12px; height: 12px; }
+.steps-stack .step-icon + .step-icon { margin-inline-start: -6px; }
+.steps-bar {
+  position: absolute; inset-inline: 0; bottom: -0.5px; z-index: 1; height: 2px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--sky-3), var(--sky-6), var(--sky-1), transparent) 0 0 / 40% 100% no-repeat; animation: steps-run 1.4s ease-in-out infinite;
+}
+:root[dir="rtl"] .steps-bar { animation-direction: reverse; }
+@keyframes steps-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+/* A step's icon, in its family's colour: the web blue, files grey, writing mint, judging amber, keeping pink. */
+.step-icon { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in srgb, var(--ink) 7%, var(--surface)); color: var(--ink-2); }
+.step-icon .icon { width: 14px; height: 14px; }
+.step-icon.web { background: color-mix(in srgb, var(--sky-3) 16%, var(--surface)); color: color-mix(in srgb, var(--sky-3) 60%, var(--ink-2)); }
+.step-icon.write { background: color-mix(in srgb, var(--primary) 50%, var(--surface)); color: color-mix(in srgb, var(--accent) 80%, var(--ink-2)); }
+.step-icon.judge { background: color-mix(in srgb, var(--warn) 15%, var(--surface)); color: color-mix(in srgb, var(--warn) 60%, var(--ink-2)); }
+.step-icon.keep { background: color-mix(in srgb, var(--sky-6) 15%, var(--surface)); color: color-mix(in srgb, var(--sky-6) 60%, var(--ink-2)); }
+/* A fold that opens and shuts by growing, as a chat app's do (the steps, and what a step brought back): what it holds
+   stays in the page while shut, at no height and unseen, so it glides shut as well as open. */
+.fold {
+  display: grid; grid-template-rows: 0fr; visibility: hidden; opacity: 0;
+  transition: grid-template-rows 0.25s cubic-bezier(0.2, 0.8, 0.3, 1), opacity 0.2s ease, visibility 0.25s;
+}
+.fold.open { grid-template-rows: 1fr; visibility: visible; opacity: 1; }
+.fold > * { min-height: 0; overflow: hidden; }
+/* Opened: each step a row, as wide as a line for reading; what a step brought back, when it brought something, folds
+   out under it. A step that comes while the steps show grows into place, its words cut at its edges as it does. */
+.steps-scroll { position: relative; max-width: 560px; }
+.steps ol { display: flex; flex-direction: column; max-height: 360px; margin: 0; padding: 2px 0 0; overflow-y: auto; list-style: none; scrollbar-width: none; }
+.tool { position: relative; display: grid; grid-template-rows: 1fr; min-width: 0; }
+.tool-in { min-width: 0; min-height: 0; }
+.tool.fresh { animation: step-in 0.25s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.tool.fresh > .tool-in { animation: step-in-clip 0.25s; }
+@keyframes step-in { from { grid-template-rows: 0fr; opacity: 0; } }
+@keyframes step-in-clip { from, to { clip-path: inset(0 -24px); } }
+.tool-row {
+  display: flex; align-items: center; gap: 9px; width: 100%; min-height: 32px; padding-block: 4px; padding-inline: 0 14px; border: 0; background: none;
+  color: var(--ink-2); font: inherit; text-align: start;
+}
+button.tool-row { border-radius: 6px; cursor: pointer; transition: color 0.2s ease; }
+button.tool-row:hover { color: var(--ink); }
+button.tool-row:focus-visible { outline-width: 2px; outline-offset: -2px; }
+/* In a row, the icon is plain and grey; the colours are for the stack on the shut line. */
+.tool-row .step-icon { width: 18px; height: 18px; background: none; color: var(--ink-3); transition: color 0.2s ease; }
+.tool-row .step-icon .icon { width: 15px; height: 15px; }
+button.tool-row:hover .step-icon { color: var(--ink-2); }
+/* The tree (stepTree in chat.tsx), as files under a folder: a step a helper ran inside another step is set in under
+   it, a guide runs down from its parent's icon, a branch reaches into each, and the last one's turns round a corner. */
+.steps { --tree: color-mix(in srgb, var(--ink) 18%, transparent); }
+.tool.child > .tool-in > .tool-row { padding-inline-start: 30px; }
+.tool.parent::after { content: ""; position: absolute; top: 25px; bottom: 0; inset-inline-start: 8.25px; width: 1.5px; background: var(--tree); }
+.tool.child::before { content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 8.25px; width: 1.5px; background: var(--tree); }
+.tool.child::after { content: ""; position: absolute; top: 15.25px; inset-inline-start: 8.25px; width: 14px; height: 1.5px; background: var(--tree); }
+.tool.child.last::before { bottom: auto; width: 14px; height: 16.75px; border-bottom: 1.5px solid var(--tree); border-inline-start: 1.5px solid var(--tree); border-end-start-radius: 7px; background: none; }
+.tool.child.last::after { display: none; }
+/* What a step did, in the page's direction, up to two lines. */
+.step-text { display: -webkit-box; flex: 1; min-width: 0; overflow: hidden; line-height: 1.45; overflow-wrap: break-word; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.step-state { flex: none; display: grid; place-items: center; width: 20px; height: 20px; }
+.step-state .icon { width: 15px; height: 15px; }
+.step-state.done { color: var(--ink-3); }
+.step-state.failed { color: var(--bad); }
+.tool .pre { max-height: 240px; margin-block: 2px 8px; margin-inline: 27px 14px; overflow: auto; font-size: 12.5px; }
+.tool.child .pre { margin-inline-start: 57px; }
+/* A request to allow something, or Pip's question: a warm card waiting for an answer. */
 .ask-card {
-  display: flex; flex-direction: column; gap: 12px; padding: 16px 18px; border: 1px solid color-mix(in srgb, var(--warn) 35%, var(--line)); border-radius: 18px;
-  background: color-mix(in srgb, var(--warn-soft) 70%, var(--surface));
+  display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line)); border-radius: 20px;
+  background: color-mix(in srgb, var(--warn-soft) 55%, var(--surface));
 }
 .ask-card-head { display: flex; align-items: center; gap: 10px; }
-.ask-pip { flex: none; width: 34px; }
+.ask-card-head .icon { flex: none; width: 20px; height: 20px; color: color-mix(in srgb, var(--warn) 75%, var(--ink)); }
 .ask-card .pre { max-height: 260px; margin: 0; overflow: auto; }
 .ask-hint { color: var(--ink-2); font-size: 12.5px; }
-.ask-question { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: 0; }
-.ask-question legend { margin-bottom: 6px; font-weight: 700; }
+.ask-question { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; border: 0; }
+.ask-question legend { margin-bottom: 6px; font-size: 15.5px; font-weight: 700; }
 .ask-option {
-  display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+  display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
   cursor: pointer; transition: border-color 0.2s ease;
 }
 .ask-option:hover { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); }
@@ -1571,25 +1775,85 @@ select.status { font-weight: 600; }
 .settled { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13.5px; }
 .settled .icon { flex: none; width: 15px; height: 15px; color: var(--good); }
 .settled.no .icon { color: var(--bad); }
-.done-line { color: var(--ink-3); font-size: 12.5px; text-align: center; }
+.done-line { color: var(--ink-3); font-size: 12.5px; }
 
-/* The documents the conversation made, as cards to open or save. */
-.chat-files { display: flex; flex-direction: column; gap: 8px; }
-.chat-files h2 { color: var(--ink-2); font-family: inherit; font-size: 13px; font-weight: 600; }
-.chat-file { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-.chat-file-mark { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 10px; background: color-mix(in srgb, var(--bad) 12%, var(--surface)); color: var(--bad); }
-.chat-file-mark .icon { width: 20px; height: 20px; }
-.chat-file-name { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.chat-file-name > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-file-name > span { font-weight: 600; }
-.chat-file-name small { color: var(--ink-3); font-size: 12px; }
-[dir="rtl"] .chat-file-name > * { text-align: right; }
+/* A document the conversation made (DocCard in chat.tsx): its page in small coming up out of a tinted tray (mint for
+   a CV, warm for a letter, blue for a report), what kind it is, its name, the job it is for, and its buttons. While
+   it is being written, the page fills line by line, its name is lit by the passing light, and the card's edge is
+   dashed. Under the pointer the page rises a little out of the tray. */
+.doc-card {
+  --tray: color-mix(in srgb, var(--primary) 50%, var(--surface));
+  display: flex; align-items: center; gap: 18px; width: min(100%, 540px); padding: 12px; padding-inline-end: 20px; border: 1px solid var(--line);
+  border-radius: 22px; background: var(--surface); box-shadow: 0 8px 28px rgb(15 20 25 / 5%); animation: doc-in 0.35s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.doc-card.letter { --tray: color-mix(in srgb, var(--warn) 18%, var(--surface)); }
+.doc-card:is(.report, .doc) { --tray: color-mix(in srgb, var(--sky-3) 20%, var(--surface)); }
+.doc-card.ghost { border-style: dashed; box-shadow: none; }
+@keyframes doc-in { from { opacity: 0; translate: 0 6px; } }
+.doc-tile { flex: none; display: flex; justify-content: center; width: 104px; height: 120px; overflow: hidden; border-radius: 14px; background: var(--tray); }
+.doc-page {
+  display: flex; flex: none; flex-direction: column; gap: 4px; width: 74px; height: 112px; margin-top: 20px; padding: 10px 8px; border-radius: 4px;
+  background: #fff; box-shadow: 0 0 0 1px rgb(15 20 25 / 6%), 0 6px 16px rgb(15 20 25 / 12%); rotate: -2deg; transition: translate 0.25s ease, rotate 0.25s ease;
+}
+.doc-card:not(.ghost):hover .doc-page { translate: 0 -5px; rotate: 0deg; }
+.doc-page > i { display: block; flex: none; width: 100%; height: 3px; border-radius: 2px; background: #dde3e8; }
+.doc-page .dp-name { overflow: hidden; color: #1d2329; font-family: Georgia, "Times New Roman", serif; font-size: 7.5px; font-weight: 700; line-height: 1.1; white-space: nowrap; }
+.doc-page .dp-title { width: 62%; height: 5px; background: #4d5862; }
+.doc-page .dp-sub { width: 40%; background: #b8c1c9; }
+.doc-page .dp-sec { width: 30%; margin-top: 3px; background: color-mix(in srgb, var(--accent) 65%, #fff); }
+.doc-page .dp-date { width: 28%; align-self: flex-end; background: #c4ccd3; }
+.doc-page .dp-gap { height: 2px; background: none; }
+.doc-page .dp-chart { display: flex; flex: none; align-items: flex-end; gap: 3px; height: 16px; margin-block: 2px; }
+.doc-page .dp-chart i { width: 7px; border-radius: 1px; background: color-mix(in srgb, var(--sky-3) 70%, #fff); }
+.doc-page .dp-chart i:nth-child(1) { height: 40%; } .doc-page .dp-chart i:nth-child(2) { height: 75%; }
+.doc-page .dp-chart i:nth-child(3) { height: 55%; } .doc-page .dp-chart i:nth-child(4) { height: 100%; }
+.doc-page.live > i:last-child { animation: dp-write 1.1s ease-in-out infinite alternate; }
+@keyframes dp-write { from { width: 10%; } to { width: 82%; } }
+.doc-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.doc-kind { color: var(--accent); font-size: 12.5px; font-weight: 700; }
+.doc-card.letter .doc-kind { color: color-mix(in srgb, var(--warn) 70%, var(--ink)); }
+.doc-card:is(.report, .doc) .doc-kind { color: var(--live); }
+.doc-name { overflow: hidden; font-size: 15.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.doc-about { color: var(--ink-2); font-size: 13.5px; }
+.doc-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .chat-file-act {
   flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--hover-soft); color: var(--ink);
   font-size: 13px; font-weight: 600; text-decoration: none; transition: background-color 0.2s ease;
 }
 .chat-file-act:hover { background: var(--hover); }
 .chat-file-act .icon { width: 15px; height: 15px; }
+
+/* Questions to prepare (QuestionCards in chat.tsx): cards in rows, the question on the face under its number, how to
+   answer it on the mint back; a click turns a card over, quickly, and the next turns it back. */
+.q-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; perspective: 1400px; }
+.q-card { position: relative; display: grid; min-height: 190px; border-radius: 20px; cursor: pointer; transform-style: preserve-3d; transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.q-card.turned { transform: rotateY(180deg); }
+.q-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.q-face {
+  grid-area: 1 / 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 16px 18px 14px; border: 1px solid var(--line); border-radius: inherit;
+  background: var(--surface); -webkit-backface-visibility: hidden; backface-visibility: hidden; transition: border-color 0.2s ease;
+}
+.q-card:hover .q-face { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); }
+.q-face.back { transform: rotateY(180deg); border-color: color-mix(in srgb, var(--accent) 28%, var(--line)); background: color-mix(in srgb, var(--primary) 40%, var(--surface)); }
+.q-num {
+  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in srgb, var(--primary) 75%, var(--surface));
+  color: var(--primary-ink); font-size: 13px; font-weight: 700;
+}
+.q-question { font-size: 15.5px; font-weight: 600; line-height: 1.5; }
+.q-label { color: var(--accent); font-size: 12.5px; font-weight: 700; }
+.q-answer { font-size: 14px; line-height: 1.65; }
+.q-turn { display: inline-flex; align-items: center; gap: 6px; margin-top: auto; padding-top: 6px; color: var(--ink-3); font-size: 12.5px; font-weight: 500; transition: color 0.2s ease; }
+.q-card:hover .q-turn { color: var(--ink); }
+.q-turn .icon { width: 14px; height: 14px; }
+/* On a phone, a deck to swipe through: one card and the edge of the next across the screen. */
+@media (max-width: 640px) {
+  .q-cards { display: flex; gap: 10px; margin-inline: -16px; padding: 2px 16px 6px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; }
+  .q-card { flex: 0 0 80%; min-height: 168px; scroll-snap-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .q-card, .q-face, .doc-card, .doc-page, .doc-page > i, .steps-orb .ai-sky > i, .steps-bar, .fold, .tool.fresh, .tool.fresh > .tool-in,
+  :is(.steps-now, .working-line .typing-text, .doc-card.ghost .doc-name) { animation: none !important; transition: none !important; }
+}
 
 /* The box to write in, shaped like the jobs search's: one pill-shaped row, the + at its start, the words, then the
    pickers as round buttons and the go button's place at its end, the button green as the search's and rolling
@@ -1716,7 +1980,8 @@ select.status { font-weight: 600; }
 
 /* Narrower windows: the list slides in over the page from its far side, from the button at the top. */
 @media (max-width: 1100px) {
-  .chat { grid-template-columns: minmax(0, 1fr); }
+  /* The list waits just past the page's edge, unseen; cut there, so the page can't be dragged sideways to it. */
+  .chat { grid-template-columns: minmax(0, 1fr); overflow: hidden; overflow: clip; }
   .chat-lists { display: grid; }
   .threads {
     --out: 1;
@@ -1740,6 +2005,9 @@ select.status { font-weight: 600; }
 .md blockquote { margin: 0; padding-inline-start: 12px; border-inline-start: 3px solid var(--accent); color: var(--ink-2); }
 .tablebox { overflow-x: auto; }
 .tablebox th, .tablebox td { padding: 8px 10px; }
+/* A cell's words break between words only, never inside one, whatever the text around the table allows; a table
+   too wide for its place scrolls sideways in its box. */
+.tablebox :is(th, td) { overflow-wrap: normal; word-break: normal; }
 .doc-text { text-align: left; }
 .doc-text th, .doc-text td { text-align: left; }
 .doc-text h2 { font-size: 21px; margin-top: 26px; }
@@ -2069,7 +2337,7 @@ html.lite .smart-glow { animation: ai-glow-in 0.5s ease-out 0.35s backwards, ai-
 html.lite :is(.seek-pill, .role-fan-item):not(.on) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
 html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0 / 45%); }
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .more-menu, .more-menu :is(a, button), .nav > button .icon, .account .icon, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps > summary > .icon-down, .composer-box, .chat-start, .peek-pip, .peek-say, .login-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .more-menu, .more-menu :is(a, button), .nav > button .icon, .account .icon, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps-head > .icon, .composer-box, .chat-start, .peek-pip, .peek-say, .login-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
   .pip-a { opacity: 1; }
 }
@@ -2159,7 +2427,7 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .portal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .portal-name { font-weight: 600; }
 .portal-how { padding: 1px 9px; border-radius: 999px; background: var(--soft); color: var(--ink-2); font-size: 12.5px; white-space: nowrap; }
-.portal-how.search, .portal-how.read { background: color-mix(in srgb, var(--primary) 12%, var(--surface)); color: var(--primary-edge); }
+.portal-how.search, .portal-how.read { background: var(--good-soft); color: var(--accent); }
 .portal-how.web, .portal-how.channel { background: color-mix(in srgb, var(--live) 12%, var(--surface)); color: var(--live); }
 .portal-status { color: var(--ink-3); font-size: 13px; }
 .portal-actions { display: flex; align-items: center; gap: 10px; flex: none; }
@@ -3419,15 +3687,6 @@ a.ai-pill { text-decoration: none; }
 }
 
 /* ---------- the profile (views/profile.tsx) ---------- */
-
-/* The profile keeps Microsoft's sea green (Sean, 2026-11-10), while the rest of the site is forest green: mint for
-   what is filled with dark words on it, the same green deeper for words and outlines, the palest mint behind what
-   is done, and a full profile's ring in a deep green of its own. */
-.prof-page { --primary: #b9f4e4; --primary-ink: #1a212e; --primary-edge: #8fdcc6; --accent: #137c60; --good: #1fa37f; --good-soft: #f0fefa; --full: #2b715f; }
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) .prof-page { --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --accent: #5fe3c0; --good: #3fcf9e; --good-soft: #0d2620; --full: #5fc4a8; }
-}
-:root[data-theme="dark"] .prof-page { --primary: #5fe3c0; --primary-ink: #03161a; --primary-edge: #3fb898; --accent: #5fe3c0; --good: #3fcf9e; --good-soft: #0d2620; --full: #5fc4a8; }
 
 /* Under the jobs' moving sky, like "My jobs": the title, and the ways to change the profile as text or by talking. */
 .page.prof-page { max-width: 1200px; padding-inline: 0; padding-top: 0; gap: 0; }

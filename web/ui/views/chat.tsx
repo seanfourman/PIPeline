@@ -1,9 +1,10 @@
 // The conversations with Pip, laid out like a chat app's: the open conversation in the middle, its messages in
 // one column over a round box to write in, and the list of conversations on the page's far side, as wide as the
 // sidebar, so the page is even. In a narrower window the list opens over the page from a button at the top.
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { friendlyTitle, useApp } from "../app";
-import { api, Btn, Icon, Markdown, ThinBar, useGoSlot } from "../kit";
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { friendlyTitle, PopMenu, useApp } from "../app";
+import { answerParts, type Card, docKind, type DocKind, docOwner, docPath, docSlug, placeDocs, writingKind } from "../answer-parts";
+import { ActLabel, AiSky, api, Btn, goTo, Icon, Markdown, ThinBar, useGoSlot } from "../kit";
 import { Pip } from "../pip";
 import { Select } from "../select";
 import { useVoiceTyping, VoiceGlow, VoiceTypingButton } from "../voice";
@@ -54,35 +55,253 @@ function groupOf(createdAt: number): (typeof GROUPS)[number] {
   return createdAt >= midnight - 7 * DAY_MS ? "week" : "earlier";
 }
 
-// The list of conversations, newest first under the day they began, with a dot by one that is working, waits for
-// you or stopped, and a button for a new one on top.
-function Threads({ id, onPick }: { id: string; onPick: () => void }) {
-  const { s, t } = useApp();
+type Thread = ReturnType<typeof useApp>["s"]["sessions"][number];
+type Project = NonNullable<ReturnType<typeof useApp>["s"]["projects"]>[number];
+
+// A conversation's place in the list changed (threads.ts on the server), or the conversation deleted; the list asked
+// again either way.
+function useThreadActions(current: string) {
+  const { refresh } = useApp();
+  const meta = (id: string, change: Record<string, unknown>) => api(`sessions/${id}/meta`, change).then(() => refresh()).catch(() => {});
+  const remove = (id: string) => api(`sessions/${id}/delete`, {}).then(() => { if (id === current) goTo("/chat/new"); return refresh(); }).catch(() => {});
+  return { meta, remove };
+}
+
+// A conversation's ⋯: rename, pin or unpin, move to a project (the menu's second level, with a new project made right
+// there), archive or bring back, and delete. Its words are the menu's (PopMenu, near).
+function ThreadMenu({ thread, projects, onRename, onDelete }: { thread: Thread; projects: Project[]; onRename: () => void; onDelete: () => void }) {
+  const { t, refresh } = useApp();
+  const [level, setLevel] = useState<"main" | "projects" | "new">("main");
+  const [name, setName] = useState("");
+  const { meta } = useThreadActions("");
+  const move = (project: string) => meta(thread.id, { project });
+  const makeAndMove = async () => {
+    const made = await api<{ id: string }>("projects", { name }).catch(() => null);
+    if (made) { await meta(thread.id, { project: made.id }); await refresh(); }
+  };
+  return (
+    <PopMenu className="thread-more" near label={t("chat.menu")} face={<Icon name="dots" />} onToggle={(open) => { if (!open) { setLevel("main"); setName(""); } }}>
+      {level === "main" ? <>
+        <button type="button" onClick={onRename}><Icon name="edit" />{t("chat.rename")}</button>
+        {!thread.archived && <button type="button" onClick={() => meta(thread.id, { pinned: !thread.pinned })}><Icon name={thread.pinned ? "unpin" : "thread-pin"} />{t(thread.pinned ? "chat.unpin" : "chat.pin")}</button>}
+        <button type="button" data-keep="" onClick={() => setLevel("projects")}><Icon name="move" /><span className="menu-grow">{t("chat.moveTo")}</span><Icon name="onward" /></button>
+        <button type="button" onClick={() => meta(thread.id, { archived: !thread.archived })}><Icon name={thread.archived ? "unarchive" : "archive"} />{t(thread.archived ? "chat.unarchive" : "chat.archive")}</button>
+        <hr />
+        <button type="button" className="danger" onClick={onDelete}><Icon name="trash" />{t("chat.delete")}</button>
+      </> : level === "projects" ? <>
+        <button type="button" data-keep="" onClick={() => setLevel("main")}><Icon name="back" />{t("chat.back")}</button>
+        <hr />
+        <button type="button" aria-checked={!thread.project} role="menuitemradio" onClick={() => move("")}><Icon name={!thread.project ? "check" : "minus"} />{t("chat.noProject")}</button>
+        {projects.map((p) => (
+          <button key={p.id} type="button" aria-checked={thread.project === p.id} role="menuitemradio" onClick={() => move(p.id)}>
+            <Icon name={thread.project === p.id ? "check" : "folder"} /><bdi className="menu-grow">{p.name}</bdi>
+          </button>
+        ))}
+        <button type="button" data-keep="" onClick={() => setLevel("new")}><Icon name="folder-plus" />{t("chat.newProject")}</button>
+      </> : <>
+        <button type="button" data-keep="" onClick={() => setLevel("projects")}><Icon name="back" />{t("chat.back")}</button>
+        <form className="menu-form" onSubmit={(e) => { e.preventDefault(); if (name.trim()) { void makeAndMove(); (e.currentTarget.closest("[popover]") as HTMLElement | null)?.hidePopover(); } }}>
+          <input autoFocus value={name} maxLength={80} placeholder={t("chat.projectName")} aria-label={t("chat.projectName")} onChange={(e) => setName(e.target.value)} dir="auto" />
+          <button type="submit" className="menu-ok" disabled={!name.trim()} aria-label={t("chat.newProject")}><Icon name="check" /></button>
+        </form>
+      </>}
+    </PopMenu>
+  );
+}
+
+// One conversation in the list: its title leading to it, a dot while it works, waits or stopped, and its ⋯. Renaming,
+// the title becomes a field (Enter or leaving it saves, Escape keeps the old one); deleting, the row asks first.
+function ThreadRow({ thread, current, projects, onPick }: { thread: Thread; current: string; projects: Project[]; onPick: () => void }) {
+  const { t } = useApp();
+  const { meta, remove } = useThreadActions(current);
+  const [mode, setMode] = useState<"" | "rename" | "delete">("");
+  const [name, setName] = useState(thread.title);
+  const title = friendlyTitle(thread.title, t);
+  const save = () => { const next = name.trim(); if (next && next !== thread.title) void meta(thread.id, { title: next }); setMode(""); };
+  if (mode === "rename") return (
+    <div className="thread editing">
+      <input autoFocus value={name} maxLength={200} aria-label={t("chat.rename")} dir="auto" onChange={(e) => setName(e.target.value)} onBlur={save}
+        onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setName(thread.title); setMode(""); } }} />
+    </div>
+  );
+  if (mode === "delete") return (
+    <div className="thread asking" role="alertdialog" aria-label={t("chat.deleteAsk")}>
+      <span className="thread-title">{t("chat.deleteAsk")}</span>
+      <button type="button" className="thread-yes" onClick={() => { setMode(""); void remove(thread.id); }}>{t("chat.delete")}</button>
+      <button type="button" className="thread-no" onClick={() => setMode("")}>{t("chat.cancel")}</button>
+    </div>
+  );
+  return (
+    <div className={`thread ${thread.id === current ? "current" : ""}`}>
+      <a className="thread-link" href={`/chat/${thread.id}`} aria-current={thread.id === current ? "page" : undefined} onClick={onPick}>
+        <span className="thread-title" dir="auto">{title}</span>
+      </a>
+      {thread.status !== "idle" && <span className={`thread-dot ${thread.status}`} role="img" aria-label={t(`session.${thread.status}`)} />}
+      <ThreadMenu thread={thread} projects={projects} onRename={() => { setName(thread.title); setMode("rename"); }} onDelete={() => setMode("delete")} />
+    </div>
+  );
+}
+
+// A project in the list: its folder, its name and how many conversations it holds, opening to show them; its ⋯ renames
+// or deletes it (its conversations only leave it). Renaming and deleting ask in the row, as a conversation's do.
+function ProjectRow({ project, threads, open, onToggle, current, projects, onPick }: {
+  project: Project; threads: Thread[]; open: boolean; onToggle: () => void; current: string; projects: Project[]; onPick: () => void;
+}) {
+  const { t, refresh } = useApp();
+  const [mode, setMode] = useState<"" | "rename" | "delete">("");
+  const [name, setName] = useState(project.name);
+  const save = () => { const next = name.trim(); if (next && next !== project.name) void api(`projects/${project.id}`, { name: next }).then(() => refresh()).catch(() => {}); setMode(""); };
+  return (
+    <div className="project">
+      {mode === "rename" ? (
+        <div className="thread editing">
+          <input autoFocus value={name} maxLength={80} aria-label={t("chat.rename")} dir="auto" onChange={(e) => setName(e.target.value)} onBlur={save}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setName(project.name); setMode(""); } }} />
+        </div>
+      ) : mode === "delete" ? (
+        <div className="thread asking" role="alertdialog" aria-label={t("chat.deleteProjectAsk")}>
+          <span className="thread-title">{t("chat.deleteProjectAsk")}</span>
+          <button type="button" className="thread-yes" onClick={() => { setMode(""); void api(`projects/${project.id}/delete`, {}).then(() => refresh()).catch(() => {}); }}>{t("chat.delete")}</button>
+          <button type="button" className="thread-no" onClick={() => setMode("")}>{t("chat.cancel")}</button>
+        </div>
+      ) : (
+        <div className="thread project-row">
+          <button type="button" className="thread-link" aria-expanded={open} onClick={onToggle}>
+            <Icon name={open ? "folder-open" : "folder"} />
+            <bdi className="thread-title">{project.name}</bdi>
+            <span className="project-count">{threads.length}</span>
+          </button>
+          <PopMenu className="thread-more" near label={t("chat.projectMenu")} face={<Icon name="dots" />}>
+            <button type="button" onClick={() => { setName(project.name); setMode("rename"); }}><Icon name="edit" />{t("chat.rename")}</button>
+            <hr />
+            <button type="button" className="danger" onClick={() => setMode("delete")}><Icon name="trash" />{t("chat.delete")}</button>
+          </PopMenu>
+        </div>
+      )}
+      {open && (
+        <div className="project-threads">
+          {threads.length ? threads.map((c) => <ThreadRow key={c.id} thread={c} current={current} projects={projects} onPick={onPick} />)
+            : <p className="project-empty">{t("chat.projectEmpty")}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// The list of conversations, as a chat app's: a new one and a search on top; the pinned ones; the projects, each
+// opening to its conversations, and a new project made in place; the rest newest first under the day they began;
+// and the archive at the foot, opened in place. A search shows what it finds instead: titles at once, and the words
+// inside conversations as the server finds them. hide hides the list (Chat).
+// folded: the list hidden beside the conversation, as a narrow rail at its side, as a chat app's is (ChatGPT's): the
+// button that opens it again, a new conversation, and the search, which opens it with its search box ready.
+function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: () => void; onHide: () => void; folded: boolean; onOpen: () => void }) {
+  const { s, t, refresh } = useApp();
   const list = useRef<HTMLDivElement>(null);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<string[]>([]);
+  const [archive, setArchive] = useState(false);
+  const [making, setMaking] = useState(false);
+  const [newName, setNewName] = useState("");
+  const projects = s.projects ?? [];
+  const current = s.sessions.find((c) => c.id === id);
+  const [opened, setOpened] = useState<Set<string>>(() => new Set(current?.project ? [current.project] : []));
+  const toggle = (p: string) => setOpened((o) => { const n = new Set(o); if (n.has(p)) n.delete(p); else n.add(p); return n; });
+  const q = query.trim();
+  useEffect(() => {
+    if (!q) { setFound([]); return; }
+    const timer = setTimeout(() => api<{ ids: string[] }>(`sessions-search?q=${encodeURIComponent(q)}`).then((r) => setFound(r.ids)).catch(() => {}), 220);
+    return () => clearTimeout(timer);
+  }, [q]);
+  const live = s.sessions.filter((c) => !c.archived);
+  const pinned = live.filter((c) => c.pinned).sort((a, b) => (b.pinned ?? 0) - (a.pinned ?? 0));
+  const known = new Set(projects.map((p) => p.id));
+  const inProject = (c: Thread) => Boolean(c.project && known.has(c.project));
+  const loose = live.filter((c) => !c.pinned && !inProject(c));
+  const archived = s.sessions.filter((c) => c.archived);
+  const results = q ? s.sessions.filter((c) => friendlyTitle(c.title, t).toLowerCase().includes(q.toLowerCase()) || found.includes(c.id)) : [];
+  const row = (c: Thread) => <ThreadRow key={c.id} thread={c} current={id} projects={projects} onPick={onPick} />;
+  const makeProject = () => {
+    const name = newName.trim();
+    setMaking(false);
+    setNewName("");
+    if (name) void api("projects", { name }).then(() => refresh()).catch(() => {});
+  };
+  const side = document.documentElement.dir === "rtl" ? "panel-left" : "panel-right";
+  if (folded) {
+    return (
+      <nav className="threads folded" aria-label={t("chat.list")}>
+        <button type="button" className="threads-icon" aria-label={t("chat.showList")} onClick={onOpen}>
+          <Icon name={side} /><ActLabel>{t("chat.showList")}</ActLabel>
+        </button>
+        <a className="threads-icon" href="/chat/new" aria-label={t("chat.new")} onClick={onPick}>
+          <Icon name="plus" /><ActLabel>{t("chat.new")}</ActLabel>
+        </a>
+        <button type="button" className="threads-icon" aria-label={t("chat.search")} onClick={() => { setSearching(true); setQuery(""); onOpen(); }}>
+          <Icon name="find" /><ActLabel>{t("chat.search")}</ActLabel>
+        </button>
+      </nav>
+    );
+  }
   return (
     <nav className="threads" aria-label={t("chat.list")}>
-      <a className="thread-new" href="/chat/new" onClick={onPick}><Icon name="plus" /><span>{t("chat.new")}</span></a>
+      <div className="threads-head">
+        <a className="thread-new" href="/chat/new" onClick={onPick}><Icon name="plus" /><span>{t("chat.new")}</span></a>
+        <button type="button" className="threads-icon" aria-label={t("chat.search")} aria-pressed={searching} onClick={() => { setSearching(!searching); setQuery(""); }}>
+          <Icon name="find" /><ActLabel>{t("chat.search")}</ActLabel>
+        </button>
+        <button type="button" className="threads-icon threads-hide" aria-label={t("chat.hideList")} onClick={onHide}>
+          <Icon name={side} /><ActLabel>{t("chat.hideList")}</ActLabel>
+        </button>
+      </div>
+      {searching && (
+        <label className="threads-search">
+          <Icon name="find" />
+          <input autoFocus value={query} placeholder={t("chat.search")} aria-label={t("chat.search")} dir="auto" onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape") { setSearching(false); setQuery(""); } }} />
+        </label>
+      )}
       <div className="threads-scroll">
         <div ref={list} className="threads-list">
-          <div>
+          {q ? (
+            <section className="thread-group">
+              <h2>{t("chat.results")}</h2>
+              {results.length ? results.map(row) : <p className="project-empty">{t("chat.searchNone")}</p>}
+            </section>
+          ) : archive ? (
+            <section className="thread-group">
+              <h2 className="threads-back"><button type="button" onClick={() => setArchive(false)}><Icon name="back" />{t("chat.archived", { n: archived.length })}</button></h2>
+              {archived.length ? archived.map(row) : <p className="project-empty">{t("chat.archiveEmpty")}</p>}
+            </section>
+          ) : <>
+            {pinned.length > 0 && <section className="thread-group"><h2>{t("chat.pinned")}</h2>{pinned.map(row)}</section>}
+            <section className="thread-group">
+              <h2 className="thread-group-head">{t("chat.projects")}
+                <button type="button" className="threads-add" aria-label={t("chat.newProject")} onClick={() => setMaking(true)}><Icon name="folder-plus" /><ActLabel>{t("chat.newProject")}</ActLabel></button>
+              </h2>
+              {making && (
+                <div className="thread editing">
+                  <input autoFocus value={newName} maxLength={80} placeholder={t("chat.projectName")} aria-label={t("chat.projectName")} dir="auto"
+                    onChange={(e) => setNewName(e.target.value)} onBlur={makeProject} onKeyDown={(e) => { if (e.key === "Enter") makeProject(); if (e.key === "Escape") { setMaking(false); setNewName(""); } }} />
+                </div>
+              )}
+              {projects.map((p) => (
+                <ProjectRow key={p.id} project={p} threads={live.filter((c) => c.project === p.id && !c.pinned)} open={opened.has(p.id)} onToggle={() => toggle(p.id)}
+                  current={id} projects={projects} onPick={onPick} />
+              ))}
+              {!projects.length && !making && <button type="button" className="thread project-first" onClick={() => setMaking(true)}><Icon name="folder-plus" /><span className="thread-title">{t("chat.newProject")}</span></button>}
+            </section>
             {GROUPS.map((g) => {
-              const items = s.sessions.filter((c) => groupOf(c.createdAt) === g);
-              return items.length > 0 && (
-                <section key={g} className="thread-group">
-                  <h2>{t(`chat.groups.${g}`)}</h2>
-                  {items.map((c) => (
-                    <a key={c.id} className="thread" href={`/chat/${c.id}`} aria-current={c.id === id ? "page" : undefined} onClick={onPick}>
-                      <span className="thread-title" dir="auto">{friendlyTitle(c.title, t)}</span>
-                      {c.status !== "idle" && <span className={`thread-dot ${c.status}`} role="img" aria-label={t(`session.${c.status}`)} />}
-                    </a>
-                  ))}
-                </section>
-              );
+              const items = loose.filter((c) => groupOf(c.createdAt) === g);
+              return items.length > 0 && <section key={g} className="thread-group"><h2>{t(`chat.groups.${g}`)}</h2>{items.map(row)}</section>;
             })}
-          </div>
+          </>}
         </div>
         <ThinBar target={list} />
       </div>
+      {!q && !archive && archived.length > 0 && (
+        <button type="button" className="threads-archive" onClick={() => setArchive(true)}><Icon name="archive" />{t("chat.archived", { n: archived.length })}</button>
+      )}
     </nav>
   );
 }
@@ -231,7 +450,7 @@ function ModelPicker({ value, onChange }: { value: string; onChange: (m: string)
 // The list button, for a window too narrow to show the list beside the conversation.
 const ListButton = ({ onList }: { onList: () => void }) => {
   const { t } = useApp();
-  return <button type="button" className="chat-lists" aria-label={t("chat.openList")} onClick={onList}><Icon name="chat" /></button>;
+  return <button type="button" className="chat-lists" aria-label={t("chat.openList")} onClick={onList}><Icon name={document.documentElement.dir === "rtl" ? "panel-left" : "panel-right"} /></button>;
 };
 
 // A new conversation. With ChatGPT first in the settings on a key alone it is a plain one: no access or model to pick,
@@ -288,7 +507,7 @@ function Permission({ ev, sessionId }: { ev: Ev; sessionId: string }) {
   const send = (body: Record<string, unknown>) => { setBusy(true); api(`sessions/${sessionId}/respond`, { requestId: ev.requestId, ...body }).catch(() => setBusy(false)); };
   return (
     <section className="ask-card" role="group" aria-label={t("chat.permission", { tool: ev.tool })}>
-      <div className="ask-card-head"><Pip mood="idle" className="ask-pip" /><strong>{t("chat.permission", { tool: ev.tool })}</strong></div>
+      <div className="ask-card-head"><Icon name="access-ask" /><strong>{t("chat.permission", { tool: ev.tool })}</strong></div>
       <pre className="pre" dir="ltr">{ev.input}</pre>
       <div className="row">
         <Btn kind="primary" disabled={busy} onClick={() => send({ allow: true })}>{t("chat.allow")}</Btn>
@@ -320,7 +539,6 @@ function Question({ ev, sessionId }: { ev: Ev; sessionId: string }) {
   };
   return (
     <form className="ask-card" onSubmit={submit}>
-      <div className="ask-card-head"><Pip mood="idle" className="ask-pip" /></div>
       {ev.questions.map((q: any, qi: number) => (
         <fieldset key={qi} className="ask-question">
           <legend dir="auto">{q.question}</legend>
@@ -339,66 +557,232 @@ function Question({ ev, sessionId }: { ev: Ev; sessionId: string }) {
   );
 }
 
+// What a step is aimed at, short: a path as its file's name (with its folder when the name alone says little, as a
+// skill's SKILL.md), anything else as it is.
+function shortTarget(raw: unknown) {
+  const target = String(raw ?? "").trim();
+  if (/\s/.test(target) || !/[\\/]/.test(target)) return target;
+  const parts = target.split(/[\\/]+/).filter(Boolean);
+  const name = parts[parts.length - 1] ?? target;
+  return /^(skill|readme|index)\b/i.test(name) && parts.length > 1 ? `${parts[parts.length - 2]}/${name}` : name;
+}
+
+// What a step did, in the page's direction: the tool's words in the page's language, with what it was aimed at, or
+// the AI's own description of a command, set apart (<bdi>), so a path, a pattern or an English sentence keeps its
+// own order without turning the row around.
 function useToolLabel() {
   const { t } = useApp();
-  return (ev: Ev) => {
-    const template = t(`chat.tools.${ev.name}`);
-    return ev.label ?? (template.startsWith("chat.tools.") ? (ev.target || ev.name) : t(`chat.tools.${ev.name}`, { target: ev.target ?? "" }));
+  return (ev: Ev): React.ReactNode => {
+    if (ev.label) return <bdi>{ev.label}</bdi>;
+    const target = shortTarget(ev.target);
+    if (String(t(`chat.tools.${ev.name}`)).startsWith("chat.tools.")) return <bdi>{target || ev.name}</bdi>;
+    const [before, after = ""] = String(t(`chat.tools.${ev.name}`, { target: "\u0000" })).split("\u0000");
+    return <>{before}{target && <bdi>{target}</bdi>}{after}</>;
   };
 }
 
-// One tool call: a mark of how it went (working, done or failed), what it did, and what came back, folded.
-function ToolLine({ ev, result, working }: { ev: Ev; result?: Ev; working: boolean }) {
+// Each tool's icon, by what it does; its family gives its colour (styles.css .step-icon): the web blue, files grey,
+// writing mint, judging amber, keeping pink.
+const TOOL_ICONS: Record<string, string> = {
+  FetchPosting: "site", WebFetch: "site", WebSearch: "find", SearchRole: "find", ReadPortal: "portals", Read: "file", Glob: "files", Grep: "find",
+  Write: "edit", Edit: "edit", NotebookEdit: "edit", Bash: "tools", DraftCv: "edit", ReviewCv: "rules", BuildCv: "apps", EvaluateFit: "gauge",
+  FitCheck: "gauge", RankJob: "gauge", SaveJobs: "saved", SaveApplication: "saved", Skill: "readme", Agent: "ai", Task: "ai", TodoWrite: "rules",
+  AskUserQuestion: "chat",
+};
+const FAMILIES: Record<string, string> = { site: "web", find: "web", portals: "web", edit: "write", apps: "write", rules: "judge", gauge: "judge", ai: "judge", chat: "judge", saved: "keep" };
+const toolIcon = (ev: Ev) => TOOL_ICONS[ev.name] ?? "tools";
+const ToolMark = ({ ev }: { ev: Ev }) => <span className={`step-icon ${FAMILIES[toolIcon(ev)] ?? "file"}`}><Icon name={toolIcon(ev)} /></span>;
+
+// How long a run took, in the words a person would use: seconds under a minute, then minutes.
+function useDuration() {
+  const { t } = useApp();
+  return (ms: number) => {
+    const secs = Math.max(1, Math.round(ms / 1000));
+    if (secs < 60) return secs === 1 ? t("chat.second") : t("chat.secs", { n: secs });
+    const mins = Math.round(secs / 60);
+    return mins === 1 ? t("chat.minute") : t("chat.mins", { n: mins });
+  };
+}
+
+// The steps as a tree, as files under a folder (Sean, 2026-11-11): a step a helper ran inside another step hangs
+// under that step (its parent, agent.ts), or, in a run from before steps said which, under the helper's step just
+// above it. One whose step isn't among these stands in line with the rest, not set in under nothing.
+type StepRow = { ev: Ev; place: "" | "parent" | "child" | "child last" };
+function stepTree(tools: Ev[]): StepRow[] {
+  const top = new Map(tools.filter((x) => !x.nested).map((x) => [x.id, x]));
+  const kids = new Map<string, Ev[]>();
+  const rows: Ev[] = [];
+  let helper: string | null = null;
+  for (const ev of tools) {
+    const parent = ev.nested ? (ev.parent ? (top.has(ev.parent) ? ev.parent : null) : helper) : null;
+    if (parent) { kids.set(parent, [...(kids.get(parent) ?? []), ev]); continue; }
+    rows.push(ev);
+    if (!ev.nested) helper = ev.name === "Agent" || ev.name === "Task" ? ev.id : null;
+  }
+  return rows.flatMap((ev): StepRow[] => {
+    const children = kids.get(ev.id) ?? [];
+    return [{ ev, place: children.length ? "parent" : "" }, ...children.map((c, k): StepRow => ({ ev: c, place: k === children.length - 1 ? "child last" : "child" }))];
+  });
+}
+
+// One tool call, a row of the steps: its icon, what it did, and how it went (the AI's orb while it works, then a
+// tick or a cross); what came back, when there is something, folds out under it (.fold). place: where it stands in
+// the tree; fresh: it came while the steps were on the page, so it grows into place instead of jumping in.
+function ToolLine({ ev, result, working, place = "", fresh = false }: { ev: Ev; result?: Ev; working: boolean; place?: StepRow["place"]; fresh?: boolean }) {
   const label = useToolLabel();
+  const [open, setOpen] = useState(false);
+  const body = useId();
   const state = result ? (result.isError ? "failed" : "done") : working ? "working" : "done";
-  const mark = state === "working" ? <span className="spinner" aria-hidden="true" /> : <Icon name={state === "failed" ? "close" : "check"} />;
+  const mark = state === "working"
+    ? <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>
+    : <span className={`step-state ${state}`}><Icon name={state === "failed" ? "close" : "check"} /></span>;
+  const row = <><ToolMark ev={ev} /><span className="step-text">{label(ev)}</span>{mark}</>;
   return (
-    <li className={`tool ${state} ${ev.nested ? "nested" : ""}`}>
-      {result?.preview
-        ? <details><summary>{mark}<span className="ellipsis" dir="auto">{label(ev)}</span></summary><pre className="pre">{result.preview}</pre></details>
-        : <div className="tool-row">{mark}<span className="ellipsis" dir="auto">{label(ev)}</span></div>}
+    <li className={`tool ${state} ${place}${fresh ? " fresh" : ""}`}>
+      <div className="tool-in">
+        {result?.preview ? <>
+          <button type="button" className="tool-row" aria-expanded={open} aria-controls={body} onClick={() => setOpen(!open)}>{row}</button>
+          <div className={`fold${open ? " open" : ""}`} id={body}><div><pre className="pre">{result.preview}</pre></div></div>
+        </> : <div className="tool-row">{row}</div>}
+      </div>
     </li>
   );
 }
 
-// The tool calls between two messages as one folded line, like a chat app's steps: while Pip works it shows the
-// step under way, then how many there were; opened, each one.
-function ToolSteps({ tools, results, working }: { tools: Ev[]; results: Map<string, Ev>; working: boolean }) {
+// The tool calls between two messages as a chat app's work line (OpenAI's "Worked for 44s", Sean's pick,
+// 2026-11-11): shut, the kinds of steps as a stack of coloured icons, how many there were and, after a run's last
+// steps, how long it took (took), over a line across the column; opened, it grows to show each step as a row. At
+// work, the AI's orb, the step under way with a light passing over its words, its number, and the AI's colours
+// running along the line.
+function ToolSteps({ tools, results, working, took }: { tools: Ev[]; results: Map<string, Ev>; working: boolean; took?: number }) {
   const { t } = useApp();
   const label = useToolLabel();
-  const top = tools.filter((x) => !x.nested).length || tools.length;
+  const duration = useDuration();
+  const [open, setOpen] = useState(false);
+  const body = useId();
+  // The steps there when it first showed; any that come after them grow into place.
+  const first = useRef<Set<string>>();
+  const known = (first.current ??= new Set(tools.map((x) => x.id)));
+  const tree = useMemo(() => stepTree(tools), [tools]);
+  const top = tree.filter((r) => !r.place.startsWith("child")).length || tools.length;
   const busy = working && tools.some((x) => !results.has(x.id));
+  const now = busy ? tools.find((x) => !results.has(x.id)) ?? tools[tools.length - 1] : null;
   const failed = tools.some((x) => results.get(x.id)?.isError);
+  const kinds = [...new Map(tools.map((x) => [toolIcon(x), x])).values()].slice(0, 4);
+  const list = useRef<HTMLOListElement>(null);
   return (
-    <details className={`steps ${busy ? "working" : ""} ${failed ? "failed" : ""}`}>
-      <summary>
-        {busy ? <span className="spinner" aria-hidden="true" /> : <Icon name={failed ? "warn" : "check"} />}
-        <span className="ellipsis" dir="auto">{busy ? label(tools[tools.length - 1]) : top === 1 ? t("chat.step") : t("chat.steps", { n: top })}</span>
+    <div className={`steps${busy ? " working" : ""}${failed ? " failed" : ""}`}>
+      <button type="button" className="steps-head" aria-expanded={open} aria-controls={body} onClick={() => setOpen(!open)}>
+        {now
+          ? <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>
+          : <span className="steps-stack" aria-hidden="true">{kinds.map((x) => <ToolMark key={x.id} ev={x} />)}</span>}
+        <span className="steps-title">
+          {now
+            ? <span className="steps-now">{label(now)}</span>
+            : <><strong>{top === 1 ? t("chat.step") : t("chat.steps", { n: top })}</strong>{took ? <span>, {duration(took)}</span> : null}</>}
+        </span>
+        {now && <span className="steps-count">{t("chat.stepN", { n: tools.indexOf(now) + 1 })}</span>}
+        {failed && !now && <Icon name="warn" />}
         <Icon name="down" />
-      </summary>
-      <ol>{tools.map((x) => <ToolLine key={x.id} ev={x} result={results.get(x.id)} working={working} />)}</ol>
-    </details>
+      </button>
+      <div className={`fold${open ? " open" : ""}`} id={body}>
+        <div className="steps-scroll">
+          <ol ref={list}>{tree.map((r) => <ToolLine key={r.ev.id} ev={r.ev} result={results.get(r.ev.id)} working={working} place={r.place} fresh={!known.has(r.ev.id)} />)}</ol>
+          <ThinBar target={list} />
+        </div>
+      </div>
+      {now && <span className="steps-bar" aria-hidden="true" />}
+    </div>
   );
 }
 
-// The documents the conversation made, each to open in a new tab or save, right here.
-function Files({ files }: { files: Doc[] }) {
-  const { t } = useApp();
+// A page in small, drawn rather than read, in the shape of what it is: a CV's name over its sections, a letter's
+// date, greeting and paragraphs, a report's title and figures. live: still being written, its last line growing.
+const PAGES: Record<DocKind, (string | number)[]> = {
+  cv: ["name", "sub", "sec", 94, 82, "sec", 96, 76, 88, "sec", 68, 84],
+  letter: ["date", "gap", 38, "gap", 96, 90, 94, 58, "gap", 92, 88, 66, "gap", 30],
+  report: ["title", "gap", 96, 86, "chart", 92, 74],
+  doc: ["title", "gap", 96, 86, 92, 80, 94, 70],
+};
+function DocPage({ kind, owner, live }: { kind: DocKind; owner: string; live: boolean }) {
+  const rows = live ? PAGES[kind].slice(0, Math.ceil(PAGES[kind].length * 0.6)) : PAGES[kind];
   return (
-    <section className="chat-files" aria-label={t("chat.files")}>
-      <h2>{t("chat.files")}</h2>
-      {files.map((f) => {
-        const href = `/file?path=${encodeURIComponent(f.path)}`;
-        return (
-          <div key={f.path} className="chat-file">
-            <span className="chat-file-mark"><Icon name="file" /></span>
-            <span className="chat-file-name"><span dir="auto">{f.name}</span><small dir="ltr">{f.path.split("/").slice(0, -1).join("/")}</small></span>
+    <span className={`doc-page ${live ? "live" : ""}`} dir="ltr">
+      {rows.map((row, k) => {
+        if (row === "name") return owner ? <b key={k} className="dp-name">{owner}</b> : <i key={k} className="dp-title" />;
+        if (row === "chart") return <span key={k} className="dp-chart"><i /><i /><i /><i /></span>;
+        return <i key={k} className={typeof row === "number" ? "dp-line" : `dp-${row}`} style={typeof row === "number" ? { width: `${row}%` } : undefined} />;
+      })}
+    </span>
+  );
+}
+
+// A document the conversation made, as what it is: its page in small, what kind it is, its name, the job it is for
+// when it belongs to an application, and buttons to open it or save it. ghost: one being written now, its page still
+// filling, with nothing to open yet.
+function DocCard({ doc, ghost }: { doc?: Doc; ghost?: DocKind }) {
+  const { s, t } = useApp();
+  const kind = ghost ?? docKind(doc!.path, doc!.name);
+  const slug = doc ? docSlug(doc.path) : "";
+  const app = slug ? s.applications.find((a) => docPath(String(a.cv_file ?? "")).includes(`/main_${slug}.`)) : undefined;
+  const about = app ? [app.role, app.company].filter(Boolean).join(", ") : "";
+  const owner = doc ? docOwner(doc.name) : "";
+  const href = doc ? `/file?path=${encodeURIComponent(doc.path)}` : "";
+  return (
+    <div className={`doc-card ${kind} ${ghost ? "ghost" : ""}`}>
+      <span className="doc-tile" aria-hidden="true"><DocPage kind={kind} owner={owner} live={Boolean(ghost)} /></span>
+      <span className="doc-text">
+        <span className="doc-kind">{t(`chat.doc.${kind}`)}</span>
+        <strong className="doc-name" dir="auto">{doc ? doc.name : t("chat.doc.writing")}</strong>
+        {about && <span className="doc-about" dir="auto">{about}</span>}
+        {doc && (
+          <span className="doc-acts">
             <a className="chat-file-act" href={href} target="_blank" rel="noopener noreferrer"><Icon name="open" /><span>{t("chat.open")}</span></a>
             <a className="chat-file-act" href={`${href}&download=1`} download><Icon name="download" /><span>{t("chat.download")}</span></a>
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+// Questions to prepare, each a card: the question on its face, how to answer it on its back; a click, Enter or the
+// space bar turns it over, and again turns it back.
+function QuestionCards({ cards }: { cards: Card[] }) {
+  const { t } = useApp();
+  const [turned, setTurned] = useState<number[]>([]);
+  const turn = (k: number) => setTurned((list) => (list.includes(k) ? list.filter((x) => x !== k) : [...list, k]));
+  return (
+    <div className="q-cards">
+      {cards.map((card, k) => {
+        const over = turned.includes(k);
+        return (
+          <div key={k} className={`q-card ${over ? "turned" : ""}`} role="button" tabIndex={0} aria-pressed={over}
+            onClick={() => turn(k)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); turn(k); } }}>
+            <span className="q-face front" aria-hidden={over}>
+              <span className="q-num">{k + 1}</span>
+              <strong className="q-question" dir="auto">{card.q}</strong>
+              <span className="q-turn"><Icon name="refresh" />{t("chat.cards.turn")}</span>
+            </span>
+            <span className="q-face back" aria-hidden={!over}>
+              <span className="q-label">{t("chat.cards.how")}</span>
+              <Markdown src={card.a} className="md q-answer" />
+              <span className="q-turn"><Icon name="refresh" />{t("chat.cards.back")}</span>
+            </span>
           </div>
         );
       })}
-    </section>
+    </div>
+  );
+}
+
+// Pip's answer: his words, a run of questions to prepare among them as cards (answer-parts.ts).
+function Answer({ src }: { src: string }) {
+  const parts = useMemo(() => answerParts(src), [src]);
+  return (
+    <div className="msg-pip">
+      {parts.map((part, k) => ("cards" in part ? <QuestionCards key={k} cards={part.cards} /> : <Markdown key={k} src={part.md} className="md msg-text" />))}
+    </div>
   );
 }
 
@@ -487,6 +871,23 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
   }, [events]);
 
   const working = status === "running" || status === "waiting";
+  // How long each run took (its end's durationMs), said on its last steps.
+  const took = useMemo(() => {
+    const out = new Map<string, number>();
+    let last: string | null = null;
+    for (const item of items) {
+      if (item.kind === "tools") last = item.key;
+      else if (item.ev.t === "user") last = null;
+      else if (item.ev.t === "result" && last && typeof item.ev.durationMs === "number") { out.set(last, item.ev.durationMs); last = null; }
+    }
+    return out;
+  }, [items]);
+  // The documents shown after the answers that brought them, and the one being written now, if one is.
+  const placed = useMemo(() => placeDocs(events, files), [events, files]);
+  const writing = useMemo(() => {
+    const last = items[items.length - 1];
+    return working && last?.kind === "tools" ? writingKind(last.tools, (id) => results.has(id)) : null;
+  }, [items, results, working]);
   // Stop pressed: said at once, as what is under way takes a moment to be killed, until the conversation stops.
   const [stopping, setStopping] = useState(false);
   useEffect(() => { if (!working) setStopping(false); }, [working]);
@@ -528,11 +929,12 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
           {e.text && <div className="msg-bubble" dir="auto">{e.text}</div>}
         </div>
       );
-      case "text": return CLAUDE_REFUSED.test(e.text) ? <AgentLogin key={key} code="claude_login" />
-        : <div key={key} className="msg-pip"><Pip mood="idle" className="msg-avatar" /><Markdown src={e.text} className="md msg-text" /></div>;
+      case "text": return CLAUDE_REFUSED.test(e.text) ? <AgentLogin key={key} code="claude_login" /> : <Answer key={key} src={e.text} />;
       case "permission": return resolved.has(e.requestId) ? settled(e) : <Permission key={key} ev={e} sessionId={id} />;
       case "question": return resolved.has(e.requestId) ? settled(e) : <Question key={key} ev={e} sessionId={id} />;
-      case "result": return <p key={key} className="done-line">{e.ok ? t("chat.done") : t("chat.doneError")}{e.cost >= 0.01 ? t("chat.cost", { cost: e.cost.toFixed(2) }) : ""}</p>;
+      // A run's end is said only when it has something to say: that it failed, or what it cost on a key.
+      case "result": return !e.ok || e.cost >= 0.01
+        ? <p key={key} className="done-line">{e.ok ? t("chat.done") : t("chat.doneError")}{e.cost >= 0.01 ? t("chat.cost", { cost: e.cost.toFixed(2) }) : ""}</p> : null;
       case "error": return e.code === "claude_login" || e.code === "openai_login" || e.code === "no_agent" ? <AgentLogin key={key} code={e.code} />
         : <p key={key} className="error-line" role="alert" dir="auto">{e.code ? t(`chat.errors.${e.code}`, { detail: e.text ?? "" }) : e.text}</p>;
       case "switched": return <p key={key} className="switched-line" dir="auto"><Icon name="warn" />{t("chat.switched", { from: e.from, to: e.to })}</p>;
@@ -554,13 +956,23 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
         <div className="log" ref={log} role="log" aria-live="polite" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
           <div className="log-column">
             {items.map((item, i) => (item.kind === "tools"
-              ? <ToolSteps key={item.key} tools={item.tools} results={results} working={working && i === items.length - 1} />
-              : render(item.ev, item.key)))}
-            {live && <div className="msg-pip"><Pip mood="idle" className="msg-avatar" /><Markdown src={live} className="md msg-text" /></div>}
+              ? (
+                <React.Fragment key={item.key}>
+                  <ToolSteps tools={item.tools} results={results} working={working && i === items.length - 1} took={took.get(item.key)} />
+                  {writing && i === items.length - 1 && <DocCard ghost={writing} />}
+                </React.Fragment>
+              )
+              : (
+                <React.Fragment key={item.key}>
+                  {render(item.ev, item.key)}
+                  {placed.after.get(Number(item.key))?.map((d) => <DocCard key={d.path} doc={d} />)}
+                </React.Fragment>
+              )))}
+            {live && <div className="msg-pip live"><Markdown src={live} className="md msg-text" /></div>}
             {!live && status === "running" && (stopping || items[items.length - 1]?.kind !== "tools") && (
-              <div className="msg-pip typing"><Pip mood="work" className="msg-avatar" /><span className="typing-text">{t(stopping ? "session.stopping" : "chat.working")}</span></div>
+              <div className="working-line"><span className="steps-orb" aria-hidden="true"><AiSky orb /></span><span className="typing-text">{t(stopping ? "session.stopping" : "chat.working")}</span></div>
             )}
-            {files.length > 0 && <Files files={files} />}
+            {placed.end.map((d) => <DocCard key={d.path} doc={d} />)}
           </div>
         </div>
         <ThinBar target={log} />
@@ -574,9 +986,30 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
   );
 }
 
+// Whether the window is narrow enough for the list to slide over the page (styles.css, 1100px) instead of standing
+// beside it.
+const narrow = () => matchMedia("(max-width: 1100px)").matches;
+
+// Whether the window is narrow (narrow()), kept up to date as it is resized.
+function useNarrow() {
+  const [is, setIs] = useState(narrow);
+  useEffect(() => {
+    const query = matchMedia("(max-width: 1100px)");
+    const change = () => setIs(query.matches);
+    query.addEventListener("change", change);
+    return () => query.removeEventListener("change", change);
+  }, []);
+  return is;
+}
+
 export function Chat({ id }: { id: string }) {
   const { s, t, loaded } = useApp();
   const [lists, setLists] = useState(false);
+  const isNarrow = useNarrow();
+  // The list hidden beside the conversation (its button at the list's top), remembered on this computer: folded to a
+  // rail at its side, whose top button brings it back. In a narrow window the list opens over the page instead.
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem("pip-threads-hidden") === "1"; } catch { return false; } });
+  const hide = (h: boolean) => { setHidden(h); try { localStorage.setItem("pip-threads-hidden", h ? "1" : "0"); } catch { /* kept for this visit */ } };
   const exists = id !== "new" && s.sessions.some((c) => c.id === id);
   useEffect(() => {
     if (!lists) return;
@@ -584,16 +1017,16 @@ export function Chat({ id }: { id: string }) {
     addEventListener("keydown", shut);
     return () => removeEventListener("keydown", shut);
   }, [lists]);
-  const open = () => setLists(true);
+  const open = () => { if (narrow()) setLists(true); else hide(false); };
   return (
-    <div className={`chat ${lists ? "lists-open" : ""}`}>
+    <div className={`chat ${lists ? "lists-open" : ""} ${hidden ? "threads-hidden" : ""}`}>
       <div className="chat-main">
         {!loaded ? null
           : id === "new" || !s.sessions.length ? <NewConversation onList={open} />
           : exists ? <Conversation key={id} id={id} onList={open} />
           : <div className="empty">{t("chat.notFound")}</div>}
       </div>
-      <Threads id={id} onPick={() => setLists(false)} />
+      <Threads id={id} onPick={() => setLists(false)} onHide={() => { if (narrow()) setLists(false); else hide(true); }} folded={hidden && !isNarrow} onOpen={() => hide(false)} />
       {lists && <button type="button" className="threads-shade" aria-label={t("chat.closeList")} onClick={() => setLists(false)} />}
     </div>
   );

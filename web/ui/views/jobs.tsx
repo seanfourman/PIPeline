@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { store, stored, useApp, type AppState } from "../app";
-import { AiSky, api, Icon, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
+import { ActLabel, AiSky, api, Icon, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { useMore } from "../more";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
@@ -113,20 +113,20 @@ export function JobActions({ job, rank }: { job: Pick<Job, "url" | "title" | "co
   return (
     <div className="result-actions">
       <button type="button" className={`result-act save ${on ? "on" : ""}`} aria-pressed={on} aria-label={`${on ? t("jobs.unsave") : t("jobs.save")}: ${job.title}`} onClick={() => toggle(job)}>
-        <Icon name="saved" filled={on} /><span className="act-label" aria-hidden="true">{on ? t("jobs.savedOne") : t("jobs.save")}</span>
+        <Icon name="saved" filled={on} /><ActLabel>{on ? t("jobs.savedOne") : t("jobs.save")}</ActLabel>
       </button>
       <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${t("jobs.open")}: ${job.title}`}>
-        <Icon name="open" /><span className="act-label" aria-hidden="true">{t("jobs.open")}</span>
+        <Icon name="open" /><ActLabel>{t("jobs.open")}</ActLabel>
       </a>
       {rank && (
         <button type="button" className={`result-act rank-one ${rank.busy ? "busy" : ""}`} aria-label={`${t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}: ${job.title}`}
           aria-busy={rank.busy} disabled={rank.busy} onClick={rank.onRank}>
           {rank.busy ? <span className="spinner" aria-hidden="true" /> : <Icon name="gauge" />}
-          <span className="act-label" aria-hidden="true">{t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}</span>
+          <ActLabel>{t(rank.busy ? "jobs.rankingOne" : "jobs.rankOne")}</ActLabel>
         </button>
       )}
       <button type="button" className="result-act apply" aria-label={`${t("jobs.apply")}: ${job.title}`} onClick={() => start(`/apply ${job.url}`)}>
-        <span className="apply-rim" aria-hidden="true" /><Icon name="apply" /><span className="act-label" aria-hidden="true">{t("jobs.apply")}</span>
+        <span className="apply-rim" aria-hidden="true" /><Icon name="apply" /><ActLabel>{t("jobs.apply")}</ActLabel>
       </button>
     </div>
   );
@@ -924,7 +924,7 @@ function Quick() {
             ) : (
               // The search settings, with their name floating over them under the pointer, as the sparkles' does.
               <button type="button" className="seek-icon" aria-label={t("jobs.menu")} aria-expanded={menu === "filters"} onClick={() => toggle("filters")}>
-                <Icon name="filters" /><span className="act-label" aria-hidden="true">{t("jobs.menuTip")}</span>
+                <Icon name="filters" /><ActLabel>{t("jobs.menuTip")}</ActLabel>
               </button>
             )}
             {/* The sparkles, their colours drifting in clouds as the sky's do (styles.css), with their name floating
@@ -938,7 +938,7 @@ function Quick() {
                 {[1, 2, 3, 4, 5].map((n) => <span key={n} className={`ai-blob ai-blob-${n}`} />)}
               </span>
               <Icon name="ai" />
-              {tip && <span className="act-label" aria-hidden="true">{t("jobs.aiTip")}</span>}
+              {tip && <ActLabel>{t("jobs.aiTip")}</ActLabel>}
             </button>
             {/* The search button's place, closed until something is typed. */}
             <span className="seek-go-slot">

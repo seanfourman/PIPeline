@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useApp } from "../app";
-import { AiSky, api, Icon, safeUrl, useGoSlot } from "../kit";
+import { ActLabel, AiSky, api, Icon, safeUrl, useGoSlot } from "../kit";
 import { MAKERS, useFirstAi } from "./chat";
 import { AiAction, Empty, Sky, tint } from "./jobs";
 import type { PortfolioProject, PortfolioState } from "../../portfolio";
@@ -83,7 +83,7 @@ function Reel({ project }: { project: PortfolioProject }) {
 function AiButton({ icon, label, prompt, name }: { icon: string; label: string; prompt: string; name: string }) {
   const { s, t, start, lang } = useApp();
   const working = s.sessions.find((x) => x.title === titled(prompt) && (x.status === "running" || x.status === "waiting"));
-  const inside = <><span className="apply-rim" aria-hidden="true" />{working && <span className="rank-ring" aria-hidden="true" />}<Icon name={icon} /><span className="act-label" dir={uiDir(lang)} aria-hidden="true">{working ? t("pip.toChat") : label}</span></>;
+  const inside = <><span className="apply-rim" aria-hidden="true" />{working && <span className="rank-ring" aria-hidden="true" />}<Icon name={icon} /><ActLabel dir={uiDir(lang)}>{working ? t("pip.toChat") : label}</ActLabel></>;
   return working
     ? <a className="result-act ai-act busy" href={`/chat/${working.id}`} aria-label={`${t("pip.toChat")}: ${label}, ${name}`}>{inside}</a>
     : <button type="button" className="result-act ai-act" aria-label={`${label}: ${name}`} onClick={() => start(prompt)}>{inside}</button>;
@@ -99,7 +99,7 @@ function Actions({ project }: { project: PortfolioProject }) {
   const target = project.source.path || repo;
   const link = (href: string, icon: string, label: string) => (
     <a className="result-act" href={href} target="_blank" rel="noopener noreferrer" aria-label={`${label}: ${project.name}`}>
-      <Icon name={icon} /><span className="act-label" dir={uiDir(lang)} aria-hidden="true">{label}</span>
+      <Icon name={icon} /><ActLabel dir={uiDir(lang)}>{label}</ActLabel>
     </a>
   );
   return (

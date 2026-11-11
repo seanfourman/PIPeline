@@ -9,7 +9,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useApp } from "../app";
 import { SaveNote, useAutoSave } from "../autosave";
-import { api, Btn, Icon, Markdown, safeUrl, Spinner } from "../kit";
+import { ActLabel, api, Btn, Icon, Markdown, safeUrl, Spinner } from "../kit";
 import { Pip, type Mood } from "../pip";
 import { dirOf, parseProfile, parts, profileDir, profileHealth, type Profile, type Role } from "../profile-parse";
 import { DocumentCard, ViaChat, type Doc } from "./docs";
@@ -166,7 +166,7 @@ function Card({ id, title, part, edit, children }: { id: string; title: string; 
         <h2 id={`prof-${id}-title`}>{title}</h2>
         {!open && (
           <button type="button" className="result-act" aria-label={`${t("profile.edit")}: ${title}`} onClick={() => edit.setEditing(part)}>
-            <Icon name="edit" /><span className="act-label" aria-hidden="true">{t("profile.edit")}</span>
+            <Icon name="edit" /><ActLabel>{t("profile.edit")}</ActLabel>
           </button>
         )}
       </div>

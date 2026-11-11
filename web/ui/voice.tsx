@@ -9,7 +9,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp } from "./app";
 import type { Mood } from "./pip";
-import { AiSky, Icon } from "./kit";
+import { ActLabel, AiSky, Icon } from "./kit";
 import { LISTEN_LANG, withSaid, type SpokenLang } from "./voice-text";
 
 // The browser ends its listening every so often; it starts again this long after.
@@ -300,13 +300,13 @@ export function VoiceTypingButton({ v }: { v: VoiceTyping }) {
     <>
       {v.on && (
         <button type="button" className="voice-lang" aria-label={langLabel} onClick={() => v.setLang(other)}>
-          {t(`voice.langs.${v.lang}`)}<span className="act-label" aria-hidden="true">{langLabel}</span>
+          {t(`voice.langs.${v.lang}`)}<ActLabel>{langLabel}</ActLabel>
         </button>
       )}
       <button ref={v.button} type="button" className={`voice-go ${v.on ? "on" : ""}`} aria-pressed={v.on} aria-label={label} onClick={v.toggle}>
         <AiSky orb />
         {v.on ? <span className="voice-bars" aria-hidden="true"><i /><i /><i /><i /></span> : <Icon name="mic" />}
-        <span className="act-label" aria-hidden="true">{label}</span>
+        <ActLabel>{label}</ActLabel>
       </button>
     </>
   );
