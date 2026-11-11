@@ -3,7 +3,7 @@
 // sidebar, so the page is even. In a narrower window the list opens over the page from a button at the top.
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { friendlyTitle, PopMenu, useApp } from "../app";
-import { answerParts, type Card, docKind, type DocKind, docOwner, docPath, docSlug, placeDocs, writingKind } from "../answer-parts";
+import { answerParts, type Card, docKind, type DocKind, docOwner, docPath, docSlug, placeDocs, type TurnItem, turnItems, writingKind } from "../answer-parts";
 import { ActLabel, AiSky, api, Btn, goTo, Icon, Markdown, ThinBar, useGoSlot } from "../kit";
 import { Pip } from "../pip";
 import { Select } from "../select";
@@ -570,11 +570,13 @@ function shortTarget(raw: unknown) {
 // What a step did, in the page's direction: the tool's words in the page's language, with what it was aimed at, or
 // the AI's own description of a command, set apart (<bdi>), so a path, a pattern or an English sentence keeps its
 // own order without turning the row around.
+// Cut short past a few lines' worth, so one long description doesn't fill the list.
+const clip = (s: string) => (s.length > 140 ? `${s.slice(0, 139).trimEnd()}…` : s);
 function useToolLabel() {
   const { t } = useApp();
   return (ev: Ev): React.ReactNode => {
-    if (ev.label) return <bdi>{ev.label}</bdi>;
-    const target = shortTarget(ev.target);
+    if (ev.label) return <bdi>{clip(String(ev.label))}</bdi>;
+    const target = clip(shortTarget(ev.target));
     if (String(t(`chat.tools.${ev.name}`)).startsWith("chat.tools.")) return <bdi>{target || ev.name}</bdi>;
     const [before, after = ""] = String(t(`chat.tools.${ev.name}`, { target: "\u0000" })).split("\u0000");
     return <>{before}{target && <bdi>{target}</bdi>}{after}</>;
@@ -625,9 +627,10 @@ function stepTree(tools: Ev[]): StepRow[] {
   });
 }
 
-// One tool call, a row of the steps: its icon, what it did, and how it went (the AI's orb while it works, then a
-// tick or a cross); what came back, when there is something, folds out under it (.fold). place: where it stands in
-// the tree; fresh: it came while the steps were on the page, so it grows into place instead of jumping in.
+// One tool call, a row of the steps: how it went at the row's start (the AI's orb while it works, then a tick or a
+// cross; Sean, 2026-11-11), a little apart from its icon, then what it did; what came back, when there is something,
+// folds out under it (.fold). place: where it stands in the tree; fresh: it came while the steps were on the page,
+// so it grows into place instead of jumping in.
 function ToolLine({ ev, result, working, place = "", fresh = false }: { ev: Ev; result?: Ev; working: boolean; place?: StepRow["place"]; fresh?: boolean }) {
   const label = useToolLabel();
   const [open, setOpen] = useState(false);
@@ -636,7 +639,7 @@ function ToolLine({ ev, result, working, place = "", fresh = false }: { ev: Ev; 
   const mark = state === "working"
     ? <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>
     : <span className={`step-state ${state}`}><Icon name={state === "failed" ? "close" : "check"} /></span>;
-  const row = <><ToolMark ev={ev} /><span className="step-text">{label(ev)}</span>{mark}</>;
+  const row = <>{mark}<ToolMark ev={ev} /><span className="step-text">{label(ev)}</span></>;
   return (
     <li className={`tool ${state} ${place}${fresh ? " fresh" : ""}`}>
       <div className="tool-in">
@@ -669,7 +672,6 @@ function ToolSteps({ tools, results, working, took }: { tools: Ev[]; results: Ma
   const now = busy ? tools.find((x) => !results.has(x.id)) ?? tools[tools.length - 1] : null;
   const failed = tools.some((x) => results.get(x.id)?.isError);
   const kinds = [...new Map(tools.map((x) => [toolIcon(x), x])).values()].slice(0, 4);
-  const list = useRef<HTMLOListElement>(null);
   return (
     <div className={`steps${busy ? " working" : ""}${failed ? " failed" : ""}`}>
       <button type="button" className="steps-head" aria-expanded={open} aria-controls={body} onClick={() => setOpen(!open)}>
@@ -685,10 +687,10 @@ function ToolSteps({ tools, results, working, took }: { tools: Ev[]; results: Ma
         {failed && !now && <Icon name="warn" />}
         <Icon name="down" />
       </button>
+      {/* Every step shown, however many: the list grows with them, never a scroll of its own. */}
       <div className={`fold${open ? " open" : ""}`} id={body}>
-        <div className="steps-scroll">
-          <ol ref={list}>{tree.map((r) => <ToolLine key={r.ev.id} ev={r.ev} result={results.get(r.ev.id)} working={working} place={r.place} fresh={!known.has(r.ev.id)} />)}</ol>
-          <ThinBar target={list} />
+        <div className="steps-body">
+          <ol>{tree.map((r) => <ToolLine key={r.ev.id} ev={r.ev} result={results.get(r.ev.id)} working={working} place={r.place} fresh={!known.has(r.ev.id)} />)}</ol>
         </div>
       </div>
       {now && <span className="steps-bar" aria-hidden="true" />}
@@ -786,7 +788,7 @@ function Answer({ src }: { src: string }) {
   );
 }
 
-type Item = { kind: "tools"; key: string; tools: Ev[] } | { kind: "event"; key: string; ev: Ev };
+type Item = TurnItem<Ev>;
 
 // bare: inside another page (the introduction's), which has its own heading, so no header of its own.
 // An AI that couldn't start (agent.ts): its sign-in refused (claude_login, openai_login, or Claude's server's words
@@ -858,36 +860,33 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
 
   const resolved = useMemo(() => new Map(events.filter((e) => e.t === "resolved").map((e) => [e.requestId, e])), [events]);
   const results = useMemo(() => new Map(events.filter((e) => e.t === "tool_result").map((e) => [e.id, e])), [events]);
-  // Tool calls in a row become one item, the rest one each; results and answers are found from their calls.
-  const items = useMemo(() => {
-    const out: Item[] = [];
-    events.forEach((e, i) => {
-      if (e.t === "tool_result" || e.t === "resolved") return;
-      const last = out[out.length - 1];
-      if (e.t === "tool" && last?.kind === "tools") last.tools.push(e);
-      else out.push(e.t === "tool" ? { kind: "tools", key: `tools-${i}`, tools: [e] } : { kind: "event", key: String(i), ev: e });
-    });
-    return out;
-  }, [events]);
+  // Each turn's steps in one block at its top, its words after it (turnItems).
+  const items = useMemo(() => turnItems(events), [events]);
 
   const working = status === "running" || status === "waiting";
-  // How long each run took (its end's durationMs), said on its last steps.
+  // How long each turn took, on its block: its runs' durationMs together (one AI handing over to the next is two).
   const took = useMemo(() => {
     const out = new Map<string, number>();
-    let last: string | null = null;
+    let block: string | null = null;
     for (const item of items) {
-      if (item.kind === "tools") last = item.key;
-      else if (item.ev.t === "user") last = null;
-      else if (item.ev.t === "result" && last && typeof item.ev.durationMs === "number") { out.set(last, item.ev.durationMs); last = null; }
+      if (item.kind === "tools") block = item.key;
+      else if (item.ev.t === "user") block = null;
+      else if (item.ev.t === "result" && block && typeof item.ev.durationMs === "number") out.set(block, (out.get(block) ?? 0) + item.ev.durationMs);
     }
     return out;
   }, [items]);
+  // The block of the turn under way: the last one, unless a message of yours came after it.
+  const current = useMemo(() => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i];
+      if (item.kind === "tools") return item;
+      if (item.ev.t === "user") return null;
+    }
+    return null;
+  }, [items]);
   // The documents shown after the answers that brought them, and the one being written now, if one is.
   const placed = useMemo(() => placeDocs(events, files), [events, files]);
-  const writing = useMemo(() => {
-    const last = items[items.length - 1];
-    return working && last?.kind === "tools" ? writingKind(last.tools, (id) => results.has(id)) : null;
-  }, [items, results, working]);
+  const writing = useMemo(() => (working && current ? writingKind(current.tools, (id) => results.has(id)) : null), [current, results, working]);
   // Stop pressed: said at once, as what is under way takes a moment to be killed, until the conversation stops.
   const [stopping, setStopping] = useState(false);
   useEffect(() => { if (!working) setStopping(false); }, [working]);
@@ -955,19 +954,15 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
       <div className="log-frame">
         <div className="log" ref={log} role="log" aria-live="polite" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
           <div className="log-column">
-            {items.map((item, i) => (item.kind === "tools"
-              ? (
-                <React.Fragment key={item.key}>
-                  <ToolSteps tools={item.tools} results={results} working={working && i === items.length - 1} took={took.get(item.key)} />
-                  {writing && i === items.length - 1 && <DocCard ghost={writing} />}
-                </React.Fragment>
-              )
+            {items.map((item) => (item.kind === "tools"
+              ? <ToolSteps key={item.key} tools={item.tools} results={results} working={working && item === current} took={took.get(item.key)} />
               : (
                 <React.Fragment key={item.key}>
                   {render(item.ev, item.key)}
                   {placed.after.get(Number(item.key))?.map((d) => <DocCard key={d.path} doc={d} />)}
                 </React.Fragment>
               )))}
+            {writing && <DocCard ghost={writing} />}
             {live && <div className="msg-pip live"><Markdown src={live} className="md msg-text" /></div>}
             {!live && status === "running" && (stopping || items[items.length - 1]?.kind !== "tools") && (
               <div className="working-line"><span className="steps-orb" aria-hidden="true"><AiSky orb /></span><span className="typing-text">{t(stopping ? "session.stopping" : "chat.working")}</span></div>

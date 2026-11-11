@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerParts, docKind, docOrigin, docOwner, docPath, docSlug, placeDocs, writingKind } from "./ui/answer-parts";
+import { answerParts, docKind, docOrigin, docOwner, docPath, docSlug, placeDocs, turnItems, writingKind } from "./ui/answer-parts";
 
 describe("answer parts", () => {
   test("turns a run of questions that each say how to answer them into cards, and leaves the words around them", () => {
@@ -73,6 +73,22 @@ describe("documents in the conversation", () => {
     expect(placed.after.get(3)).toEqual([cv]);
     expect(placed.end).toEqual([letter]);
     expect(placeDocs([{ t: "text", text: `Saved to ${cv.path.replace("user/", "")}` }], [cv]).after.get(0)).toEqual([cv]);
+  });
+
+  test("puts each turn's steps in one block at its top, under the message, with its words after it in order", () => {
+    const shape = (events: { t: string; id?: string }[]) =>
+      turnItems(events).map((x) => (x.kind === "tools" ? `${x.key}:${x.tools.map((s) => s.id).join(",")}` : x.ev.t));
+    const turn = [
+      { t: "user" }, { t: "text" }, { t: "tool", id: "a" }, { t: "tool_result", id: "a" }, { t: "text" },
+      { t: "tool", id: "b" }, { t: "permission" }, { t: "resolved" }, { t: "tool_result", id: "b" }, { t: "text" }, { t: "result" },
+    ];
+    expect(shape(turn)).toEqual(["user", "tools-2:a,b", "text", "text", "permission", "text", "result"]);
+    // A new message starts a new block; steps before any message (a scheduled run) lead the conversation.
+    expect(shape([{ t: "tool", id: "a" }, { t: "text" }, { t: "user" }, { t: "text" }, { t: "tool", id: "b" }]))
+      .toEqual(["tools-0:a", "text", "user", "tools-4:b", "text"]);
+    // A turn with no steps has no block, and a block keeps its key as steps come in.
+    expect(shape([{ t: "user" }, { t: "text" }, { t: "result" }])).toEqual(["user", "text", "result"]);
+    expect(shape([...turn, { t: "user" }, { t: "tool", id: "c" }]).slice(-2)).toEqual(["user", "tools-12:c"]);
   });
 
   test("knows a CV is being written from the step under way", () => {

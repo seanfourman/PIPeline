@@ -1714,10 +1714,11 @@ select.status { font-weight: 600; }
 }
 .fold.open { grid-template-rows: 1fr; visibility: visible; opacity: 1; }
 .fold > * { min-height: 0; overflow: hidden; }
-/* Opened: each step a row, as wide as a line for reading; what a step brought back, when it brought something, folds
-   out under it. A step that comes while the steps show grows into place, its words cut at its edges as it does. */
-.steps-scroll { position: relative; max-width: 560px; }
-.steps ol { display: flex; flex-direction: column; max-height: 360px; margin: 0; padding: 2px 0 0; overflow-y: auto; list-style: none; scrollbar-width: none; }
+/* Opened: each step a row, as wide as a line for reading, and every one of them shown, the list growing with them
+   rather than scrolling on its own; what a step brought back, when it brought something, folds out under it. A step
+   that comes while the steps show grows into place, its words cut at its edges as it does. */
+.steps-body { max-width: 560px; }
+.steps ol { display: flex; flex-direction: column; margin: 0; padding: 2px 0 0; list-style: none; }
 .tool { position: relative; display: grid; grid-template-rows: 1fr; min-width: 0; }
 .tool-in { min-width: 0; min-height: 0; }
 .tool.fresh { animation: step-in 0.25s cubic-bezier(0.2, 0.8, 0.3, 1); }
@@ -1735,23 +1736,30 @@ button.tool-row:focus-visible { outline-width: 2px; outline-offset: -2px; }
 .tool-row .step-icon { width: 18px; height: 18px; background: none; color: var(--ink-3); transition: color 0.2s ease; }
 .tool-row .step-icon .icon { width: 15px; height: 15px; }
 button.tool-row:hover .step-icon { color: var(--ink-2); }
+/* How a step went, first in its row (Sean's pick): a tick, a cross, or the AI's orb while it works, each as wide as
+   the others so the icons line up, and set a little apart from the step's icon. */
+.tool-row > .step-state { margin-inline-end: 4px; }
+.tool-row > .steps-orb { margin-inline: 1px 5px; }
 /* The tree (stepTree in chat.tsx), as files under a folder: a step a helper ran inside another step is set in under
-   it, a guide runs down from its parent's icon, a branch reaches into each, and the last one's turns round a corner. */
+   it, a guide runs down from its parent's mark, a branch reaches into each, and the last one's turns round a corner. */
 .steps { --tree: color-mix(in srgb, var(--ink) 18%, transparent); }
 .tool.child > .tool-in > .tool-row { padding-inline-start: 30px; }
-.tool.parent::after { content: ""; position: absolute; top: 25px; bottom: 0; inset-inline-start: 8.25px; width: 1.5px; background: var(--tree); }
-.tool.child::before { content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 8.25px; width: 1.5px; background: var(--tree); }
-.tool.child::after { content: ""; position: absolute; top: 15.25px; inset-inline-start: 8.25px; width: 14px; height: 1.5px; background: var(--tree); }
+.tool.parent::after { content: ""; position: absolute; top: 25px; bottom: 0; inset-inline-start: 9.25px; width: 1.5px; background: var(--tree); }
+.tool.child::before { content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 9.25px; width: 1.5px; background: var(--tree); }
+.tool.child::after { content: ""; position: absolute; top: 15.25px; inset-inline-start: 9.25px; width: 14px; height: 1.5px; background: var(--tree); }
 .tool.child.last::before { bottom: auto; width: 14px; height: 16.75px; border-bottom: 1.5px solid var(--tree); border-inline-start: 1.5px solid var(--tree); border-end-start-radius: 7px; background: none; }
 .tool.child.last::after { display: none; }
 /* What a step did, in the page's direction, up to two lines. */
-.step-text { display: -webkit-box; flex: 1; min-width: 0; overflow: hidden; line-height: 1.45; overflow-wrap: break-word; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.step-text {
+  display: -webkit-box; flex: 1; min-width: 0; overflow: hidden; line-height: 1.45; overflow-wrap: break-word; text-wrap: pretty;
+  -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+}
 .step-state { flex: none; display: grid; place-items: center; width: 20px; height: 20px; }
 .step-state .icon { width: 15px; height: 15px; }
 .step-state.done { color: var(--ink-3); }
 .step-state.failed { color: var(--bad); }
-.tool .pre { max-height: 240px; margin-block: 2px 8px; margin-inline: 27px 14px; overflow: auto; font-size: 12.5px; }
-.tool.child .pre { margin-inline-start: 57px; }
+.tool .pre { max-height: 240px; margin-block: 2px 8px; margin-inline: 60px 14px; overflow: auto; font-size: 12.5px; }
+.tool.child .pre { margin-inline-start: 90px; }
 /* A request to allow something, or Pip's question: a warm card waiting for an answer. */
 .ask-card {
   display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line)); border-radius: 20px;

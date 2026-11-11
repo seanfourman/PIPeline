@@ -107,6 +107,35 @@ export function placeDocs<D extends { path: string; name: string }>(events: Ev[]
   return { after, end };
 }
 
+// The conversation as it reads (Sean, 2026-11-11): each of Pip's turns, from a message of yours to the next, has all
+// its steps in one block at its top, under your message, even when its words come between them; its words, cards and
+// requests follow in order. Steps' results and answers to requests are found from what they answer, so they aren't
+// items. A block's key is its first step's place, so it stays the same as the turn goes on.
+export type StepsItem<E> = { kind: "tools"; key: string; tools: E[] };
+export type TurnItem<E> = StepsItem<E> | { kind: "event"; key: string; ev: E };
+export function turnItems<E extends { t: string }>(events: E[]): TurnItem<E>[] {
+  const out: TurnItem<E>[] = [];
+  let block: StepsItem<E> | null = null;
+  let top = 0;
+  for (const [i, e] of events.entries()) {
+    if (e.t === "tool_result" || e.t === "resolved") continue;
+    if (e.t === "tool") {
+      if (!block) {
+        block = { kind: "tools", key: `tools-${i}`, tools: [] };
+        out.splice(top, 0, block);
+      }
+      block.tools.push(e);
+      continue;
+    }
+    out.push({ kind: "event", key: String(i), ev: e });
+    if (e.t === "user") {
+      block = null;
+      top = out.length;
+    }
+  }
+  return out;
+}
+
 // The steps that write a CV (the /apply pipeline's), and so what a document being written is, from the step under
 // way: one of those, or one that writes a file in the CVs' or the letters' folder.
 const WRITES_CV = new Set(["DraftCv", "ReviewCv", "BuildCv"]);
