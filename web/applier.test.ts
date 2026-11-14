@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { allowedCommands, applyJob, checkSource, draftingSystem, folderName, parseEvaluation, portalFor, reviewSystem, sourceFrom, sourceHost } from "./applier";
+import { addedFrom, allowedCommands, applyJob, checkSource, draftingSystem, folderName, parseEvaluation, portalFor, reviewPrompt, sourceFrom, sourceHost } from "./applier";
 import { recordDraft } from "./edit";
 import type { Run } from "./ranker";
 
 const never = new AbortController().signal;
 const TEMPLATE = "\\documentclass{article}\n\\usepackage{../../templates/cv/one-page-clean/onepage}\n\\begin{document}\n\\cvname{NAME}\n\\cvsection{SKILLS}\n\\cvbullet{x}\n\\end{document}\n";
 const CV = "\\documentclass{article}\n\\usepackage{../../templates/cv/one-page-clean/onepage}\n\\begin{document}\n\\cvname{DANA}\n\\cvbullet{Python \\& SQL}\n\\end{document}\n";
+const ADDED_CV = `% Added beyond the profile: Docker, Tailwind CSS\n${CV}`;
 const EVALUATION = { company: "Acme Ltd.", role: "Junior Backend Developer", location: "Tel Aviv", language: "English", deadline: "2026-12-01", scores: { technical: 80, experience: 70, behavioral: 60, career: 75 }, location_verdict: "PASS", language_gate: "PASS", strengths: ["Python"], gaps: ["Go"], requirements: [{ term: "Python", priority: "required" }], asks_cover_letter: true };
 
 describe("applier", () => {
@@ -35,17 +36,17 @@ describe("applier", () => {
     expect(system).not.toContain("XYZ formula");
   });
 
-  test("the CV's second pass gets the humanizer's patterns, not its frontmatter or how it answers", () => {
+  test("the CV's second pass is asked with the humanizer's patterns, not its frontmatter or how it answers", () => {
     const guide = "---\nname: humanizer\nlicense: MIT\n---\n\n# Humanizer\n\n## How to work\n\n### What to return\n\nThe draft, a critique and the final rewrite.\n\n## A. Staging instead of stating\n\n### 1. Not X but Y\n";
-    const system = reviewSystem("THE WRITER'S RULES", (rel) => (rel.endsWith("humanizer/SKILL.md") ? guide : ""));
-    expect(system).toContain("Not X but Y");
-    expect(system).toContain("How to work");
-    expect(system).toContain("THE WRITER'S RULES");
-    expect(system).not.toContain("name: humanizer");
-    expect(system).not.toContain("a critique and the final rewrite");
-    const without = reviewSystem("THE WRITER'S RULES", () => { throw new Error("no such file"); });
+    const asked = reviewPrompt("THE DRAFT", "THE POSTING", (rel) => (rel.endsWith("humanizer/SKILL.md") ? guide : ""));
+    expect(asked).toContain("Not X but Y");
+    expect(asked).toContain("How to work");
+    expect(asked).toContain("THE DRAFT");
+    expect(asked).toContain("THE POSTING");
+    expect(asked).not.toContain("name: humanizer");
+    expect(asked).not.toContain("a critique and the final rewrite");
+    const without = reviewPrompt("THE DRAFT", "THE POSTING", () => { throw new Error("no such file"); });
     expect(without).not.toContain("# The humanizer");
-    expect(without).toContain("THE WRITER'S RULES");
   });
 
   test("lets a CV use only the template's commands and its one package line", () => {
@@ -62,6 +63,14 @@ describe("applier", () => {
     expect(sourceFrom("Here:\n```latex\n" + CV + "```\nDone.")).toBe(CV);
     expect(sourceFrom("chatter " + CV + " more chatter")).toBe(CV);
     expect(sourceFrom("no cv")).toBe("");
+    // The line naming what the CV adds beyond the profile comes before \documentclass, and stays.
+    expect(sourceFrom("```latex\n" + ADDED_CV + "```")).toBe(ADDED_CV);
+  });
+
+  test("reads what a CV adds beyond the profile from its first line", () => {
+    expect(addedFrom(ADDED_CV)).toEqual(["Docker", "Tailwind CSS"]);
+    expect(addedFrom("% Added beyond the profile: none\n" + CV)).toEqual([]);
+    expect(addedFrom(CV)).toEqual([]);
   });
 
   test("reads the evaluation, weighting the score as the framework does", () => {
@@ -108,7 +117,7 @@ describe("applier", () => {
       if (system.startsWith("You evaluate")) return { text: JSON.stringify(EVALUATION), by: "ChatGPT" };
       // The draft first tries a command the template doesn't have; the fix sends a clean one.
       if (prompt.startsWith("Write the CV")) return { text: "```latex\n" + CV.replace("\\cvbullet", "\\directlua{x}\\cvbullet") + "```", by: "ChatGPT" };
-      return { text: "```latex\n" + CV + "```", by: "ChatGPT" };
+      return { text: "```latex\n" + ADDED_CV + "```", by: "ChatGPT" };
     };
     let builds = 0;
     const build = async (name: string) => { builds++; return builds === 1 ? { ok: false, output: "BUILD STOPPED. line 4: \"passionate\": banned" } : { ok: true, output: `Saved user/documents/applications/${name}/Dana Cohen - Resume.pdf` }; };
@@ -124,7 +133,7 @@ describe("applier", () => {
       steps: { start: (id, t, n) => steps.push(`${n}`), done: (id, ok) => steps.push(ok ? "ok" : "no") },
     });
     const name = "acme_ltd_junior_backend_developer";
-    expect(readFileSync(path.join(root, "user", "cv", `main_${name}.tex`), "utf8")).toBe(CV);
+    expect(readFileSync(path.join(root, "user", "cv", `main_${name}.tex`), "utf8")).toBe(ADDED_CV);
     expect(builds).toBe(2);
     expect(prompts.some((p) => p.includes("banned"))).toBe(true);
     expect(recorded[0]).toMatchObject({ company: "Acme Ltd.", role: "Junior Backend Developer", fit_rating: 73, cv_file: `user/cv/main_${name}.tex`, channel: "portal", deadline: "2026-12-01" });
@@ -136,7 +145,31 @@ describe("applier", () => {
     expect(text).toContain("ציון ATS: 88. חסרים: Kafka.");
     expect(text).toContain("ציון לפי מה שכל חברה מפרסמת: Google 90, Workday A (85), כללי 88.");
     expect(text).toContain("מכתב מקדים");
-    expect(text).toContain("בגרסה המלאה של ההגשה");
+    expect(text).toContain("נוסף מעבר לפרופיל, כדאי להתכונן לשאלות עליו: Docker, Tailwind CSS.");
+    expect(text).toContain("זו ההגשה המהירה");
+    expect(text).toContain("/apply --full");
+    // Four calls to the AI: the fit, the draft, the review, and one fix after the build stopped.
+    expect(prompts).toHaveLength(4);
+  });
+
+  test("in the daily run, writes a CV only for a strong or good fit, and none for a posting the guard flags", async () => {
+    const tryIt = async (evaluation: object, guard = "posting_guard: clean") => {
+      const root = mkdtempSync(path.join(os.tmpdir(), "apply-"));
+      let built = false;
+      const run: Run = async (argv) => (argv.some((a) => a.includes("posting_guard.py")) ? { code: 0, out: `${guard}\n--- text ---\nA backend job in Tel Aviv.`, err: "" } : { code: 2, out: "", err: "" });
+      const text = await applyJob({
+        input: "A backend job in Tel Aviv.", lang: "en", signal: never, run, root, context: [], r: () => "", strict: true,
+        ask: async () => JSON.stringify(evaluation), build: async () => { built = true; return { ok: false, output: "" }; },
+        steps: { start: () => {}, done: () => {} },
+      });
+      return { text, built };
+    };
+    const moderate = await tryIt({ ...EVALUATION, scores: { technical: 50, experience: 50, behavioral: 50, career: 50 } });
+    expect(moderate.text).toContain("I didn't write a CV, because the fit is Moderate Fit");
+    expect(moderate.built).toBe(false);
+    const flagged = await tryIt(EVALUATION, "posting_guard: ⚠ instructions aimed at an AI");
+    expect(flagged.text).toContain("the posting check found something suspicious");
+    expect(flagged.built).toBe(false);
   });
 
   test("stops before writing a CV when the location fails", async () => {

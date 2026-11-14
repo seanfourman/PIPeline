@@ -3,9 +3,9 @@
 // sidebar, so the page is even. In a narrower window the list opens over the page from a button at the top.
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { friendlyTitle, PopMenu, useApp } from "../app";
-import { answerParts, type Card, docKind, type DocKind, docOwner, docPath, docSlug, placeDocs, type TurnItem, turnItems, writingKind } from "../answer-parts";
-import { ActLabel, AiSky, api, Btn, goTo, Icon, Markdown, ThinBar, useGoSlot } from "../kit";
-import { Pip } from "../pip";
+import { answerParts, type Card, type Change, docKind, type DocKind, docOwner, docPath, docSlug, hasSteering, placeDocs, readChange, revealSteering, type TurnItem, turnItems, writingKind } from "../answer-parts";
+import { ActLabel, AiSky, api, Btn, goTo, HEBREW, Icon, Markdown, ThinBar, useGoSlot, Words } from "../kit";
+import { grounded, takeOff, useLanding } from "../launch";
 import { Select } from "../select";
 import { useVoiceTyping, VoiceGlow, VoiceTypingButton } from "../voice";
 
@@ -200,7 +200,8 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<string[]>([]);
-  const [archive, setArchive] = useState(false);
+  // A drawer open in place of the list: the archive, or the daily run's conversations.
+  const [shelf, setShelf] = useState<"" | "archive" | "runs">(() => (s.sessions.find((c) => c.id === id)?.auto ? "runs" : ""));
   const [making, setMaking] = useState(false);
   const [newName, setNewName] = useState("");
   const projects = s.projects ?? [];
@@ -213,13 +214,17 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
     const timer = setTimeout(() => api<{ ids: string[] }>(`sessions-search?q=${encodeURIComponent(q)}`).then((r) => setFound(r.ids)).catch(() => {}), 220);
     return () => clearTimeout(timer);
   }, [q]);
-  const live = s.sessions.filter((c) => !c.archived);
+  // A temporary conversation is never listed: it leaves no trace (agent.ts Session.temporary). The daily run's
+  // (Session.auto) aren't the user's, so they wait in a drawer of their own at the foot (Sean 2026-11-14).
+  const kept = s.sessions.filter((c) => !c.temporary && !c.auto);
+  const runs = s.sessions.filter((c) => c.auto);
+  const live = kept.filter((c) => !c.archived);
   const pinned = live.filter((c) => c.pinned).sort((a, b) => (b.pinned ?? 0) - (a.pinned ?? 0));
   const known = new Set(projects.map((p) => p.id));
   const inProject = (c: Thread) => Boolean(c.project && known.has(c.project));
   const loose = live.filter((c) => !c.pinned && !inProject(c));
-  const archived = s.sessions.filter((c) => c.archived);
-  const results = q ? s.sessions.filter((c) => friendlyTitle(c.title, t).toLowerCase().includes(q.toLowerCase()) || found.includes(c.id)) : [];
+  const archived = kept.filter((c) => c.archived);
+  const results = q ? kept.filter((c) => friendlyTitle(c.title, t).toLowerCase().includes(q.toLowerCase()) || found.includes(c.id)) : [];
   const row = (c: Thread) => <ThreadRow key={c.id} thread={c} current={id} projects={projects} onPick={onPick} />;
   const makeProject = () => {
     const name = newName.trim();
@@ -268,11 +273,20 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
               <h2>{t("chat.results")}</h2>
               {results.length ? results.map(row) : <p className="project-empty">{t("chat.searchNone")}</p>}
             </section>
-          ) : archive ? (
+          ) : shelf === "archive" ? (
             <section className="thread-group">
-              <h2 className="threads-back"><button type="button" onClick={() => setArchive(false)}><Icon name="back" />{t("chat.archived", { n: archived.length })}</button></h2>
+              <h2 className="threads-back"><button type="button" onClick={() => setShelf("")}><Icon name="back" />{t("chat.archived", { n: archived.length })}</button></h2>
               {archived.length ? archived.map(row) : <p className="project-empty">{t("chat.archiveEmpty")}</p>}
             </section>
+          ) : shelf === "runs" ? (
+            <>
+              <section className="thread-group"><h2 className="threads-back"><button type="button" onClick={() => setShelf("")}><Icon name="back" />{t("chat.runs", { n: runs.length })}</button></h2></section>
+              {GROUPS.map((g) => {
+                const items = runs.filter((c) => groupOf(c.createdAt) === g);
+                return items.length > 0 && <section key={g} className="thread-group"><h2>{t(`chat.groups.${g}`)}</h2>{items.map(row)}</section>;
+              })}
+              {!runs.length && <p className="project-empty">{t("chat.runsEmpty")}</p>}
+            </>
           ) : <>
             {pinned.length > 0 && <section className="thread-group"><h2>{t("chat.pinned")}</h2>{pinned.map(row)}</section>}
             <section className="thread-group">
@@ -299,8 +313,11 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
         </div>
         <ThinBar target={list} />
       </div>
-      {!q && !archive && archived.length > 0 && (
-        <button type="button" className="threads-archive" onClick={() => setArchive(true)}><Icon name="archive" />{t("chat.archived", { n: archived.length })}</button>
+      {!q && !shelf && runs.length > 0 && (
+        <button type="button" className="threads-archive" onClick={() => setShelf("runs")}><Icon name="runs" />{t("chat.runs", { n: runs.length })}</button>
+      )}
+      {!q && !shelf && archived.length > 0 && (
+        <button type="button" className="threads-archive" onClick={() => setShelf("archive")}><Icon name="archive" />{t("chat.archived", { n: archived.length })}</button>
       )}
     </nav>
   );
@@ -313,12 +330,13 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
 // again. Enter sends and Shift+Enter starts a new line; empty, it takes the page's direction, so the hint starts
 // on the page's side. Images and files come in by the +, by pasting, or dropped on the box; each is sent up as
 // it comes and shows over the words, with a mark while it goes up and an × to take it off. onSend gets their ids.
-// Under it, warn is a warning and hint a quieter line. glow: the shape of voice typing's glow behind it, a halo
-// round a box in the middle of the page or rising behind one at its foot (VoiceGlow).
-function Composer({ text, setText, onSend, onStop, working = false, placeholder, tools, warn, hint, input, autoFocus, glow = "rise" }: {
+// Under it, warn is full access's note (FullWarn) and hint a quieter line. glow: the shape of voice typing's glow
+// behind it, a halo round a box in the middle of the page or rising behind one at its foot (VoiceGlow).
+// temporary: a temporary conversation's box, whose attachments go where nothing syncs (uploads.ts TEMP_UPLOADS).
+function Composer({ text, setText, onSend, onStop, working = false, placeholder, tools, warn, hint, input, autoFocus, glow = "rise", temporary = false }: {
   text: string; setText: (v: string) => void; onSend: (files: string[]) => void; onStop?: () => void; working?: boolean; placeholder: string;
   tools?: React.ReactNode; warn?: React.ReactNode; hint?: React.ReactNode; input?: React.RefObject<HTMLTextAreaElement>; autoFocus?: boolean;
-  glow?: "halo" | "rise";
+  glow?: "halo" | "rise"; temporary?: boolean;
 }) {
   const { t } = useApp();
   const own = useRef<HTMLTextAreaElement>(null);
@@ -358,7 +376,7 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
       if (item.error) continue;
       const done = (change: Partial<Attached>) => setFiles((cur) => cur.map((x) => (x.key === item.key ? { ...x, ...change } : x)));
       readBase64(file)
-        .then((data) => api<Sent>("uploads", { name: file.name, data }))
+        .then((data) => api<Sent>("uploads", { name: file.name, data, ...(temporary ? { temporary: true } : {}) }))
         .then((up) => done({ id: up.id, name: up.name }))
         .catch((e) => done({ error: t(e?.code === "upload_type" ? "chat.upload.type" : e?.code === "upload_size" ? "chat.upload.size" : "chat.upload.failed", { name: file.name, max }) }));
     }
@@ -423,10 +441,17 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
         </div>
       </div>
       {errors.map((line) => <p key={line} className="composer-error" role="alert"><Icon name="warn" /><span>{line}</span></p>)}
-      {warn && <p className="composer-warn" role="note"><Icon name="warn" /><span>{warn}</span></p>}
+      {warn && <p className="composer-warn" role="note"><Icon name="access-full" /><span>{warn}</span></p>}
       {hint && <p className="composer-hint" role="note">{hint}</p>}
     </form>
   );
+}
+
+// Under the box while full access is picked: a quiet line in the middle, its name first, as chat apps put their
+// notes there (Sean's pick of three sketches, 2026-11-12), with the access's shield.
+function FullWarn() {
+  const { t } = useApp();
+  return <><b>{t("chat.access.fullWarnLead")}</b> {t("chat.access.fullWarn")}</>;
 }
 
 // How much the conversation may do without asking (policy.ts): a round button with the access's icon, opening
@@ -453,6 +478,29 @@ const ListButton = ({ onList }: { onList: () => void }) => {
   return <button type="button" className="chat-lists" aria-label={t("chat.openList")} onClick={onList}><Icon name={document.documentElement.dir === "rtl" ? "panel-left" : "panel-right"} /></button>;
 };
 
+// The line over a new conversation's box: a different one each time it opens, picked from the time of day's lines and
+// the any-time ones, some with the name from the settings (Sean 2026-11-12: "משפט יותר אקראי וקשור אולי לשעה ביום";
+// the waving Pip that stood over it went). The name is set apart, so a Latin one keeps its own direction.
+const partOfDay = (h: number) => (h >= 5 && h < 12 ? "morning" : h >= 12 && h < 17 ? "noon" : h >= 17 && h < 22 ? "evening" : "night");
+function Hello() {
+  const { s, t } = useApp();
+  const [pick] = useState(() => ({ part: partOfDay(new Date().getHours()), at: Math.random() }));
+  const name = String(s.settings.displayName ?? "").trim();
+  const lines = [...t(`chat.hello.${pick.part}`), ...t("chat.hello.any")].filter((line: string) => name || !line.includes("{name}"));
+  const [before, after] = String(lines[Math.floor(pick.at * lines.length)]).split("{name}");
+  return <h1>{before}{after !== undefined && <><bdi>{name}</bdi>{after}</>}</h1>;
+}
+
+// Whether the new conversation is temporary: a round button at the top of the page, its dashed bubble, named on hover.
+function TemporaryToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+  const { t } = useApp();
+  return (
+    <button type="button" className={`chat-temp${on ? " on" : ""}`} aria-pressed={on} aria-label={t("chat.temporary.toggle")} onClick={() => onChange(!on)}>
+      <Icon name="temporary" /><ActLabel>{t(on ? "chat.temporary.off" : "chat.temporary.toggle")}</ActLabel>
+    </button>
+  );
+}
+
 // A new conversation. With ChatGPT first in the settings on a key alone it is a plain one: no access or model to pick,
 // and a line under the box says so; the starts and any message that is a command still go to Claude.
 function NewConversation({ onList }: { onList: () => void }) {
@@ -461,6 +509,8 @@ function NewConversation({ onList }: { onList: () => void }) {
   const [model, setModel] = useState("");
   const [access, setAccess] = useState<Access>("ask");
   const [busy, setBusy] = useState(false);
+  // A temporary conversation (Sean 2026-11-12: "צאט INCOGNITO... חד פעמי שנמחק"), picked at the top of the page.
+  const [temporary, setTemporary] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   const first = useFirstAi();
   // ChatGPT signed in with its account works in the project as Claude does, through Codex (codex.ts), with the same
@@ -471,7 +521,10 @@ function NewConversation({ onList }: { onList: () => void }) {
     if ((!raw && !files.length) || busy) return;
     setBusy(true);
     const prompt = !files.length && /^https?:\/\/\S+$/.test(raw) ? `/apply ${raw}` : raw;
-    return start(prompt, model || undefined, access, files).catch((err) => { setBusy(false); throw err; });
+    // The box's way into the conversation (launch.ts); its words fly with it only when the bubble will show them as
+    // they are.
+    takeOff(prompt === raw && !raw.startsWith("/") && !files.length ? raw : "", s.sessions.map((c) => c.id));
+    return start(prompt, model || undefined, access, files, temporary).catch((err) => { setBusy(false); grounded(); throw err; });
   };
   const begin = (command: string, more: boolean) => {
     if (!more) { go(`/${command}`)?.catch(() => {}); return; }
@@ -479,17 +532,16 @@ function NewConversation({ onList }: { onList: () => void }) {
     requestAnimationFrame(() => input.current?.focus());
   };
   return (
-    <div className="chat-new">
-      <div className="chat-top"><ListButton onList={onList} /></div>
+    <div className={`chat-new${temporary ? " temporary" : ""}`}>
+      <div className="chat-top"><ListButton onList={onList} /><TemporaryToggle on={temporary} onChange={setTemporary} /></div>
       <div className="chat-new-body">
         <div className="chat-new-head">
-          <Pip mood="wave" className="chat-new-pip" />
-          <h1>{t("chat.newTitle")}</h1>
+          {temporary ? <><h1>{t("chat.temporary.title")}</h1><p className="chat-temp-note">{t("chat.temporary.note")}</p></> : <Hello />}
         </div>
         <Composer
-          text={text} setText={setText} onSend={(files) => { go(text.trim(), files)?.catch(() => {}); }} placeholder={t("chat.newPlaceholder")} input={input} autoFocus glow="halo"
+          text={text} setText={setText} onSend={(files) => { go(text.trim(), files)?.catch(() => {}); }} placeholder={t("chat.newPlaceholder")} input={input} autoFocus glow="halo" temporary={temporary}
           tools={plain ? null : <><AccessPicker value={access} onChange={setAccess} />{!codex && <ModelPicker value={model} onChange={setModel} />}</>}
-          warn={!plain && access === "full" ? t("chat.access.fullWarn") : ""} hint={codex ? t("chat.ai.codex", MAKERS[first]) : plain ? t("chat.ai.plain", MAKERS[first]) : ""}
+          warn={!plain && access === "full" ? <FullWarn /> : ""} hint={codex ? t("chat.ai.codex", MAKERS[first]) : plain ? t("chat.ai.plain", MAKERS[first]) : ""}
         />
         <div className="chat-starts" role="group" aria-label={t("chat.suggest")}>
           {STARTS.map(([command, more]) => (
@@ -501,25 +553,88 @@ function NewConversation({ onList }: { onList: () => void }) {
   );
 }
 
+// A request to allow a step, as a line in the conversation like the steps' (Sean's pick of three sketches,
+// 2026-11-12): a slow amber dot while it waits, what Pip asks in words ("May I edit 01-candidate-profile.md?"), what
+// it would do folded under it, open to begin with (the file's whole path as given, then an edit as lines kept, taken
+// out and put in; a command whole, as it is), and small round buttons: allow, allow for the folder in this
+// conversation, deny. What a step asks can be steered by a posting, so nothing in it is shortened out of sight, a part
+// cut short says so, and a character that reorders text is taken out and shown as a small red chip in its place
+// (Steered), with a line in words saying what the chips are.
+const HiddenMark = () => {
+  const { t } = useApp();
+  return <mark className="ask-control" role="img" aria-label={t("chat.hiddenChar")}><Icon name="hidden" /></mark>;
+};
+const Steered = ({ text }: { text: string }) => (
+  <>{revealSteering(text).map((part, k) => (typeof part === "string" ? part : <HiddenMark key={k} />))}</>
+);
+const ASKS = new Set(["Edit", "Write", "Bash", "WebFetch", "WebSearch"]);
+function askTarget(ev: Ev, change: Change | null) {
+  if (change) return shortTarget(change.path);
+  if (ev.tool !== "WebFetch" && ev.tool !== "WebSearch") return "";
+  try { return String(JSON.parse(String(ev.input ?? "{}"))[ev.tool === "WebFetch" ? "url" : "query"] ?? ""); } catch { return ""; }
+}
 function Permission({ ev, sessionId }: { ev: Ev; sessionId: string }) {
   const { t } = useApp();
   const [busy, setBusy] = useState(false);
-  const send = (body: Record<string, unknown>) => { setBusy(true); api(`sessions/${sessionId}/respond`, { requestId: ev.requestId, ...body }).catch(() => setBusy(false)); };
+  const [open, setOpen] = useState(true);
+  const body = useId();
+  const change = useMemo(() => readChange({ tool: ev.tool, input: ev.input, change: ev.change }), [ev]);
+  const send = (reply: Record<string, unknown>) => { setBusy(true); api(`sessions/${sessionId}/respond`, { requestId: ev.requestId, ...reply }).catch(() => setBusy(false)); };
+  const target = askTarget(ev, change);
+  const key = ASKS.has(ev.tool) && (ev.tool === "Bash" || target) ? ev.tool : "other";
+  const [before, after] = String(t(`chat.ask.${key}`)).split("{target}");
+  const what = change ? "change" : ev.tool === "Bash" ? "command" : "details";
+  // An edit always shows its path (ChatGPT's come with no lines); anything else, its words when it has any.
+  const shown = Boolean(change) || Boolean(String(ev.input ?? "").trim());
+  // Only part of it came: the server's words for a step stop at 3,000 characters (a command is sent whole).
+  const partial = change ? change.cut : ev.tool !== "Bash" && String(ev.input ?? "").length >= 3000;
+  // Characters that reorder text anywhere in what it asks: said once in words, beside the chips that stand for them.
+  const steered = [target, change?.path ?? "", ...(change?.lines.map((l) => l.text) ?? []), String(ev.input ?? "")].some(hasSteering);
+  const [hiddenBefore, hiddenAfter = ""] = String(t("chat.hiddenNote")).split("{mark}");
   return (
-    <section className="ask-card" role="group" aria-label={t("chat.permission", { tool: ev.tool })}>
-      <div className="ask-card-head"><Icon name="access-ask" /><strong>{t("chat.permission", { tool: ev.tool })}</strong></div>
-      <pre className="pre" dir="ltr">{ev.input}</pre>
-      <div className="row">
-        <Btn kind="primary" disabled={busy} onClick={() => send({ allow: true })}>{t("chat.allow")}</Btn>
-        {ev.canRemember && <Btn disabled={busy} onClick={() => send({ allow: true, remember: true })}>{t("chat.allowFolder")}</Btn>}
-        <Btn kind="danger" disabled={busy} onClick={() => send({ allow: false })}>{t("chat.deny")}</Btn>
+    <section className="ask-line" role="group" aria-label={t("chat.permission", { tool: ev.tool })}>
+      <div className="ask-row">
+        <span className="ask-wait" aria-hidden="true" />
+        <strong className="ask-title">{before}{after !== undefined && <><bdi><Steered text={key === "other" ? ev.tool : target} /></bdi>{after}</>}</strong>
+        {shown && (
+          <button type="button" className="ask-show" aria-expanded={open} aria-controls={body} onClick={() => setOpen(!open)}>
+            {t(`chat.${open ? "hide" : "show"}.${what}`)}<Icon name="down" />
+          </button>
+        )}
       </div>
-      <p className="ask-hint">{t("chat.access.hint")}</p>
+      {shown && (
+        <div className={`fold${open ? " open" : ""}`} id={body}>
+          <div>
+            {change
+              ? (
+                <div className="pre ask-diff">
+                  <div className="ask-path"><Steered text={change.path} /></div>
+                  {change.lines.map((l, k) => (
+                    <div key={k} className={`ask-diff-line ${l.kind}`}><span className="ask-sign">{l.kind === "add" ? "+" : l.kind === "del" ? "−" : ""}</span><span><Steered text={l.text || " "} /></span></div>
+                  ))}
+                </div>
+              )
+              : <pre className="pre"><Steered text={String(ev.input ?? "")} /></pre>}
+          </div>
+        </div>
+      )}
+      {steered && <p className="ask-partial"><Icon name="warn" /><span>{hiddenBefore}<HiddenMark />{hiddenAfter}</span></p>}
+      {partial && <p className="ask-partial"><Icon name="warn" />{t("chat.partial")}</p>}
+      <div className="ask-acts">
+        <button type="button" className="ask-btn yes" disabled={busy} onClick={() => send({ allow: true })}><Icon name="check" />{t("chat.allow")}</button>
+        {ev.canRemember && <button type="button" className="ask-btn" disabled={busy} onClick={() => send({ allow: true, remember: true })}>{t("chat.allowFolder")}</button>}
+        <button type="button" className="ask-btn no" disabled={busy} onClick={() => send({ allow: false })}><Icon name="close" />{t("chat.deny")}</button>
+      </div>
     </section>
   );
 }
 
-// Pip's questions, each with its options as rows to pick, and a line for an answer of your own.
+// An option's words in a row that keeps the page's way: Hebrew with its names set apart (Words), anything else set
+// apart whole, so a Hebrew line that starts with "Python" doesn't turn left to right.
+const Said = ({ text }: { text: string }) => (HEBREW.test(text) ? <Words text={text} /> : <bdi>{text}</bdi>);
+
+// Pip's questions, each with its options as rows to pick, and a line for an answer of your own; waiting the way a
+// request does, with the slow amber dot and a small round button. A question runs the way its language does.
 function Question({ ev, sessionId }: { ev: Ev; sessionId: string }) {
   const { t } = useApp();
   const [picked, setPicked] = useState<Record<number, string[]>>({});
@@ -541,18 +656,19 @@ function Question({ ev, sessionId }: { ev: Ev; sessionId: string }) {
     <form className="ask-card" onSubmit={submit}>
       {ev.questions.map((q: any, qi: number) => (
         <fieldset key={qi} className="ask-question">
-          <legend dir="auto">{q.question}</legend>
+          <legend dir={HEBREW.test(q.question) ? "rtl" : "ltr"}><span className="ask-wait" aria-hidden="true" /><span><Words text={q.question} /></span></legend>
           {q.options.map((o: any) => (
             <label key={o.label} className="ask-option">
               <input type={q.multiSelect ? "checkbox" : "radio"} name={`q${qi}`} checked={(picked[qi] ?? []).includes(o.label)} onChange={() => toggle(qi, o.label, q.multiSelect)} />
-              <span dir="auto"><strong>{o.label}</strong>{o.description && <small>{o.description}</small>}</span>
+              <span><strong><Said text={o.label} /></strong>{o.description && <small><Said text={o.description} /></small>}</span>
             </label>
           ))}
-          <input type="text" placeholder={t("chat.other")} aria-label={t("chat.other")} dir="auto" value={other[qi] ?? ""} onChange={(e) => setOther({ ...other, [qi]: e.target.value })} />
+          {/* Empty, the page's direction (as the box's), so the hint starts on the page's side; typed in, the words'. */}
+          <input type="text" placeholder={t("chat.other")} aria-label={t("chat.other")} dir={other[qi] ? "auto" : undefined} value={other[qi] ?? ""} onChange={(e) => setOther({ ...other, [qi]: e.target.value })} />
         </fieldset>
       ))}
       {error && <p className="error-line" role="alert">{error}</p>}
-      <div><Btn kind="primary" type="submit" disabled={busy}>{t("chat.answer")}</Btn></div>
+      <div className="ask-acts"><button type="submit" className="ask-btn yes" disabled={busy}><Icon name="check" />{t("chat.answer")}</button></div>
     </form>
   );
 }
@@ -575,18 +691,19 @@ const clip = (s: string) => (s.length > 140 ? `${s.slice(0, 139).trimEnd()}…` 
 function useToolLabel() {
   const { t } = useApp();
   return (ev: Ev): React.ReactNode => {
-    if (ev.label) return <bdi>{clip(String(ev.label))}</bdi>;
+    // What a step names comes from the AI, so characters that reorder text show as their codes here too (Steered).
+    if (ev.label) return <bdi><Steered text={clip(String(ev.label))} /></bdi>;
     const target = clip(shortTarget(ev.target));
-    if (String(t(`chat.tools.${ev.name}`)).startsWith("chat.tools.")) return <bdi>{target || ev.name}</bdi>;
+    if (String(t(`chat.tools.${ev.name}`)).startsWith("chat.tools.")) return <bdi><Steered text={target || String(ev.name)} /></bdi>;
     const [before, after = ""] = String(t(`chat.tools.${ev.name}`, { target: "\u0000" })).split("\u0000");
-    return <>{before}{target && <bdi>{target}</bdi>}{after}</>;
+    return <>{before}{target && <bdi><Steered text={target} /></bdi>}{after}</>;
   };
 }
 
 // Each tool's icon, by what it does; its family gives its colour (styles.css .step-icon): the web blue, files grey,
 // writing mint, judging amber, keeping pink.
 const TOOL_ICONS: Record<string, string> = {
-  FetchPosting: "site", WebFetch: "site", WebSearch: "find", SearchRole: "find", ReadPortal: "portals", Read: "file", Glob: "files", Grep: "find",
+  FetchPosting: "site", WebFetch: "site", WebSearch: "find", SearchRole: "find", ReadPortal: "portals", ReadChannel: "portals", Read: "file", Glob: "files", Grep: "find",
   Write: "edit", Edit: "edit", NotebookEdit: "edit", Bash: "tools", DraftCv: "edit", ReviewCv: "rules", BuildCv: "apps", EvaluateFit: "gauge",
   FitCheck: "gauge", RankJob: "gauge", SaveJobs: "saved", SaveApplication: "saved", Skill: "readme", Agent: "ai", Task: "ai", TodoWrite: "rules",
   AskUserQuestion: "chat",
@@ -631,11 +748,12 @@ function stepTree(tools: Ev[]): StepRow[] {
 // cross; Sean, 2026-11-11), a little apart from its icon, then what it did; what came back, when there is something,
 // folds out under it (.fold). place: where it stands in the tree; fresh: it came while the steps were on the page,
 // so it grows into place instead of jumping in.
-function ToolLine({ ev, result, working, place = "", fresh = false }: { ev: Ev; result?: Ev; working: boolean; place?: StepRow["place"]; fresh?: boolean }) {
+// aside: the step started a helper that is still at work in the background, so it shows at work though it answered.
+function ToolLine({ ev, result, working, place = "", fresh = false, aside = false }: { ev: Ev; result?: Ev; working: boolean; place?: StepRow["place"]; fresh?: boolean; aside?: boolean }) {
   const label = useToolLabel();
   const [open, setOpen] = useState(false);
   const body = useId();
-  const state = result ? (result.isError ? "failed" : "done") : working ? "working" : "done";
+  const state = aside ? "working" : result ? (result.isError ? "failed" : "done") : working ? "working" : "done";
   const mark = state === "working"
     ? <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>
     : <span className={`step-state ${state}`}><Icon name={state === "failed" ? "close" : "check"} /></span>;
@@ -652,12 +770,64 @@ function ToolLine({ ev, result, working, place = "", fresh = false }: { ev: Ev; 
   );
 }
 
+// What Pip is up to while no step shows it, in one funny word like Claude Code's spinner ("Combobulating…", Sean
+// 2026-11-11): one at a time from a deck shuffled once for the page, so none comes back before the rest have shown,
+// and a new one every few seconds while the wait goes on.
+const deck: number[] = [];
+let lastWord = -1;
+function dealWord(n: number) {
+  if (!deck.length) {
+    for (let i = 0; i < n; i++) deck.push(i);
+    for (let i = n - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+    // A new deck never starts with the word just shown.
+    if (n > 1 && deck[n - 1] === lastWord) [deck[0], deck[n - 1]] = [deck[n - 1], deck[0]];
+  }
+  return (lastWord = deck.pop()!);
+}
+// A word as shown: its key, its place in the list, and where the passing light (pass-light, 1.8s) stood when it came,
+// so every word's light runs on one clock and a new word doesn't restart it.
+type Shown = { n: number; k: number; light: string };
+const shownNow = (n: number, k: number): Shown => ({ n, k, light: `${-(performance.now() % 1800)}ms` });
+function WorkWord({ className }: { className: string }) {
+  const { t } = useApp();
+  const words: string[] = t("chat.musing");
+  // The word shown and, for the moment they cross, the one leaving (Sean's pick of four sketches: the old word blurs
+  // away as the new one sharpens in its place).
+  const [shown, setShown] = useState<{ now: Shown; gone?: Shown }>(() => ({ now: shownNow(0, dealWord(words.length)) }));
+  useEffect(() => {
+    const tick = setInterval(() => {
+      const k = dealWord(words.length);
+      setShown(({ now }) => ({ now: shownNow(now.n + 1, k), gone: now }));
+    }, 6000);
+    return () => clearInterval(tick);
+  }, [words.length]);
+  useEffect(() => {
+    if (!shown.gone) return;
+    const end = setTimeout(() => setShown(({ now }) => ({ now })), 320);
+    return () => clearTimeout(end);
+  }, [shown.gone]);
+  const word = (w: Shown, out: boolean) => (
+    <span key={w.n} className={`work-word${out ? " out" : ""}`}>
+      <span className={className} style={{ animationDelay: w.light }}>{words[w.k % words.length]}</span>
+    </span>
+  );
+  // Nothing hidden beside it: a hidden label, placed absolutely, escaped the conversation's scroll and made the whole
+  // page scroll. aria-live off: the conversation is a live region, and it shouldn't read out every new word.
+  return <span className="work" aria-live="off">{shown.gone && word(shown.gone, true)}{word(shown.now, false)}</span>;
+}
+
 // The tool calls between two messages as a chat app's work line (OpenAI's "Worked for 44s", Sean's pick,
 // 2026-11-11): shut, the kinds of steps as a stack of coloured icons, how many there were and, after a run's last
 // steps, how long it took (took), over a line across the column; opened, it grows to show each step as a row. At
 // work, the AI's orb, the step under way with a light passing over its words, its number, and the AI's colours
-// running along the line.
-function ToolSteps({ tools, results, working, took }: { tools: Ev[]; results: Map<string, Ev>; working: boolean; took?: number }) {
+// running along the line. musing: Pip is at work with no step under way (thinking what to do next) and the block is
+// the last thing shown, so it keeps the orb and says one of his work words (WorkWord) until the next step comes.
+// A helper still at work in the background (agent.ts setBackground): its task, what it does, its kind, its step.
+type Aside = { id: string; what: string; kind: string; tool?: string };
+const NONE = new Set<string>();
+
+// aside: the steps whose helpers are still at work in the background; with none under way, the line names the last.
+function ToolSteps({ tools, results, working, musing = false, took, aside = NONE }: { tools: Ev[]; results: Map<string, Ev>; working: boolean; musing?: boolean; took?: number; aside?: Set<string> }) {
   const { t } = useApp();
   const label = useToolLabel();
   const duration = useDuration();
@@ -669,31 +839,35 @@ function ToolSteps({ tools, results, working, took }: { tools: Ev[]; results: Ma
   const tree = useMemo(() => stepTree(tools), [tools]);
   const top = tree.filter((r) => !r.place.startsWith("child")).length || tools.length;
   const busy = working && tools.some((x) => !results.has(x.id));
-  const now = busy ? tools.find((x) => !results.has(x.id)) ?? tools[tools.length - 1] : null;
+  const away = tools.filter((x) => aside.has(x.id));
+  const now = busy ? tools.find((x) => !results.has(x.id)) ?? tools[tools.length - 1] : away[away.length - 1] ?? null;
+  const lit = Boolean(now) || musing;
   const failed = tools.some((x) => results.get(x.id)?.isError);
   const kinds = [...new Map(tools.map((x) => [toolIcon(x), x])).values()].slice(0, 4);
   return (
-    <div className={`steps${busy ? " working" : ""}${failed ? " failed" : ""}`}>
+    <div className={`steps${lit ? " working" : ""}${failed ? " failed" : ""}`}>
       <button type="button" className="steps-head" aria-expanded={open} aria-controls={body} onClick={() => setOpen(!open)}>
-        {now
+        {lit
           ? <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>
           : <span className="steps-stack" aria-hidden="true">{kinds.map((x) => <ToolMark key={x.id} ev={x} />)}</span>}
         <span className="steps-title">
           {now
             ? <span className="steps-now">{label(now)}</span>
-            : <><strong>{top === 1 ? t("chat.step") : t("chat.steps", { n: top })}</strong>{took ? <span>, {duration(took)}</span> : null}</>}
+            : musing
+              ? <WorkWord className="steps-now" />
+              : <><strong>{top === 1 ? t("chat.step") : t("chat.steps", { n: top })}</strong>{took ? <span>, {duration(took)}</span> : null}</>}
         </span>
         {now && <span className="steps-count">{t("chat.stepN", { n: tools.indexOf(now) + 1 })}</span>}
-        {failed && !now && <Icon name="warn" />}
+        {failed && !lit && <Icon name="warn" />}
         <Icon name="down" />
       </button>
       {/* Every step shown, however many: the list grows with them, never a scroll of its own. */}
       <div className={`fold${open ? " open" : ""}`} id={body}>
         <div className="steps-body">
-          <ol>{tree.map((r) => <ToolLine key={r.ev.id} ev={r.ev} result={results.get(r.ev.id)} working={working} place={r.place} fresh={!known.has(r.ev.id)} />)}</ol>
+          <ol>{tree.map((r) => <ToolLine key={r.ev.id} ev={r.ev} result={results.get(r.ev.id)} working={working} place={r.place} fresh={!known.has(r.ev.id)} aside={aside.has(r.ev.id)} />)}</ol>
         </div>
       </div>
-      {now && <span className="steps-bar" aria-hidden="true" />}
+      {lit && <span className="steps-bar" aria-hidden="true" />}
     </div>
   );
 }
@@ -835,6 +1009,9 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
   const stick = useRef(true);
   // A plain conversation has no access to pick; the name of the AI that answered it last stands by the title.
   const plain = Boolean(session?.plain);
+  // Opened from a new conversation's box: the move from there (launch.ts).
+  const root = useRef<HTMLDivElement>(null);
+  const landing = useLanding(id, root);
 
   const loadFiles = useCallback(() => { api(`sessions/${id}/files`).then((d) => setFiles(d.files)).catch(() => {}); }, [id]);
   useEffect(loadFiles, [loadFiles]);
@@ -860,8 +1037,19 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
 
   const resolved = useMemo(() => new Map(events.filter((e) => e.t === "resolved").map((e) => [e.requestId, e])), [events]);
   const results = useMemo(() => new Map(events.filter((e) => e.t === "tool_result").map((e) => [e.id, e])), [events]);
-  // Each turn's steps in one block at its top, its words after it (turnItems).
-  const items = useMemo(() => turnItems(events), [events]);
+  // The helpers still at work in the background, as the conversation last said (Sean 2026-11-12: "לא ברור אם הוא רץ
+  // עדיין או לא"), and the steps that started them, which show at work until they're done.
+  const background = useMemo((): Aside[] => {
+    for (let i = events.length - 1; i >= 0; i--) if (events[i].t === "background") return Array.isArray(events[i].tasks) ? events[i].tasks : [];
+    return [];
+  }, [events]);
+  const aside = useMemo(() => new Set(background.flatMap((x) => (x.tool ? [x.tool] : []))), [background]);
+  // Each turn's steps in one block at its top, its words after it (turnItems). Until the server's first word, a
+  // conversation just started shows its message, under the key the server's will have, so the bubble stays.
+  const items = useMemo((): TurnItem<Ev>[] => {
+    const list = turnItems(events);
+    return list.length || !landing?.words ? list : [{ kind: "event", key: "0", ev: { t: "user", text: landing.words } }];
+  }, [events, landing]);
 
   const working = status === "running" || status === "waiting";
   // How long each turn took, on its block: its runs' durationMs together (one AI handing over to the next is two).
@@ -887,9 +1075,12 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
   // The documents shown after the answers that brought them, and the one being written now, if one is.
   const placed = useMemo(() => placeDocs(events, files), [events, files]);
   const writing = useMemo(() => (working && current ? writingKind(current.tools, (id) => results.has(id)) : null), [current, results, working]);
-  // Stop pressed: said at once, as what is under way takes a moment to be killed, until the conversation stops.
+  // Stop pressed: said at once, as what is under way takes a moment to be killed, until the conversation and its
+  // helpers in the background have all stopped. Stop can be pressed with only the helpers at work, so the turn's own
+  // end isn't the only way out: a new turn begun after it is not being stopped either.
   const [stopping, setStopping] = useState(false);
-  useEffect(() => { if (!working) setStopping(false); }, [working]);
+  useEffect(() => { if (!working && !background.length) setStopping(false); }, [working, background.length]);
+  useEffect(() => { if (working) setStopping(false); }, [working]);
   const stop = () => { setStopping(true); api(`sessions/${id}/interrupt`, {}).catch(() => setStopping(false)); };
   const send = async (files: string[]) => {
     const message = text.trim();
@@ -942,20 +1133,25 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
   };
 
   return (
-    <div className="convo">
+    <div className="convo" ref={root}>
       {!bare && (
         <header className="chat-top">
           {onList && <ListButton onList={onList} />}
-          <h1 className="chat-title" dir="auto">{session ? friendlyTitle(session.title, t) : ""}</h1>
+          {/* A temporary conversation has no title of its own (agent.ts): it says what it is, with its dashed bubble. */}
+          {session?.temporary
+            ? <h1 className="chat-title chat-title-temp"><Icon name="temporary" />{t("chat.temporary.title")}</h1>
+            : <h1 className="chat-title" dir="auto">{session ? friendlyTitle(session.title, t) : ""}</h1>}
           {(plain || (session?.agent && session.agent !== "claude")) && session?.engine && <span className="chat-model"><bdi>{session.engine}</bdi></span>}
           {status !== "idle" && <span className={`chat-state ${status}`}>{t(stopping ? "session.stopping" : `session.${status}`)}</span>}
+          {status === "idle" && background.length > 0 && <span className="chat-state running">{t("session.background")}</span>}
         </header>
       )}
       <div className="log-frame">
         <div className="log" ref={log} role="log" aria-live="polite" onScroll={(e) => { const el = e.currentTarget; stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
           <div className="log-column">
             {items.map((item) => (item.kind === "tools"
-              ? <ToolSteps key={item.key} tools={item.tools} results={results} working={working && item === current} took={took.get(item.key)} />
+              ? <ToolSteps key={item.key} tools={item.tools} results={results} working={working && item === current} took={took.get(item.key)} aside={aside}
+                musing={!live && status === "running" && !stopping && item === items[items.length - 1]} />
               : (
                 <React.Fragment key={item.key}>
                   {render(item.ev, item.key)}
@@ -965,7 +1161,18 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
             {writing && <DocCard ghost={writing} />}
             {live && <div className="msg-pip live"><Markdown src={live} className="md msg-text" /></div>}
             {!live && status === "running" && (stopping || items[items.length - 1]?.kind !== "tools") && (
-              <div className="working-line"><span className="steps-orb" aria-hidden="true"><AiSky orb /></span><span className="typing-text">{t(stopping ? "session.stopping" : "chat.working")}</span></div>
+              <div className="working-line">
+                <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>
+                {stopping ? <span className="typing-text">{t("session.stopping")}</span> : <WorkWord className="typing-text" />}
+              </div>
+            )}
+            {/* Pip done, his helpers not: how many are still at work in the background, and what each is doing. */}
+            {!live && status !== "running" && status !== "waiting" && background.length > 0 && (
+              <div className="working-line aside-line">
+                <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>
+                <span className="typing-text">{background.length === 1 ? t("chat.aside.one") : t("chat.aside.many", { n: background.length })}</span>
+                <span className="aside-what"><bdi><Steered text={background.map((x) => x.what).filter(Boolean).join(", ")} /></bdi></span>
+              </div>
             )}
             {placed.end.map((d) => <DocCard key={d.path} doc={d} />)}
           </div>
@@ -973,9 +1180,9 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
         <ThinBar target={log} />
       </div>
       <Composer
-        text={text} setText={setText} onSend={send} onStop={stop} working={working} placeholder={t("chat.message")}
+        text={text} setText={setText} onSend={send} onStop={stop} working={working || background.length > 0} placeholder={t("chat.message")} temporary={Boolean(session?.temporary)}
         tools={plain ? null : <AccessPicker value={access} onChange={changeAccess} />}
-        warn={!plain && access === "full" ? t("chat.access.fullWarn") : ""}
+        warn={!plain && access === "full" ? <FullWarn /> : ""}
       />
     </div>
   );

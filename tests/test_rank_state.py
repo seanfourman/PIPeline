@@ -14,12 +14,16 @@ import csv
 import json
 import subprocess
 import sys
+import threading
+import time
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 REPO = Path(__file__).resolve().parent.parent
 TOOL = REPO / "tools" / "rank_state.py"
+sys.path.insert(0, str(REPO / "tools"))
+import rank_state  # noqa: E402
 
 TODAY = "2026-09-03"
 
@@ -959,3 +963,43 @@ class Filtered(RankStateCase):
         self.assertNotIn("experience_min", state["a"])
         self.assertEqual(state["b"]["status"], "new")
         self.assertEqual([e["key"] for e in out["errors"]], ["b"])
+
+
+class StateLock(RankStateCase):
+    """One writer of seen_jobs.json at a time, so no run writes back over another's change."""
+
+    def test_apply_in_another_process_waits_for_the_writer_and_keeps_its_change(self):
+        self.write_state({"a": entry(), "b": entry(url="https://example.com/other")})
+        results = self.tmp / "results.json"
+        results.write_text(json.dumps([{"key": "a", "status": "filtered", "reason": "senior"}]), encoding="utf-8")
+        hold, held = 1.5, threading.Event()
+
+        def writer():
+            # Another run's read, change and write, made while it holds the lock.
+            with rank_state.state_lock(self.state):
+                held.set()
+                time.sleep(hold)
+                doc, seen = rank_state.load_state(self.state)
+                seen["b"]["status"] = "skipped"
+                rank_state.save_state(self.state, doc)
+
+        thread = threading.Thread(target=writer)
+        thread.start()
+        held.wait()
+        started = time.monotonic()
+        self.run_tool("apply", "--results", str(results))
+        waited = time.monotonic() - started
+        thread.join()
+        self.assertGreaterEqual(waited, hold * 0.8)
+        state = self.read_state()
+        self.assertEqual((state["a"]["status"], state["b"]["status"]), ("filtered", "skipped"))
+
+    def test_a_writer_gives_up_with_a_message_when_the_list_stays_held(self):
+        self.addCleanup(setattr, rank_state, "LOCK_WAIT", rank_state.LOCK_WAIT)
+        rank_state.LOCK_WAIT = 0.3
+        with rank_state.state_lock(self.state):
+            with self.assertRaisesRegex(rank_state.StateLocked, "another run"):
+                with rank_state.state_lock(self.state):
+                    pass
+        with rank_state.state_lock(self.state):
+            pass

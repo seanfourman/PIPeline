@@ -11,6 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+import job_key  # noqa: E402
+import rank_state  # noqa: E402
 import scrape_state  # noqa: E402
 
 
@@ -53,6 +55,51 @@ class ScrapeStateTests(unittest.TestCase):
         out = self.run_tool("candidates", [valid, {"title": "Unknown", "company": None, "url": "https://jobs.test/bad"}, None])
         self.assertEqual(out["selected"], [valid])
         self.assertEqual([item["index"] for item in out["invalid"]], [1, 2])
+
+    def test_candidates_keep_postings_with_no_employer_named_told_apart_by_url(self):
+        self.state.parent.mkdir()
+        self.state.write_text(json.dumps({"seen": {
+            "unknown-company_qa-engineer": {"title": "QA Engineer", "company": "", "url": "https://jobs.test/1"},
+        }}), encoding="utf-8")
+        jobs = [
+            {"title": "QA Engineer", "company": "", "url": "https://jobs.test/1"},
+            {"title": "QA Engineer", "company": "", "url": "https://jobs.test/2"},
+            {"title": "QA Engineer", "company": "  ", "url": "https://jobs.test/3"},
+            {"title": "QA Engineer", "company": "", "url": "https://jobs.test/3/"},
+        ]
+        out = self.run_tool("candidates", jobs)
+        self.assertEqual(out["selected"], [jobs[1], jobs[2]])
+        self.assertEqual((out["already_seen"], out["repeated_in_batch"], out["invalid"]), (1, 1, []))
+
+    def test_store_gives_unnamed_postings_with_one_title_keys_of_their_own(self):
+        base = {
+            "title": "QA Engineer", "company": "", "first_seen": "2026-11-14", "posted_date": None,
+            "deadline": None, "fit": "medium", "status": "new", "portal": "alljobs-search", "source": "cli",
+        }
+        first = self.run_tool("store", [{**base, "url": "https://jobs.test/1"}, {**base, "url": "https://jobs.test/2"}])
+        later = self.run_tool("store", [{**base, "url": "https://jobs.test/3"}])
+        keys = first["added"] + later["added"]
+        self.assertEqual(keys[0], "unknown-company_qa-engineer")
+        self.assertEqual(len(set(keys)), 3)
+        stored = json.loads(self.state.read_text(encoding="utf-8"))["seen"]
+        self.assertEqual(sorted(stored[k]["url"] for k in keys), [f"https://jobs.test/{i}" for i in (1, 2, 3)])
+        self.assertTrue(all(job_key.is_canonical(k) for k in keys))
+
+    def test_store_never_writes_while_another_run_holds_the_history(self):
+        good = {
+            "title": "Builder", "company": "Fresh", "url": "https://jobs.test/fresh",
+            "first_seen": "2026-11-14", "posted_date": None, "deadline": None,
+            "fit": "high", "status": "new", "portal": "example-search", "source": "cli",
+        }
+        self.addCleanup(setattr, rank_state, "LOCK_WAIT", rank_state.LOCK_WAIT)
+        rank_state.LOCK_WAIT = 0.3
+        with rank_state.state_lock(self.state):
+            self.results.write_text(json.dumps([good]), encoding="utf-8")
+            args = argparse.Namespace(command="store", results=self.results, state=self.state, tracker=self.tracker)
+            with self.assertRaises(rank_state.StateLocked):
+                scrape_state.run(args)
+            self.assertFalse(self.state.exists())
+        self.assertEqual(self.run_tool("store", [good])["added"], ["fresh_builder"])
 
     def test_store_adds_only_new_jobs_and_preserves_ranked_history(self):
         old = {"legacy_key": {"title": "Engineer", "company": "Acme", "url": "https://jobs.test/old", "status": "ranked", "rank_score": 91}}

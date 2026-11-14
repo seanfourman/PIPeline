@@ -59,6 +59,11 @@ static class Launcher
     const long UPDATE_RETRY_MS = 6L * 60 * 60 * 1000;
     const int UPDATE_TELL_MS = 8000;
     const int STARTED_MS = 60000;
+    // The key an update's signature is checked with (installer/signing.ts, update-key.pem): an RSA public key's modulus
+    // and exponent, in base64. The private key that signs never leaves the computer Pip is built on, so whoever took
+    // over the site couldn't hand this computer a program of their own.
+    const string UpdateKeyModulus = "o+oMnqV0KlJiCQhxwbypGTLm0iHx3ttF3PCKirZhv3wyWlwZIgIAMiLODfD41oriIers1UAzbDtbBdmNV7ahnsd9pa/WlfrSLS75VtA5glfPl/PnnGUNUdtD2l6/8EkjWeMliqVaMhErIfvn1Bt0GyW0ZjrJvBGFvLno0/sWtqHHVmjS9qdlRyIvBsOGhYXqraXbzSXc+zSqu7P9g2UnZYuB8hoRBpyrwqcgQlQgaYJoEs0q3OrNYcUi/IS5zr1x8Pqra/u0pvDLUi/LkwVNpR5S27fbKf7QeAVHfw5IHAVbF52RkkNQfhw2Hsg+yd3tjzYYDDEJUAhXBuGXYGU8JoejG8eSZd4r7A8YvrEE3NqzHXWPA9JUAoGwWxQOYRNfJowCiXQ2HV60DY/nxuTCKn1MhL6cHRnKV26xup7Q3An3QwKShP/9jWHY69i0UQrhoQ2rk63NG+xv2ZttGl6iSVDH1zEQ5x9yD/nXW829kO8FizclavMcjU9qzEfu1hVX";
+    const string UpdateKeyExponent = "AQAB";
     // What the server stops with to open another account (web/server.ts restart): it is started again.
     const int RESTART = 75;
     static int updating;
@@ -225,9 +230,9 @@ static class Launcher
     }
 
     // One look: when the site's version for Windows (version.json, deploy.ts) isn't the one installed here
-    // (VERSION.json, build.ts) and Pip isn't in the middle of something, the site's installer, checked against the
-    // SHA-256 the site gives for it, runs unseen (/UPDATE=1 in pip.iss): it stops Pip, puts the new one in, and starts it
-    // again in the background. Before it goes, the server is told, so that the page says Pip is updating. True once the
+    // (VERSION.json, build.ts), its signature holds (Signed) and Pip isn't in the middle of something, the site's
+    // installer, checked against the SHA-256 the signature vouches for, runs unseen (/UPDATE=1 in pip.iss): it stops
+    // Pip, puts the new one in, and starts it again in the background. Before it goes, the server is told, so that the page says Pip is updating. True once the
     // installer runs. A version tried already is tried again only after a while; a server that doesn't answer isn't in
     // the middle of anything, so an update can mend one that broke.
     static bool Update(string site, string port, string app, string data)
@@ -246,6 +251,7 @@ static class Launcher
             string version = Field(offered, "windows");
             string sha = Field(offered, "setup");
             if (version == "" || sha == "" || version == mine) return false;
+            if (!Signed("pip-update windows " + version + " " + sha, Field(offered, "windowsSig"))) return false;
             string tried = Path.Combine(data, "update.json");
             string last = ReadOrEmpty(tried);
             long at;
@@ -302,6 +308,25 @@ static class Launcher
     {
         Match found = Regex.Match(json ?? "", "\"" + name + "\"\\s*:\\s*\"([^\"]*)\"");
         return found.Success ? found.Groups[1].Value : "";
+    }
+
+    // Whether signature (base64) is the update key's over text: RSA, PKCS#1 v1.5, SHA-256 (installer/signing.ts). No
+    // signature, or one that doesn't hold, is no update.
+    static bool Signed(string text, string signature)
+    {
+        if (signature == "") return false;
+        try
+        {
+            using (RSACryptoServiceProvider rsa = new RSACryptoServiceProvider())
+            {
+                RSAParameters key = new RSAParameters();
+                key.Modulus = Convert.FromBase64String(UpdateKeyModulus);
+                key.Exponent = Convert.FromBase64String(UpdateKeyExponent);
+                rsa.ImportParameters(key);
+                return rsa.VerifyData(Encoding.UTF8.GetBytes(text), CryptoConfig.MapNameToOID("SHA256"), Convert.FromBase64String(signature));
+            }
+        }
+        catch (Exception) { return false; }
     }
 
     static string ReadOrEmpty(string file)

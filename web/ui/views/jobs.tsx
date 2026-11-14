@@ -10,7 +10,17 @@ import { MAKERS, useFirstAi } from "./chat";
 import { openJob, sendOpen } from "./job";
 import { areaName, AreasEditor, marketLabel, MarketsEditor } from "./settings";
 
-export type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; verdict?: string; status?: string };
+// score is the AI's, when the user asked for one; auto the automatic one (match.ts), by the job's posting, or by its title
+// alone while its posting isn't read (autoBasis).
+export type Job = { id?: string; key?: string; title: string; company: string; location: string; tier: string; date: string; url: string; score?: number | null; auto?: number | null; autoBasis?: string; verdict?: string; status?: string };
+
+// A job's score as its row shows it: the AI's, when the user asked for one, else its automatic one; and which it is.
+export const shownScore = (j: Pick<Job, "score" | "auto">) => (typeof j.score === "number" ? j.score : typeof j.auto === "number" ? j.auto : null);
+// A score firm enough to rank a job by on its own, as the home page does: the AI's, else the automatic one from its
+// posting; never a guess from its title alone.
+export const firmScore = (j: Pick<Job, "score" | "auto" | "autoBasis">) => (typeof j.score === "number" ? j.score : j.autoBasis === "posting" && typeof j.auto === "number" ? j.auto : null);
+export type ScoreKind = "ai" | "auto" | "title";
+export const scoreKind = (j: Pick<Job, "score" | "autoBasis">): ScoreKind => (typeof j.score === "number" ? "ai" : j.autoBasis === "posting" ? "auto" : "title");
 
 // How many jobs a list of them shows at first, and how many more each time its end comes near the bottom of the
 // screen (ui/more.tsx): each row has its own live AI button.
@@ -80,7 +90,8 @@ function JobRow({ job, index, lead, chips, faded = false, rank }: {
   const basics = { url: job.url, title: job.title, company: job.company, location: job.location, date: job.date };
   return (
     <article className={`result ${faded ? "faded" : ""} ${id ? "opens" : ""}`} style={{ "--i": Math.min(index, 12) } as React.CSSProperties}>
-      {lead}
+      {/* A score's tile sits over the row's link, for its name under the pointer, and opens the page as the row does. */}
+      <span className="result-lead" onClick={id ? () => openJob(basics) : undefined}>{lead}</span>
       <div className="result-text">
         <h3 className="result-title">
           {id ? (
@@ -269,10 +280,10 @@ function ResultsEnd({ count, hidden }: { count: number; hidden: number }) {
   );
 }
 
-// What Pip found that is still worth a look, in the areas wanted, the best scored first: what the ranking reads, not
-// what the AI skipped, nor the expired.
-const pipFound = (jobs: Record<string, any>[]) => jobs.filter((j) => j.tier !== "far" && j.status !== "skipped" && j.status !== "expired")
-  .sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || String(b.date).localeCompare(String(a.date)));
+// What Pip found that is still worth a look, in the areas wanted, the best scored first (the AI's score, else the
+// automatic one): not what the AI skipped, nor the expired.
+export const pipFound = (jobs: Record<string, any>[]) => jobs.filter((j) => j.tier !== "far" && j.status !== "skipped" && j.status !== "expired")
+  .sort((a, b) => (shownScore(b) ?? -1) - (shownScore(a) ?? -1) || String(b.date).localeCompare(String(a.date)));
 
 // Behind the search, only gradients, as if alive: a forest rainbow (the --sky colours, a sunny forest's by day and
 // the night forest's at night) as six clouds that drift, turn and stretch round a breathing glow, blending as they
@@ -1006,7 +1017,8 @@ export const Jobs = () => <div className="page jobs-page"><Quick /></div>;
 type Saved = AppState["saved"][number];
 // A job Pip found: gate is the check it failed when it was left out: its place or its language (the ranking's), or the
 // years it asks (years) or its senior title, above a junior search; portal is where it was found (seen_jobs.json).
-export type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string; years?: number | null; portal?: string; fit?: string };
+// group: a high-tech company's or a known employer's ("known"), or another's (groups.ts).
+export type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string; years?: number | null; portal?: string; fit?: string; group?: "known" | "other" };
 
 // The background runs the page waits on, by their conversations' titles (server.ts).
 const RANK = "/rank";
@@ -1017,26 +1029,32 @@ const SMART = "/job-scraper";
 export const bandOf = (score: number) => (score >= 75 ? "strong" : score >= 60 ? "good" : score >= 45 ? "fair" : "low");
 
 // The groups Pip's list is shown in, in this order: the strong fits; the good and fair ones; the rest; those with
-// nothing to go on yet; and those left out, for their place, their language or the level they ask. A job ranked goes by its
-// score; one not ranked yet by the fit the smart search gave it as it was found (scraper.ts: high, medium, low), so
-// a list of a thousand not yet ranked is still in its order, the best first.
+// nothing to go on yet; and those left out, for their place, their language or the level they ask. A job goes by its
+// score, the AI's or the automatic one; one with neither (a Pip from before) by the fit the smart search gave it as it
+// was found (scraper.ts: high, medium, low), so the list is in its order, the best first.
 const GROUPS = ["strong", "worth", "less", "waiting", "out"] as const;
 function groupOf(job: Found): (typeof GROUPS)[number] {
   if (job.veto) return "out";
-  if (typeof job.score !== "number") return job.fit === "high" ? "strong" : job.fit === "medium" ? "worth" : job.fit === "low" ? "less" : "waiting";
-  const band = bandOf(job.score);
+  const score = shownScore(job);
+  if (score === null) return job.fit === "high" ? "strong" : job.fit === "medium" ? "worth" : job.fit === "low" ? "less" : "waiting";
+  const band = bandOf(score);
   return band === "strong" ? "strong" : band === "low" ? "less" : "worth";
 }
 
-// The ranking's score at the start of a job Pip found, on a round tile where a search result has the company's
-// initial: green for a strong or good fit, amber for a fair one, grey below, or when the ranking left the job out
-// (out). A job not ranked yet has its company's initial there, as everywhere else. fresh is a score just come in
+// A job's score at the start of its row, on a round tile where a search result has the company's initial: green for a
+// strong or good fit, amber for a fair one, grey below, or when the job was left out (out). kind says whose: the
+// automatic score, from the posting's words, is the plain tile; the AI's stands on the AI's moving colours, as the
+// job page's AI score does (grey all the same once the job is left out); a guess from the title alone, while the
+// posting isn't read, is the tile's outline. Its name floats over it under the pointer. fresh is a score just come in
 // while the page is open, which pops up.
-export function Score({ score, fresh = false, out = false }: { score: number; fresh?: boolean; out?: boolean }) {
+export function Score({ score, kind = "auto", fresh = false, out = false }: { score: number; kind?: ScoreKind; fresh?: boolean; out?: boolean }) {
   const { t } = useApp();
+  const sky = kind === "ai" && !out;
   return (
-    <span className={`result-mark score-mark ${out ? "low" : bandOf(score)} ${fresh ? "fresh" : ""}`} role="img" aria-label={t("jobs.score", { n: score })}>
+    <span className={`result-mark score-mark ${out ? "low" : bandOf(score)} ${sky ? "ai" : kind === "ai" ? "auto" : kind} ${fresh ? "fresh" : ""}`} role="img" aria-label={`${t("jobs.score", { n: score })}, ${t(`jobs.scoreKind.${kind}`)}`}>
+      {sky && <AiSky orb />}
       {score}
+      <ActLabel>{t(`jobs.scoreKind.${kind}`)}</ActLabel>
     </span>
   );
 }
@@ -1063,22 +1081,24 @@ function FoundChips({ job }: { job: Found }) {
     {days !== null && days >= 0 && days <= 7 && (
       <span className="result-chip warn">{days === 0 ? t("jobs.flags.closesToday") : days === 1 ? t("jobs.flags.closesTomorrow") : t("jobs.flags.closesIn", { n: days })}</span>
     )}
+    {job.group === "known" && <span className="result-chip good">{t("jobs.knownChip")}</span>}
     {job.date && <span className="result-chip">{postedAgo(job.date, t)}</span>}
     {showTier && <span className={`result-chip ${TIER_TONE[job.tier] ?? ""}`}>{t(`tiers.${job.tier}`)}</span>}
   </>;
 }
 
-// The scores seen on this visit, and those just come in (a job waiting that now has one), for a moment, so each
-// pops up as it lands. None the first time round, which is only what was there already.
-function useFreshScores(jobs: Found[]) {
-  const seen = useRef<Map<string, number | null>>();
+// The scores seen on this visit, and those just come in (a job's AI score, or its automatic one once its posting is
+// read), for a moment, so each pops up as it lands. None the first time round, which is only what was there already.
+export function useFreshScores(jobs: Found[]) {
+  const seen = useRef<Map<string, string>>();
   const [fresh, setFresh] = useState<Set<string>>(() => new Set());
-  const sign = jobs.map((j) => `${j.key}:${j.score ?? ""}`).join("|");
+  const mark = (j: Found) => (typeof j.score === "number" ? "ai" : j.autoBasis === "posting" ? "auto" : "");
+  const sign = jobs.map((j) => `${j.key}:${mark(j)}`).join("|");
   useEffect(() => {
     const before = seen.current;
-    seen.current = new Map(jobs.map((j) => [j.key, typeof j.score === "number" ? j.score : null]));
+    seen.current = new Map(jobs.map((j) => [j.key, mark(j)]));
     if (!before) return;
-    const landed = jobs.filter((j) => typeof j.score === "number" && before.has(j.key) && before.get(j.key) === null).map((j) => j.key);
+    const landed = jobs.filter((j) => before.has(j.key) && mark(j) !== "" && before.get(j.key) !== mark(j)).map((j) => j.key);
     if (!landed.length) return;
     setFresh(new Set(landed));
     const timer = setTimeout(() => setFresh(new Set()), 1600);
@@ -1152,7 +1172,7 @@ function MineEmpty() {
 // Nothing found yet: the smart search, in the AI's colours, with what it takes under it. It runs in the background
 // (run in app.tsx); meanwhile the words say Pip is searching and the button says so too, with a light passing over it,
 // and takes no clicks. Why it couldn't start shows under it.
-function FoundEmpty({ searching }: { searching: boolean }) {
+export function FoundEmpty({ searching }: { searching: boolean }) {
   const { t, run, err } = useApp();
   const ai = MAKERS[useFirstAi()].name;
   const [starting, setStarting] = useState(false);
@@ -1186,8 +1206,8 @@ function FoundEmpty({ searching }: { searching: boolean }) {
 // Pip's list and the saved one, each filtered on its own: words in a job's title, company or place; then, for Pip's,
 // how well it fits (its group), its area, how lately it was posted, where it was found, whether it closes within the
 // week, and the order. Kept for the visit, as the search's results are, so the page left and come back to keeps them.
-type Filters = { q: string; fit: string; area: string; days: string; source: string; closing: string; sort: string };
-const NO_FILTERS: Filters = { q: "", fit: "all", area: "all", days: "all", source: "all", closing: "all", sort: "fit" };
+type Filters = { q: string; fit: string; company: string; area: string; days: string; source: string; closing: string; sort: string };
+const NO_FILTERS: Filters = { q: "", fit: "all", company: "all", area: "all", days: "all", source: "all", closing: "all", sort: "fit" };
 const MINE_DEFAULT: Filters = { ...NO_FILTERS, sort: "new" };
 const filtersKept: Record<"found" | "mine", Filters> = { found: { ...NO_FILTERS }, mine: { ...MINE_DEFAULT } };
 // How the search and filters show, while Sean picks one of three quiet ways (user/mockups/my-jobs): q1, a slim
@@ -1214,6 +1234,7 @@ function filterFound(jobs: Found[], f: Filters) {
   const words = f.q.trim().toLowerCase();
   const list = jobs.filter((j) => has(words, j.title, j.company, j.location)
     && (f.fit === "all" || groupOf(j) === f.fit)
+    && (f.company === "all" || (j.group ?? "other") === f.company)
     && (f.area === "all" || j.tier === f.area)
     && (f.days === "all" || within(ageOf(j.date), Number(f.days)))
     && (f.source === "all" || sourceOf(j) === f.source)
@@ -1239,6 +1260,7 @@ function useFilters(tab: "found" | "mine", jobs: Found[]): Filter[] {
   const sources = [...new Set(jobs.map(sourceOf))].sort((a, b) => (a === "other" ? 1 : b === "other" ? -1 : a.localeCompare(b)));
   return [
     { key: "fit", label: t("jobs.filters.fit"), options: [["all", t("jobs.filters.all")], ...GROUPS.map((g): Option => [g, t(`jobs.groups.${g}`), count((j) => groupOf(j) === g)]).filter((o) => o[2])] },
+    { key: "company", label: t("jobs.filters.company"), options: [["all", t("jobs.filters.all")], ["known", t("jobs.filters.known"), count((j) => j.group === "known")], ["other", t("jobs.filters.unknown"), count((j) => j.group !== "known")]] },
     { key: "area", label: t("jobs.filters.area"), options: [["all", t("jobs.filters.all")], ...(["near", "ok", "edge", "unknown"] as const).map((a): Option => [a, t(`tiers.${a}`), count((j) => j.tier === a)]).filter((o) => o[2])] },
     days,
     { key: "source", label: t("jobs.filters.source"), options: [["all", t("jobs.filters.all")], ...sources.map((s): Option => [s, SOURCE_NAMES[s] ?? t(`jobs.filters.${s}`)])] },
@@ -1396,7 +1418,7 @@ function MineList({ f, onClear }: { f: Filters; onClear: () => void }) {
 // for a moment after the click before that ranking shows. A job that couldn't be ranked (its page wouldn't open)
 // stops turning once no ranking runs. Kept for the visit, so leaving the page and coming back keeps it turning.
 const rankAsked = new Map<string, number>();
-function useRankOne() {
+export function useRankOne() {
   const { s, refresh, err, say } = useApp();
   const [, redraw] = useState(0);
   const running = s.sessions.some((x) => x.title === RANK && x.status === "running");
@@ -1425,6 +1447,20 @@ function useRankOne() {
 // The jobs Pip found, filtered, more as the list is scrolled down: by fit, in groups by how well they fit, each led
 // by its score once ranked, best first, each group with jobs shown under its name, which counts the group as
 // filtered; by date, one list, newest first. Over them, while some wait to be ranked, the ranking.
+// One of Pip's found jobs as a row: its score in a round tile (the AI's, else the automatic one; fresh: just come in;
+// out: ruled out), or, with neither, the company's initial; and, until the AI has scored it, a button to have the AI
+// rank it now. The found list's, and a company's jobs on the companies page.
+export function FoundRow({ job, index, fresh = false, rankOne }: { job: Found; index: number; fresh?: boolean; rankOne: ReturnType<typeof useRankOne> }) {
+  const score = shownScore(job);
+  return (
+    <JobRow job={job} index={index} chips={<FoundChips job={job} />}
+      rank={typeof job.score === "number" ? undefined : { busy: rankOne.busy(job.key), onRank: () => rankOne.rank(job.key) }}
+      lead={score !== null
+        ? <Score score={score} kind={scoreKind(job)} fresh={fresh} out={Boolean(job.veto)} />
+        : <Initial name={job.company || job.title || "?"} />} />
+  );
+}
+
 function FoundList({ f, onClear }: { f: Filters; onClear: () => void }) {
   const { s, t } = useApp();
   const found = pipFound(s.jobs) as Found[];
@@ -1439,13 +1475,7 @@ function FoundList({ f, onClear }: { f: Filters; onClear: () => void }) {
   if (!found.length) return <FoundEmpty searching={searching} />;
   const shown = ordered.slice(0, at.shown);
   let index = 0;
-  const row = (job: Found) => (
-    <JobRow key={job.key} job={job} index={rising(index++)} chips={<FoundChips job={job} />}
-      rank={typeof job.score === "number" ? undefined : { busy: rankOne.busy(job.key), onRank: () => rankOne.rank(job.key) }}
-      lead={typeof job.score === "number"
-        ? <Score score={job.score} fresh={fresh.has(job.key)} out={Boolean(job.veto)} />
-        : <Initial name={job.company || job.title || "?"} />} />
-  );
+  const row = (job: Found) => <FoundRow key={job.key} job={job} index={rising(index++)} fresh={fresh.has(job.key)} rankOne={rankOne} />;
   return (
     <>
       {!list.length && <NoneLeft onClear={onClear} />}

@@ -28,7 +28,9 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    # PIPeline's default branch. The upstream template's is master (release.yml
+    # and upstream-watch.yml still read upstream's master, which is right).
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -103,6 +105,25 @@ jobs:
       - name: Run the suite under Git Bash
         shell: bash
         run: python -m unittest discover -s tests -t . -v
+
+  web-tests:
+    # The web app's own suite (web/*.test.ts): the server's modules, the job
+    # pipeline, the relay site it starts in-process, and the interface's build
+    # and its two languages. On Windows, where most of Pip's users run it, and
+    # on the Bun version the installer pins.
+    name: Web app tests (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --ignore-scripts
+        working-directory: web
+      - run: bun test
+        working-directory: web
 
   dependency-review:
     name: Dependency review

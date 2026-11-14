@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ChatbotError } from "./chatbots";
@@ -88,6 +88,55 @@ describe("ranker", () => {
     expect(guard.argv).toContain("--html");
     expect(path.resolve(guard.argv[guard.argv.indexOf("--in") + 1]).startsWith(path.resolve(scratch))).toBe(true);
     expect(await fetchPosting({ key: "k", url: "javascript:alert(1)" }, run, never, scratch)).toMatchObject({ status: "unreachable" });
+  });
+
+  test("reads an Elbit job from the file of all its jobs, and knows it closed once the file drops it", async () => {
+    const file = JSON.stringify([{ jobId: 21218, jobTitle: "Junior Python Developer", openDate: "2026-11-11T11:46:00", description: POSTING, requirements: "", skills: "" }]);
+    const fetched: string[] = [];
+    const run: Run = async (argv, options = {}) => {
+      if (argv.some((a) => a.endsWith("fetch_page.py"))) {
+        fetched.push(argv[argv.indexOf("tools/fetch_page.py") + 1]);
+        writeFileSync(argv[argv.indexOf("--out") + 1], file);
+        return { code: 0, out: "HTTP 200 size=10 saved=x", err: "" };
+      }
+      if (argv.includes("tools/posting_guard.py")) return { code: 0, out: guardOut(readFileSync(argv[argv.indexOf("--in") + 1], "utf8")), err: "" };
+      return { code: 2, out: "", err: "unexpected" };
+    };
+    const got = await fetchPosting({ key: "k", url: "https://elbitsystemscareer.com/job?jid=21218", portal: "careers-page" }, run, never, scratch);
+    expect(got).toMatchObject({ guard: "posting_guard: clean", source: "api", facts: { posted: "2026-11-11" } });
+    expect(fetched).toEqual(["https://elbitsystemscareer.com/cron/jobs.json"]);
+    expect(await fetchPosting({ key: "k", url: "https://elbitsystemscareer.com/job?jid=1", portal: "careers-page" }, run, never, scratch)).toEqual({ status: "expired", fetch_error: "" });
+  });
+
+  test("reads a job of a list written out in full as its own block, never the whole list, and knows it closed once dropped", async () => {
+    const section = (id: string, title: string, words: string) => `<section id="section_${id}"><h2>${title}</h2><p>${words}</p></section>`;
+    const page = section("aaaa-1111", "Junior Python Developer", POSTING) + section("bbbb-2222", "COBOL Developer", "Mainframe COBOL for the bank's core systems. ".repeat(6));
+    const fetched: string[] = [];
+    const guarded: string[] = [];
+    let served = page;
+    const run: Run = async (argv) => {
+      if (argv.some((a) => a.endsWith("fetch_page.py"))) {
+        fetched.push(argv[argv.indexOf("tools/fetch_page.py") + 1]);
+        writeFileSync(argv[argv.indexOf("--out") + 1], served);
+        return { code: 0, out: "HTTP 200 size=10 saved=x", err: "" };
+      }
+      if (argv.includes("tools/posting_guard.py")) {
+        const text = readFileSync(argv[argv.indexOf("--in") + 1], "utf8");
+        guarded.push(text);
+        return { code: 0, out: guardOut(text), err: "" };
+      }
+      return { code: 2, out: "", err: "unexpected" };
+    };
+    const job = { key: "k", url: "https://www.fibi.co.il/private/general/about/jobs/jobsmataf/?pip-job=section_aaaa-1111", portal: "careers-page" };
+    expect(await fetchPosting(job, run, never, scratch)).toMatchObject({ guard: "posting_guard: clean" });
+    expect(fetched).toEqual(["https://www.fibi.co.il/private/general/about/jobs/jobsmataf/"]);
+    expect(guarded[0]).toContain("Junior Python Developer");
+    expect(guarded[0]).not.toContain("COBOL");
+    // Gone from a list that still reads: closed. A list that no longer reads at all: unreachable, not the whole page.
+    served = section("bbbb-2222", "COBOL Developer", "Mainframe COBOL. ".repeat(20));
+    expect(await fetchPosting(job, run, never, scratch)).toEqual({ status: "expired", fetch_error: "" });
+    served = `<main>${"A page redesigned without sections. ".repeat(20)}</main>`;
+    expect(await fetchPosting(job, run, never, scratch)).toMatchObject({ status: "unreachable" });
   });
 
   test("ranks each new job, writes the scores through the tool, and reports from what it printed", async () => {

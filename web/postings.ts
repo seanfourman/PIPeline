@@ -5,8 +5,9 @@
 // worked, posting-words.ts), and the skills it names. The AI reads it only when the user asks (analyze): one ranking
 // answer, which scores it as /rank does and lays its posting out for the page. A job on Pip's list that a junior
 // search shouldn't see (three years or more asked, or a senior title) is left out of the list once read
-// (rank_state.py's "filtered"). For a junior search, the listed jobs not read yet are read in the background, one at
-// a time and slowly (crawl), so the list knows each one's years. Nothing here starts a conversation.
+// (rank_state.py's "filtered"). The listed jobs not read yet are read in the background, one at a time and slowly
+// (crawl), so each has its automatic score (match.ts) and the list knows each one's years. Nothing here starts a
+// conversation.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,7 +15,8 @@ import { ChatbotError } from "./chatbots";
 import { levelGate, requiredYears, type Years } from "./experience";
 import type { Facts } from "./posting-read";
 import { factsIn, skillsIn } from "./posting-words";
-import { fetchPosting, parseScore, postingLines, PYTHON, scoringPrompt, scoringSystem, type Fetched, type Run, type Tidy } from "./ranker";
+import type { Auto } from "./match";
+import { fetchPosting, parseScore, postingLines, PYTHON, scoringPrompt, scoringSystem, type Fetched, type Run, type Steps, type Tidy } from "./ranker";
 import { jobId, plainUrl } from "./ui/jobid";
 
 export type Basics = { url: string; title: string; company: string; location: string; date?: string };
@@ -22,7 +24,8 @@ export type Basics = { url: string; title: string; company: string; location: st
 type Match = { score: number; verdict: string; location_verdict: string; language_gate: string; language_note?: string; strengths: string[]; gaps: string[]; at: string; by?: string };
 export type Posting = Basics & {
   id: string;
-  read?: { at: string; status: "read" | "unreachable" | "expired"; error?: string; source?: string; guard?: string; lines?: string[]; facts?: Facts; years?: Years | null };
+  // v: the page reader's version a posting read whole from its page was read with (PAGE_READER).
+  read?: { at: string; status: "read" | "unreachable" | "expired"; error?: string; source?: string; guard?: string; lines?: string[]; facts?: Facts; years?: Years | null; v?: number };
   tidy?: Tidy & { at: string; by?: string };
   match?: Match;
   ai?: { error: string; at: string };
@@ -39,6 +42,11 @@ const band = (n: number) => (n >= 75 ? "Strong Fit" : n >= 60 ? "Good Fit" : n >
 const overall = (scores: Record<string, number>) => Math.round(Object.entries(WEIGHTS).reduce((sum, [dim, w]) => sum + (scores[dim] ?? 0) * w, 0));
 // A page that wouldn't open is tried again when the job is opened a day later.
 const READ_AGAIN_MS = 24 * 3600_000;
+// The page reader's version: 2 reads a page's own part that holds the job (posting-read.ts mainContent), not the
+// whole page with its menus. A posting read whole by an older one, and not tidied by the AI since, is read again
+// when its job is opened, its old words kept if the page no longer answers.
+const PAGE_READER = 2;
+const outdated = (p: Posting | null) => Boolean(p?.read?.status === "read" && p.read.source === "page" && !p.tidy && (p.read.v ?? 1) < PAGE_READER);
 // Jobs read at once; more opened meanwhile wait their turn.
 const AT_ONCE = 2;
 // The background reading's pace: a pause after each job, and at least this long between two pages of one site.
@@ -46,6 +54,11 @@ const AT_ONCE = 2;
 const CRAWL_PAUSE_MS = 1500;
 const SAME_SITE_MS = 5000;
 const NOT_CRAWLED = /(^|\.)linkedin\.com$/i;
+// A site that turns the background reading away (too many requests, a refusal, an outage) rests for hours: none of
+// its pages is asked for again until then; one whose robots.txt says no, for a day.
+const TURNED_AWAY = /\bHTTP (?:403|429|503|999)\b|robots\.txt/i;
+const REST_MS = 6 * 3600_000;
+const ROBOTS_REST_MS = 24 * 3600_000;
 
 // A company or a role compared without case, marks or spaces, and without Hebrew's "/ת" ending ("מפתח/ת").
 const norm = (s: unknown) => String(s ?? "").toLowerCase().replace(/\/[תה](?=[^\p{L}]|$)/gu, "").replace(/[^\p{L}\p{N}]+/gu, "");
@@ -71,6 +84,8 @@ export type Deps = {
   system?: (lang: "he" | "en") => string;
   // The background reading's pace, in milliseconds (tests make it quick).
   pace?: { pause: number; sameSite: number };
+  // The job's automatic score, from its posting as kept here (match.ts), for its page.
+  auto?: (p: Posting) => Auto | null;
 };
 
 export function createPostings(d: Deps) {
@@ -109,7 +124,7 @@ export function createPostings(d: Deps) {
   const keepRead = (p: Posting, got: Fetched) => {
     p.read = "status" in got
       ? { at: today(), status: got.status, error: got.fetch_error || undefined }
-      : { at: today(), status: "read", source: got.source, guard: got.guard, lines: postingLines(got.text), facts: got.facts, years: requiredYears(got.text) };
+      : { at: today(), status: "read", source: got.source, guard: got.guard, lines: postingLines(got.text), facts: got.facts, years: requiredYears(got.text), ...(got.source === "page" ? { v: PAGE_READER } : {}) };
   };
   // Whether the job is above the level searched for, by its title and the years its posting asks.
   const levelOf = (p: Posting) => levelGate({ title: p.title, years: p.read?.years?.min ?? null, seniority: d.seniority() });
@@ -157,9 +172,13 @@ export function createPostings(d: Deps) {
       const found = listed(p.url);
       const job = { key: found?.key ?? "", title: p.title, company: p.company, url: p.url, portal: String(found?.entry?.portal ?? "") };
       const stale = p.read && p.read.status !== "read" && Date.now() - Date.parse(p.read.at) > READ_AGAIN_MS;
-      if (!p.read || stale || (why === "again" && p.read.status !== "read") || (why === "ai" && p.read.status !== "read")) {
+      // A posting read by an older page reader, read again on opening; kept as it was unless this read gets its words.
+      const older = why === "open" && outdated(p);
+      if (!p.read || stale || older || (why === "again" && p.read.status !== "read") || (why === "ai" && p.read.status !== "read")) {
         reading.set(id, "page");
-        keepRead(p, await fetchPosting(job, d.run, AbortSignal.timeout(180_000), scratch));
+        const got = await fetchPosting(job, d.run, AbortSignal.timeout(180_000), scratch);
+        if (older && ("status" in got || got.whole)) { p.read = { ...p.read!, v: PAGE_READER }; save(p); return; }
+        keepRead(p, got);
         // A listed job found closed leaves the list; one that wouldn't open counts a try, but only when the user
         // opened it: a site turning away the background reading says nothing of the job.
         if (found && (p.read!.status === "expired" || (p.read!.status === "unreachable" && why !== "crawl"))) {
@@ -202,7 +221,7 @@ export function createPostings(d: Deps) {
   function open(basics: Basics) {
     const p = keepBasics(basics);
     if (!p) return null;
-    if (needsRead(p)) {
+    if (needsRead(p) || outdated(p)) {
       // Marked as being read before the answer goes, so the page shows it from the start.
       if (!reading.has(p.id)) reading.set(p.id, "page");
       void readJob(p.id, "open");
@@ -257,6 +276,7 @@ export function createPostings(d: Deps) {
       posting: { status: p.read?.status ?? null, error: p.read?.error ?? "", source: p.read?.source ?? "", guard: p.read?.guard ?? "", at: p.read?.at ?? "", lines, sections, skills: p.tidy?.skills ?? skillsIn(lines, d.profile()), facts },
       applied: appliedTo(p, d.tracker()),
       aiError: p.ai?.error ?? "",
+      auto: d.auto ? d.auto(p) : null,
     };
   }
 
@@ -270,14 +290,22 @@ export function createPostings(d: Deps) {
     save(p);
   }
 
-  // The background reading, for a junior search: each listed job waiting (new, or ranked before its posting was kept)
-  // whose posting isn't read yet, the newest first, one at a time and slowly; a junior search's job asking for three
-  // years or more leaves the list as it is read. It stops when the list is being written by a run (stop), or there is
-  // nothing left; a job opened meanwhile is read before the next.
-  let crawling = false;
-  async function crawl(stop: () => boolean = () => false) {
-    if (crawling || d.seniority() !== "junior") return 0;
-    crawling = true;
+  // The background reading: each listed job waiting (new, or ranked before its posting was kept) whose posting isn't
+  // read yet, the newest first, one at a time and slowly, so each has its automatic score; a junior search's job asking
+  // for three years or more leaves the list as it is read. A site that turns it away rests (TURNED_AWAY). It stops when
+  // the list is being written by a run (stop), at until, or when there is nothing left; a job opened meanwhile is read
+  // before the next. steps shows each job read, for the daily run's conversation; wait, asked while a reading goes,
+  // waits for it and then reads what is left, rather than nothing.
+  let crawling: Promise<number> | null = null;
+  const resting = new Map<string, number>();
+  async function crawl(stop: () => boolean = () => false, o: { steps?: Steps; wait?: boolean; until?: number } = {}) {
+    if (crawling && !o.wait) return 0;
+    while (crawling) await crawling.catch(() => 0);
+    const run = readList(stop, o);
+    crawling = run;
+    try { return await run; } finally { if (crawling === run) crawling = null; }
+  }
+  async function readList(stop: () => boolean, o: { steps?: Steps; until?: number }) {
     let read = 0;
     try {
       const lastAt = new Map<string, number>();
@@ -287,21 +315,26 @@ export function createPostings(d: Deps) {
         .filter((x): x is { e: Record<string, any>; id: string } => Boolean(x.id) && needsRead(load(x.id!)))
         .sort((a, b) => String(b.e.posted_date || b.e.first_seen || "").localeCompare(String(a.e.posted_date || a.e.first_seen || "")));
       for (const { e, id } of waiting) {
-        if (stop() || d.seniority() !== "junior") break;
+        if (stop() || (o.until && Date.now() >= o.until)) break;
         const host = hostOf(String(e.url));
+        if ((resting.get(host) ?? 0) > Date.now()) continue;
         const wait = (lastAt.get(host) ?? 0) + (d.pace?.sameSite ?? SAME_SITE_MS) - Date.now();
         if (wait > 0) await sleep(wait);
         if (!needsRead(load(id))) continue;
         keepBasics({ url: String(e.url), title: String(e.title ?? ""), company: String(e.company ?? ""), location: String(e.location ?? ""), date: String(e.posted_date ?? "") || undefined });
+        const step = `read-${id}`;
+        o.steps?.start(step, [e.company, e.title].filter(Boolean).join(": "), "ReadJob");
         await readJob(id, "crawl");
         lastAt.set(host, Date.now());
+        const got = load(id)?.read;
+        const error = got?.error ?? "";
+        if (got?.status === "unreachable" && TURNED_AWAY.test(error)) resting.set(host, Date.now() + (/robots/i.test(error) ? ROBOTS_REST_MS : REST_MS));
+        o.steps?.done(step, got?.status === "read", got?.status === "read" ? "" : error || String(got?.status ?? ""));
         read++;
         await sleep(d.pace?.pause ?? CRAWL_PAUSE_MS);
       }
     } catch (err) {
       console.error("The background reading of the list stopped:", err);
-    } finally {
-      crawling = false;
     }
     return read;
   }

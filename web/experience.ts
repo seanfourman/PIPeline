@@ -92,6 +92,8 @@ const SAYS_SENIOR = /\b(senior|sr\.?)(?=[\s,/)-]|$)|בכיר\s*\/\s*ה|(?:מפת
 const JUNIOR_TITLE = /\b(junior|jr\.?|entry|graduate|intern(ship)?|student|trainee|associate)\b|ג'וניור|ג׳וניור|גוניור|סטודנט|מתמחה|התמחות|בוגר|ללא ניסיון/i;
 const LEADS = /\b(lead|leader|principal|staff|head|director|vp|vice president|chief|architect|(?:engineering|r&d|development|dev|software|team|group|qa|data|it|technical|tech)\s+manager)\b|ראש(?:\/?ת)?\s+(?:צוות|תחום|קבוצה|מחלקה)|ארכיטקט(?!ור)|מנהל(?:\/?ת)?\s+(?:צוות|פיתוח|מחלקת|קבוצת|תחום|הנדסה|מו"פ)/i;
 export const seniorTitle = (title: string) => SAYS_SENIOR.test(title) || (!JUNIOR_TITLE.test(title) && LEADS.test(title));
+// A title that names a junior role: junior, entry, graduate, student, intern or trainee.
+export const juniorTitle = (title: string) => JUNIOR_TITLE.test(title) && !SAYS_SENIOR.test(title);
 
 // Whether a job is above the level the candidate looks for: for a junior search, a senior title or three years or
 // more asked; any other search keeps every job. why says which, years how many.

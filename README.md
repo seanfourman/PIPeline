@@ -37,12 +37,12 @@ the **Claude Agent SDK**, or ChatGPT through OpenAI's Codex. Your data stays on
 your computer; even the phone-access site only passes requests along.
 
 Once a day Pip searches AllJobs, Drushim, JobMaster, LinkedIn and freehire,
-20 more boards and career sites (4 read directly, 16 through web search),
-9 Telegram channels of job posts, and the employers' career pages it discovers
-on its own. It reads each posting the way a crawler
-would, with no AI, and leaves out what doesn't fit your search before a single
-AI call is spent. The rest it ranks with one call each, and for the best few
-it builds a CV in LaTeX, checks that it fits one page, and emails it to you.
+9 Telegram channels of job posts, hundreds of employers' own job lists and the
+career pages it discovers on its own, all with no AI. It reads each posting the
+way a crawler would, leaves out what doesn't fit your search by plain rules,
+and gives every job an automatic score from its words. For the best few it
+builds a CV in LaTeX with a few calls to the AI, checks that it fits one page,
+and emails it to you. The AI scores a job only when you ask, with one call.
 An installer for Windows and macOS sets everything up and updates itself, and
 a small site on Railway lets your phone reach Pip at home.
 
@@ -184,7 +184,38 @@ the profile) and Airflow (an advantage). No AI was called.
 </details>
 
 <details>
-<summary><b>From a posting to a score (the ranking)</b></summary>
+<summary><b>From a posting to a score with no AI (the automatic score)</b></summary>
+<br>
+
+```text
+posting ─▶ skills, years, title, area ─▶ 4 parts from 0 to 1 ─▶ weighted total ─▶ the list
+```
+
+Every job on the list gets one, from its words alone (`web/match.ts`):
+
+| Part | Weight | What it measures |
+|---|---|---|
+| Skills | 45% | the skills the posting names that your profile shows, a required one counting twice an advantage |
+| Role | 25% | the title's words against your roles, in English or Hebrew |
+| Years | 20% | the years it asks against the level you search for |
+| Place | 10% | your rating of its area |
+
+A job whose posting isn't read yet is scored by its title and area alone,
+with its skills counted as unknown, so it never reaches 75 before it is read.
+The daily run drafts CVs by this score, or by the AI's when you asked for
+one; an automatic score needs 15 points more than the lowest score set for
+the AI's, since a keyword match runs higher.
+
+**Worked example** (with `web/match.ts` itself). A "Junior Backend Developer"
+posting in a near area asking 1 year, with 4 required skills of which your
+profile has 3: skills `(3 × 2 + 0.3 × 2) / (4 × 2 + 2) = 0.66`, role 1, years
+1, place 1, so `0.45 × 0.66 + 0.25 + 0.20 + 0.10 = 0.847`, a score of 85. The
+same job before its posting is read scores 69.
+
+</details>
+
+<details>
+<summary><b>From a posting to a score (the ranking, when you ask)</b></summary>
 <br>
 
 ```text
@@ -241,10 +272,10 @@ posting ─▶ each line ─▶ skip the advantages ─▶ years asked ─▶ th
    student or intern.
 
 The ranking applies this before its AI call, and a job's page applies it when
-it opens. For a junior search, Pip also reads every listed posting in the
-background, one at a time, 1.5 seconds apart and at least 5 seconds between
-two pages of the same site, so the list knows each job's years. LinkedIn is
-never read in the background.
+it opens. Pip also reads every listed posting in the background, one at a
+time, 1.5 seconds apart and at least 5 seconds between two pages of the same
+site, so the list knows each job's years and its automatic score. A site that
+turns Pip away rests for 6 hours. LinkedIn is never read in the background.
 
 **Worked example.** "4+ years of hands-on experience in machine/deep learning
 or computer vision." gives 4 years. On a junior search the job is written to
@@ -310,10 +341,14 @@ PipSetup.exe ─▶ Bun 1.4.4, Python 3.14.9, MiKTeX 25.12 (each SHA-256 checked
 2. **A tray launcher.** A small C# launcher starts Pip, opens it in your
    browser and puts Pip's face in the tray.
 3. **Updates.** It checks the site 60 seconds after starting and every 3
-   minutes after that, waits until Pip isn't busy, verifies the download and
-   installs it silently. A page open at the time hides the restart and carries
-   on.
-4. **macOS.** A one-line install script sets up the same pieces with launchd
+   minutes after that, waits until Pip isn't busy, checks the update's
+   signature, verifies the download against it and installs it silently. A
+   page open at the time hides the restart and carries on.
+4. **Signed.** The site's offer is signed with a key that never leaves the
+   computer Pip is built on (`installer/signing.ts`), and the launcher and the
+   Mac's update check it, so whoever took over the site couldn't push a
+   program of their own to installed copies.
+5. **macOS.** A one-line install script sets up the same pieces with launchd
    agents and a menu-bar Pip.
 
 </details>
@@ -384,7 +419,8 @@ opened in the repository.
 | Command | What it does |
 |---|---|
 | `/setup` | Builds your profile from your CV, LinkedIn export and answers |
-| `/apply` | Evaluates a posting, then writes and checks a tailored CV |
+| `/apply` | Evaluates a posting, then writes and checks a tailored CV, in a few calls to the AI |
+| `/apply --full` | The same as an agent, with company research, a reviewer and a cover letter, at many times the cost |
 | `/rank` | Scores the jobs the search collected |
 | `/interview` | Prepares you for a scheduled interview |
 | `/expand` | Finds competencies hidden in your documents and public profiles |
@@ -447,6 +483,7 @@ Setup      intro, ai-login, remote
 | `web/posting-read.ts` | Readers for sites' own posting data |
 | `web/posting-words.ts` | Skills and work facts from a posting's words |
 | `web/experience.ts` | The years a posting asks for, senior titles, the junior filter |
+| `web/match.ts` | The automatic score: a job's fit from its words, with no AI |
 | `web/ranker.ts` | The ranking run and its instructions to the AI |
 | `web/boards.ts`, `web/portals.ts`, `web/discover.ts` | Israeli boards, listed career sites and channels, newly found employers |
 | `web/scraper.ts` | The smart search |

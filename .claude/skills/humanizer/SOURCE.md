@@ -5,8 +5,8 @@
 
 Pip runs it on what it writes for other people to read: CVs, cover letters and application-form answers (`/apply`
 and the job-application-assistant skill), interview prep, READMEs (`/readme`) and the portfolio (`/portfolio`). Each of
-those flows says what its pass covers and what stays as it is. On a ChatGPT key alone, the server's CV review gets
-it too (`web/applier.ts`).
+those flows says what its pass covers and what stays as it is. The quick application the server does (`web/applier.ts`)
+gives it to the CV's review pass too.
 
 To update it, replace both files with a newer release that is at least two weeks old, and read the whole of
 `SKILL.md` first: it is instructions the AI follows.

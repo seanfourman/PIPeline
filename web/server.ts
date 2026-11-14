@@ -19,10 +19,13 @@ import { deriveKey, loadKey, openWith, saveKey, sealWith } from "./synckey";
 import { INDUSTRIES, PORTALS } from "./portals";
 import { rankJobs, runTool, type Steps } from "./ranker";
 import { applyThroughTool, createPostings, seenReader } from "./postings";
-import { JOB_ID } from "./ui/jobid";
-import { readPortalChecks, scanPortals, scrapeJobs } from "./scraper";
 import { applyJob } from "./applier";
-import { conversationFiles, loadState, parseCsv, resolveDocument, searchJobs } from "./data";
+import { JOB_ID } from "./ui/jobid";
+import { readPortalChecks, scanPortals, scrapeJobs, searchDaily } from "./scraper";
+import { alertText, createWatcher, desktopNotice, type AlertJob } from "./alerts";
+import { jobGroup } from "./groups";
+import { classifyLocation, conversationFiles, loadState, parseCsv, resolveDocument, searchJobs } from "./data";
+import { createAutoScores } from "./match";
 import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, listSources, readChecks, readDocument, readEditableFile, readSource, saveChecks, saveDocument, saveEditableFile, saveSource, setApplicationStatus } from "./edit";
 import { REPO } from "./policy";
 import { createRemote, RemoteError } from "./remote";
@@ -32,7 +35,7 @@ import { metaChange } from "./threads";
 import { readSaved, setSaved } from "./saved";
 import { loadSettings, REGION_PRESETS, saveSettings, syncWorkspace } from "./settings";
 import { joinWithTranscript, removeTranscript, saveTranscript, TRANSCRIPT, TranscriptError, transcriptInfo } from "./transcript";
-import { getUpload, saveUpload, UploadError } from "./uploads";
+import { clearTemporaryUploads, findUpload, saveUpload, TEMP_UPLOADS, UploadError } from "./uploads";
 import { nameProblem } from "./ui/account-rules";
 import { APP_DIR, cvFileName, listUserDocuments, profileReady, saveUserDocument, saveUserName, USER_DIR, UserFileError, userProfile } from "./user";
 
@@ -114,21 +117,43 @@ const askFor = (steps: Steps & { switched: (from: string, to: string, code: stri
 };
 const language = () => (loadSettings().language === "en" ? "en" as const : "he" as const);
 
+// The jobs' postings, each kept in the account's folder (postings.ts), and the profile, which the automatic scores read
+// (match.ts): every job on the list scored by its words with no AI, the AI's score only when the user asks.
+const POSTINGS = path.join(USER_DIR, "job_scraper", "postings");
+const readProfile = () => { try { return readFileSync(path.join(USER_DIR, "profile", "01-candidate-profile.md"), "utf8"); } catch { return ""; } };
+const autoScores = createAutoScores({ dir: POSTINGS, profile: readProfile });
+
 const automation = createAutomation({
-  loadSettings, loadState, runSession: runUnattended, sendMail: (mail) => sendMail(mail), computer: computerId(),
+  loadSettings, loadState: (settings) => loadState(settings, autoScores), runSession: runUnattended, sendMail: (mail) => sendMail(mail), computer: computerId(),
+  // The search, with no AI: LinkedIn and freehire for every role, and the Telegram channels (scraper.ts searchDaily).
+  search: (title, timeout) => runTask(title, (steps, signal) => searchDaily({ steps, signal, lang: language() }), timeout),
   // The daily run's portals check: the employers and the Israeli boards, which the run's agent doesn't search. An
   // employer that had nothing at its last check rests three days (scraper.ts).
   scanPortals: (title, timeout) => runTask(title, (steps, signal) => scanPortals({ steps, signal, lang: language(), ask: askFor(steps), boards: true, rest: 3, discover: true }), timeout),
+  // The new jobs' postings read with no AI, each a line in the run's conversation, after any reading already going,
+  // so each has its automatic score to be picked by.
+  readJobs: (title, timeout) => runTask(title, async (steps, signal) => {
+    let read = 0;
+    const tried = await postings.crawl(() => signal.aborted || listBusy !== "", {
+      wait: true, until: Date.now() + timeout - 60_000,
+      steps: { ...steps, done: (id, ok, preview) => { if (ok) read++; steps.done(id, ok, preview); } },
+    });
+    const he = language() === "he";
+    if (!tried) return he ? "אין משרות חדשות לקרוא." : "No new jobs to read.";
+    return he ? `נקראו ${read} מתוך ${tried} משרות, בלי AI.` : `${read} of ${tried} jobs read, with no AI.`;
+  }, timeout),
+  // Each job picked, applied for by the server with a few calls to the AI (applier.ts), a CV only for a strong or good fit.
+  applyJob: (url, title, timeout) => runTask(title, (steps, signal) => applyJob({ input: url, steps, signal, lang: language(), ask: askFor(steps), strict: true }), timeout),
 });
 // Only the address leaves the server. The password is written once and never read back.
-const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), next: automation.next(), mailUser: readMailAccount()?.user ?? "" });
+const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), next: automation.next(), mailUser: readMailAccount()?.user ?? "", alerts: watcher.status() });
 
 const auth = createAuth();
 // The server's own run on the job list going now, "rank" or "scrape", or "" for none.
 let listBusy = "";
 
 // Jobs' own pages (postings.ts): each posting kept in the account's folder, read with no AI when the job is opened (or
-// in the background, for a junior search's list), and scored by the settings' AI only when the user asks. A listed
+// in the background, for the list's automatic scores), and scored by the settings' AI only when the user asks. A listed
 // job's score, or its leaving the list, is written through rank_state.py one write at a time, and held while a run
 // over the list is writing the list, to go when it is done (startList).
 let heldScores: Record<string, unknown>[] = [];
@@ -136,19 +161,20 @@ let writing: Promise<void> = Promise.resolve();
 const writeScores = (rows: Record<string, unknown>[]) => { writing = writing.then(() => applyThroughTool(rows, runTool)).catch(() => {}); };
 const TRACKER = path.join(REPO, "user", "job_search_tracker.csv");
 const postings = createPostings({
-  dir: path.join(USER_DIR, "job_scraper", "postings"),
+  dir: POSTINGS,
   run: runTool,
   ask: (system, prompt, signal) => askInOrder(engineOrder(loadSettings().aiPrimary), system, [{ role: "user", text: prompt }], { signal })
     .then((r) => ({ text: r.text, by: ENGINE_NAMES[r.engine] })),
   lang: () => language(),
   seniority: () => loadSettings().seniority,
-  profile: () => { try { return readFileSync(path.join(USER_DIR, "profile", "01-candidate-profile.md"), "utf8"); } catch { return ""; } },
+  profile: readProfile,
   seen: seenReader(path.join(USER_DIR, "job_scraper", "seen_jobs.json")),
   tracker: () => (existsSync(TRACKER) ? parseCsv(readFileSync(TRACKER, "utf8")) : []),
   apply: (rows) => { if (listBusy) heldScores.push(...rows); else writeScores(rows); },
+  auto: (p) => { const settings = loadSettings(); return autoScores.of(p, classifyLocation(p.location, settings.areas), settings); },
 });
-// The list's postings read in the background for a junior search (postings.ts crawl): a minute after start, then
-// every twenty minutes for what was found since; it pauses while a run over the list is going.
+// The list's postings read in the background (postings.ts crawl), so each job has its automatic score: a minute after
+// start, then every twenty minutes for what was found since; it pauses while a run over the list is going.
 const CRAWL_EVERY_MS = 20 * 60_000;
 const crawlList = () => { if (!listBusy) void postings.crawl(() => listBusy !== ""); };
 setTimeout(crawlList, 60_000);
@@ -477,6 +503,36 @@ function eventStream(id: string, req: Request) {
   return new Response(stream, { headers: { ...SECURITY_HEADERS, "Content-Type": "text/event-stream" } });
 }
 
+// A job's key as seen_jobs.json has it (tools/job_key.py): what a job's own ranking button may name.
+const JOB_KEY = /^[a-z0-9][a-z0-9_-]{0,199}$/;
+// Jobs asked to be ranked one by one while a list's run was under way, to go as soon as it is done. Kept here, outside
+// the requests, as the request that asks and the run that finishes are never the same one.
+let rankNext: string[] = [];
+
+// A run over the job list, in a conversation of its own, one at a time; once it is done, the jobs asked to be ranked
+// meanwhile go next. It starts once a job page's score being written is in, and the scores held while it ran go
+// when it is done. A ranking run keeps each job's posting for its page (postings.ts keepRanked).
+function startList(job: "rank" | "scrape" | "portals", keys: string[] = []) {
+  listBusy = job;
+  const settings = loadSettings();
+  const lang = settings.language === "en" ? "en" : "he";
+  const title = job === "rank" ? "/rank" : job === "scrape" ? "/job-scraper" : lang === "he" ? "בדיקת פורטלים" : "Portals check";
+  return createTaskSession(title, (steps, signal) => {
+    const ask = askFor(steps);
+    const work = writing.then(() => job === "rank" ? rankJobs({ steps, signal, lang, ask, keys, keep: postings.keepRanked })
+      : job === "scrape" ? scrapeJobs({ steps, signal, lang, ask, settings })
+      : scanPortals({ steps, signal, lang, ask, settings, discover: true }));
+    return work.finally(() => {
+      listBusy = "";
+      if (heldScores.length) { writeScores(heldScores); heldScores = []; }
+      if (!rankNext.length) return;
+      const next = rankNext;
+      rankNext = [];
+      startList("rank", next);
+    });
+  });
+}
+
 async function api(req: Request, url: URL): Promise<Response> {
   const parts = url.pathname.split("/").filter(Boolean).slice(1);
   if (req.method === "GET") {
@@ -490,7 +546,7 @@ async function api(req: Request, url: URL): Promise<Response> {
       const kept = rememberedOf(req.headers.get("cookie"));
       const accounts = others.map((a) => a.name);
       const remembered = others.filter((a) => kept.has(a.id)).map((a) => a.name);
-      return json({ ...loadState(settings), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), projects: projects.list(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), accounts, remembered, computer: COMPUTER, intro, remote: remote.status(), transcript: transcriptInfo() });
+      return json({ ...loadState(settings, autoScores), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), projects: projects.list(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), accounts, remembered, computer: COMPUTER, intro, remote: remote.status(), transcript: transcriptInfo() });
     }
     if (parts[0] === "profile" || parts[0] === "rules") return json(readDocument(parts[0]));
     if (parts[0] === "checks") return json(readChecks());
@@ -507,7 +563,7 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (parts[0] === "portfolio" && parts[1] === "media") return portfolioMedia(req, url);
     if (parts[0] === "sessions" && parts[1] && parts[2] === "events") return eventStream(parts[1], req);
     if (parts[0] === "uploads" && parts[1]) {
-      const upload = getUpload(parts[1]);
+      const upload = findUpload(parts[1]);
       if (!upload) return json({ error: "not found" }, 404);
       // Like /file: a PDF opens in the browser's viewer, which the page's policy would stop; anything else is
       // shown sandboxed, so nothing in it can run.
@@ -556,10 +612,11 @@ async function api(req: Request, url: URL): Promise<Response> {
     const view = JOB_ID.test(parts[1]) ? postings.analyze(parts[1]) : null;
     return view ? json(view) : json({ error: "not found" }, 404);
   }
-  // A file attached in the chat, its bytes in base64 inside the JSON, like every other write here.
+  // A file attached in the chat, its bytes in base64 inside the JSON, like every other write here; a temporary
+  // conversation's in a folder of its own that never syncs (uploads.ts TEMP_UPLOADS).
   if (parts[0] === "uploads" && !parts[1]) {
     try {
-      return json(saveUpload(String(body.name ?? ""), String(body.data ?? "")));
+      return json(saveUpload(String(body.name ?? ""), String(body.data ?? ""), body.temporary === true ? TEMP_UPLOADS : undefined));
     } catch (err) {
       if (err instanceof UploadError) return json({ error: `upload_${err.message}` }, 400);
       throw err;
@@ -639,6 +696,15 @@ async function api(req: Request, url: URL): Promise<Response> {
       const words = mailWords(loadSettings());
       return json({ result: await sendMail({ to, subject: words.testSubject, body: words.testBody, attachments: [] }) });
     }
+    // A test of the live alerts: the computer's notice, and the email when an address is set.
+    if (parts[1] === "alert-test") {
+      const settings = loadSettings();
+      const he = language() === "he";
+      const desktop = await desktopNotice(he ? "פיפ: התראת בדיקה" : "Pip: a test alert", he ? "כך תיראה התראה על משרה חדשה." : "This is how a new job's alert looks.", `http://localhost:${PORT}/jobs`);
+      const to = settings.automation.email || readMailAccount()?.user;
+      const mail = to ? await sendMail({ to, subject: he ? "פיפ: התראת בדיקה" : "Pip: a test alert", body: he ? "אם המייל הזה הגיע, ההתראות החיות יגיעו לכאן." : "If this email reached you, the live alerts will reach you here.", attachments: [] }) : { status: "no_address" as const };
+      return json({ desktop, mail });
+    }
   }
   // Phone access: linking takes the account's name on the site, unlinking gives it back (remote.ts).
   if (parts[0] === "remote") {
@@ -659,36 +725,7 @@ async function api(req: Request, url: URL): Promise<Response> {
     try { openLogin(provider); } catch (err) { if (err instanceof ChatbotError) throw new EditError(err.code); throw err; }
     return json({ ok: true });
   }
-  // A job's key as seen_jobs.json has it (tools/job_key.py): what a job's own ranking button may name.
-const JOB_KEY = /^[a-z0-9][a-z0-9_-]{0,199}$/;
-// Jobs asked to be ranked one by one while a list's run was under way, to go as soon as it is done.
-let rankNext: string[] = [];
-
-// A run over the job list, in a conversation of its own, one at a time; once it is done, the jobs asked to be ranked
-// meanwhile go next. It starts once a job page's score being written is in, and the scores held while it ran go
-// when it is done. A ranking run keeps each job's posting for its page (postings.ts keepRanked).
-function startList(job: "rank" | "scrape" | "portals", keys: string[] = []) {
-  listBusy = job;
-  const settings = loadSettings();
-  const lang = settings.language === "en" ? "en" : "he";
-  const title = job === "rank" ? "/rank" : job === "scrape" ? "/job-scraper" : lang === "he" ? "בדיקת פורטלים" : "Portals check";
-  return createTaskSession(title, (steps, signal) => {
-    const ask = askFor(steps);
-    const work = writing.then(() => job === "rank" ? rankJobs({ steps, signal, lang, ask, keys, keep: postings.keepRanked })
-      : job === "scrape" ? scrapeJobs({ steps, signal, lang, ask, settings })
-      : scanPortals({ steps, signal, lang, ask, settings, discover: true }));
-    return work.finally(() => {
-      listBusy = "";
-      if (heldScores.length) { writeScores(heldScores); heldScores = []; }
-      if (!rankNext.length) return;
-      const next = rankNext;
-      rankNext = [];
-      startList("rank", next);
-    });
-  });
-}
-
-// The new jobs ranked (ranker.ts), or the smart search and save (scraper.ts), by the settings' AI, the next
+  // The new jobs ranked (ranker.ts), or the smart search and save (scraper.ts), by the settings' AI, the next
   // connected one taking over from one that fails for the rest of the run, and the server doing everything else.
   // One run of each at a time, since two would pick the same jobs; and while one writes the list, the other waits.
   // The portals check, from the portals page: the employers' own lists read now (scraper.ts scanPortals).
@@ -713,26 +750,21 @@ function startList(job: "rank" | "scrape" | "portals", keys: string[] = []) {
     const prompt = String(body.prompt ?? "").trim();
     const uploads = attached(body.files);
     if (!prompt && !uploads.length) return json({ error: "empty" }, 400);
-    // Applying is /apply itself, Claude's, or ChatGPT's in Codex when ChatGPT is first and its account signed in
-    // (codex.ts: the reviewer a sub-agent of its own, the PDF looked at as pictures). On a key alone ChatGPT has no
-    // agent, so the server does it with it (applier.ts).
-    const applying = prompt.match(/^\/apply\s+([\s\S]+)$/)?.[1]?.trim();
+    // Applying is the server's own (applier.ts): the posting read and the CV built with no AI, and a few calls to the AI
+    // the settings put first, a fraction of what /apply as an agent uses up. /apply --full is that agent, Claude's or
+    // ChatGPT's in Codex (codex.ts), which also researches the company, has a reviewer check the draft, looks at the
+    // PDF and writes a cover letter. Files attached go to the agent too, which can read them.
+    const full = prompt.match(/^\/apply\s+--full\s+([\s\S]+)$/)?.[1]?.trim();
+    const applying = full ? "" : prompt.match(/^\/apply\s+([\s\S]+)$/)?.[1]?.trim() ?? "";
     const settings = loadSettings();
     // The sign-in of the AI chosen first, asked again now when the last answer said it isn't there: one answer that
     // failed by chance would send the whole conversation to the other AI.
     if (!cliSignedIn()[settings.aiPrimary === "openai" ? "openai" : "claude"]) await cliStatus(true).catch(() => {});
-    const order = engineOrder(settings.aiPrimary);
-    if (applying && !uploads.length && order[0] !== "claude" && !cliSignedIn().openai) {
+    if (applying && !uploads.length) {
       const lang = settings.language === "en" ? "en" : "he";
-      const session = createTaskSession(prompt.slice(0, 300), (steps, signal) => applyJob({
-        input: applying, steps, signal, lang,
-        ask: (system, text, stop) => askInOrder(order, system, [{ role: "user", text }], {
-          signal: stop, onSwitch: (from, to, err) => steps.switched(ENGINE_NAMES[from], ENGINE_NAMES[to], err.code),
-        }).then((r) => ({ text: r.text, by: ENGINE_NAMES[r.engine] })),
-      }));
-      return json(session.summary());
+      return json(createTaskSession(prompt.slice(0, 300), (steps, signal) => applyJob({ input: applying, steps, signal, lang, ask: askFor(steps) }), body.temporary === true).summary());
     }
-    return json(createSession(prompt, body.model, { access: isAccess(body.access) ? body.access : "ask", uploads }).summary());
+    return json(createSession(full ? `/apply ${full}` : prompt, body.model, { access: isAccess(body.access) ? body.access : "ask", uploads, temporary: body.temporary === true }).summary());
   }
   const session = parts[0] === "sessions" ? getSession(parts[1]) : undefined;
   if (!session) return json({ error: "not found" }, 404);
@@ -775,7 +807,7 @@ function portfolioMedia(req: Request, url: URL) {
 }
 
 // The uploads a message names, by id, up to five; one that is not there is left out.
-const attached = (ids: unknown) => (Array.isArray(ids) ? ids.slice(0, 5).map((id) => getUpload(String(id))).filter((u) => u !== null) : []);
+const attached = (ids: unknown) => (Array.isArray(ids) ? ids.slice(0, 5).map((id) => findUpload(String(id))).filter((u) => u !== null) : []);
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -821,6 +853,33 @@ async function document(url: URL) {
 // Checked often, so a run still happens the same day when the server starts after the set hour.
 const AUTOMATION_CHECK_MS = 60_000;
 setInterval(() => automation.tick(), AUTOMATION_CHECK_MS);
+
+// Live alerts (alerts.ts): the search watched with no AI, quietly, with no conversation for it, and each new job told by
+// email and on this computer as it is stored, by its group (groups.ts). Its rounds wait for the daily run and for a
+// search of the user's own; a daily run that starts during a round writes the list through the same locked tool.
+const QUIET: Steps = { start() {}, done() {} };
+const watcher = createWatcher({
+  loadSettings,
+  search: (found, signal) => searchDaily({ steps: QUIET, signal, lang: language(), found }),
+  scan: (found, signal, boards) => scanPortals({ steps: QUIET, signal, lang: language(), ask: async () => "", boards, discover: boards, rest: 0.25, fresh: 60, found }),
+  busy: () => listBusy !== "" || automation.isRunning(),
+  tell: tellAlerts,
+  group: (j) => jobGroup(j),
+  readBefore: () => {
+    const checks = readPortalChecks();
+    return (id) => Boolean(checks[id] && !checks[id].error);
+  },
+  log: (line) => console.log(line),
+});
+setInterval(() => watcher.tick(), AUTOMATION_CHECK_MS);
+
+async function tellAlerts(jobs: AlertJob[]) {
+  const settings = loadSettings();
+  const text = alertText(jobs, language(), `http://localhost:${PORT}/jobs`);
+  if (settings.alerts.desktop) await desktopNotice(text.headline, text.notice, text.open);
+  const to = settings.automation.email || readMailAccount()?.user;
+  if (settings.alerts.email && to) await sendMail({ to, subject: text.subject, body: text.body, attachments: [] });
+}
 
 // Every request, from this computer's browser or passed on from the phone by the site (remote.ts).
 async function handle(req: Request): Promise<Response> {
@@ -870,6 +929,9 @@ async function handle(req: Request): Promise<Response> {
   }
   return new Response(Bun.file(abs), { headers: { ...SECURITY_HEADERS, "Content-Type": MIME[path.extname(abs)] ?? "application/octet-stream" } });
 }
+
+// A temporary conversation doesn't outlive the server, nor do its attachments (uploads.ts TEMP_UPLOADS).
+try { clearTemporaryUploads(); } catch { /* nothing kept, or in use: it goes next time */ }
 
 let server;
 try {

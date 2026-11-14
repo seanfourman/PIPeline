@@ -3,6 +3,7 @@
 // taking over when one fails (ai.ts). So is work the server does itself with that AI, as the ranking.
 import { query, type PermissionResult, type Query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { askInOrder, ENGINE_NAMES, engineOrder, type Engine } from "./ai";
 import { CHAT_SYSTEM, ChatbotError, providerOf, type Turn } from "./chatbots";
@@ -12,7 +13,7 @@ import { documentPaths } from "./data";
 import { ACCESS, createPolicy, REPO, type Access } from "./policy";
 import { loadSettings } from "./settings";
 import { matches, type Meta } from "./threads";
-import { attachmentContent, getUpload, type Upload } from "./uploads";
+import { attachmentContent, findUpload, removeUpload, type Upload } from "./uploads";
 import { APP_DIR } from "./user";
 
 export type TaskSteps = {
@@ -22,6 +23,12 @@ export type TaskSteps = {
 
 const DATA = path.join(APP_DIR, "sessions");
 const IDLE_CLOSE_MS = 15 * 60 * 1000;
+// With helpers still at work in the background a run's end doesn't close the process (that would end them), but no
+// later than this after it: a task that never ends (a server left running, a hung download) doesn't keep it forever.
+const BACKGROUND_MOST_MS = 3 * 60 * 60 * 1000;
+// A temporary conversation goes this long after the last page that had it open lets go (a reload comes back sooner).
+const TEMPORARY_LEFT_MS = 2 * 60 * 1000;
+const TEMPORARY_WAITING_MS = 30 * 60 * 1000;
 mkdirSync(DATA, { recursive: true });
 
 const decide = createPolicy();
@@ -30,6 +37,9 @@ export const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5
 type Pending = { resolve: (r: PermissionResult) => void; tool?: string; input: Record<string, unknown>; rememberKey?: string };
 type Status = "running" | "waiting" | "idle" | "error";
 export type AgentEvent = Record<string, unknown> & { t: string };
+// A helper at work in the background (the SDK's background tasks): its task, what it does in its own words, its kind,
+// and the step that started it once known.
+type Aside = { id: string; what: string; kind: string; tool?: string };
 
 class Session {
   events: AgentEvent[] = [];
@@ -48,6 +58,11 @@ class Session {
   private handle?: Query;
   private closed = true;
   private idleTimer?: Timer;
+  // When the last run ended, for BACKGROUND_MOST_MS.
+  private idleSince = 0;
+  // The helpers still at work in the background, said to the chat as they change (setBackground); each task's step.
+  private background: Aside[] = [];
+  private taskTools = new Map<string, string>();
   private saveTimer?: Timer;
   private replying?: AbortController;
   // In a plain conversation, the name of the AI that answered last.
@@ -59,19 +74,26 @@ class Session {
   pinned?: number;
   archived = false;
   project?: string;
+  // A conversation the daily run opened, not the user (runUnattended, runTask): kept out of the conversations' list,
+  // in a drawer of its own, and never announced as if the user had started it (Sean 2026-11-14: "אני לא רוצה לראות
+  // דברים שרצים ברקע בצ'אטים הרגילים שלי כאילו אני הרצתי את זה").
+  auto = false;
   // Deleted (forget): nothing more of it is saved, nor handed over to another AI.
   private gone = false;
   // Stopped (interrupt): the end of the run that follows is the stop, not a failure to hand over to the next AI.
   private stopped = false;
 
-  constructor(public id: string, public title: string, public model: string | undefined, public createdAt: number, private unattended = false, public access: Access = "ask", public plain = false, public agent: "claude" | "codex" = "claude") {}
+  // temporary: a conversation that leaves nothing behind (Sean 2026-11-12, "חד פעמי שנמחק ואין לו זכר"): never saved,
+  // its AI keeping no record of it either (Claude's persistSession, Codex's ephemeral thread), out of the list and the
+  // search, and gone with what was attached to it once nobody has it open (watchLeaving).
+  constructor(public id: string, public title: string, public model: string | undefined, public createdAt: number, private unattended = false, public access: Access = "ask", public plain = false, public agent: "claude" | "codex" = "claude", public temporary = false) {}
 
   // A /setup conversation, which may do a little more at automatic access (policy.ts, SETUP_FILES and PICK_ROLES).
   get setup() { return /^\/setup\b/.test(this.title); }
 
   summary() {
     const engine = this.agent === "codex" ? ENGINE_NAMES.openai : this.engine;
-    return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model, access: this.access, plain: this.plain, engine, agent: this.agent, pinned: this.pinned, archived: this.archived, project: this.project };
+    return { id: this.id, title: this.title, status: this.status, createdAt: this.createdAt, cost: this.cost, model: this.model, access: this.access, plain: this.plain, engine, agent: this.agent, pinned: this.pinned, archived: this.archived, project: this.project, ...(this.temporary ? { temporary: true } : {}), ...(this.auto ? { auto: true } : {}) };
   }
 
   // Renamed, pinned or not, archived or not, moved into a project or out of one (threads.ts metaChange).
@@ -98,7 +120,20 @@ class Session {
 
   subscribe(fn: (e: AgentEvent) => void) {
     this.subscribers.add(fn);
-    return () => this.subscribers.delete(fn);
+    clearTimeout(this.leftTimer);
+    return () => { this.subscribers.delete(fn); this.watchLeaving(); };
+  }
+
+  // A temporary conversation nobody has open (closed in the browser, left for another page, or never opened) is deleted
+  // once TEMPORARY_LEFT_MS has passed with nobody coming back to it; never while it works (a phone drops the page when
+  // it switches apps), the clock starting once it's done (setStatus).
+  private leftTimer?: Timer;
+  watchLeaving() {
+    clearTimeout(this.leftTimer);
+    // Waiting for an answer to a request counts as done here, nobody being left to give it, though after longer: a phone
+    // that switched apps to look something up drops the page while the request waits.
+    if (!this.temporary || this.gone || this.subscribers.size > 0 || this.status === "running") return;
+    this.leftTimer = setTimeout(() => { void deleteSession(this.id); }, this.status === "waiting" ? TEMPORARY_WAITING_MS : TEMPORARY_LEFT_MS);
   }
 
   private emit(event: AgentEvent, keep = true) {
@@ -110,6 +145,7 @@ class Session {
     this.status = status;
     this.emit({ t: "status", status }, false);
     this.scheduleSave();
+    this.watchLeaving();
   }
 
   private scheduleSave() {
@@ -119,7 +155,7 @@ class Session {
   }
 
   save() {
-    if (this.gone) return;
+    if (this.gone || this.temporary) return;
     writeFileSync(path.join(DATA, `${this.id}.json`), JSON.stringify({ ...this.summary(), claudeId: this.claudeId, agentThreadId: this.agentThreadId, metered: this.metered, events: this.events }));
   }
 
@@ -134,11 +170,11 @@ class Session {
         if (error && !ok) this.codexError(error);
         this.emit({ t: "result", ok });
         this.setStatus(ok ? "idle" : "error");
-        clearTimeout(this.idleTimer);
-        this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
+        this.idleSince = Date.now();
+        this.armIdle();
       },
     };
-    this.external ??= new CodexAgent(hooks, this.agentThreadId);
+    this.external ??= new CodexAgent(hooks, this.agentThreadId, undefined, undefined, this.temporary);
     const images = uploads.filter((u) => u.kind === "image");
     const others = uploads.filter((u) => u.kind !== "image");
     const said = [text, ...others.map((u) => `Attached file (${u.name}): ${path.relative(REPO, u.file).replaceAll("\\", "/")}`)].join("\n").trim() || "(see the attached image)";
@@ -175,7 +211,7 @@ class Session {
       const picked = pickAgent();
       if (!picked.usable) return this.refuseStart();
       const first: AgentEvent = this.events.find((e) => e.t === "user") ?? { t: "user" };
-      const attached = ((first.files as { id: string }[] | undefined) ?? []).map((f) => getUpload(f.id)).filter((u) => u !== null);
+      const attached = ((first.files as { id: string }[] | undefined) ?? []).map((f) => findUpload(f.id)).filter((u) => u !== null);
       this.close();
       this.claudeId = undefined;
       this.agentThreadId = undefined;
@@ -251,7 +287,7 @@ class Session {
     return this.events.flatMap((e): Turn[] => {
       if (e.t === "text") return [{ role: "assistant", text: String(e.text) }];
       if (e.t !== "user") return [];
-      const uploads = ((e.files ?? []) as { id: string }[]).map((f) => getUpload(f.id)).filter((u) => u !== null);
+      const uploads = ((e.files ?? []) as { id: string }[]).map((f) => findUpload(f.id)).filter((u) => u !== null);
       return [{ role: "user", text: String(e.text ?? ""), uploads }];
     });
   }
@@ -275,6 +311,9 @@ class Session {
         cwd: REPO,
         model: this.model,
         resume: this.claudeId,
+        // A temporary conversation: Claude keeps no transcript of it on disk, and its own memory (and the memory's tidying
+        // up) can't keep what was said there for a later conversation to read.
+        ...(this.temporary ? { persistSession: false, settings: { autoMemoryEnabled: false, autoDreamEnabled: false } } : {}),
         settingSources: ["user", "project", "local"],
         systemPrompt: { type: "preset", preset: "claude_code" },
         permissionMode: "default",
@@ -296,7 +335,7 @@ class Session {
       if (this.handOver()) return;
       this.emit({ t: "error", text: String(err?.message ?? err) });
       this.setStatus("error");
-    }).finally(() => { this.closed = true; this.wake?.(); });
+    }).finally(() => { this.closed = true; this.dropBackground(); this.wake?.(); });
   }
 
   // No AI here that can work as an agent (none signed in with an account, or Claude's sign-in refused): the message is
@@ -319,7 +358,7 @@ class Session {
     const lastUser = this.events.findLastIndex((e) => e.t === "user");
     if (this.events.slice(lastUser).some((e) => e.t === "tool")) return false;
     const asked = this.events[lastUser] ?? { t: "user" };
-    const uploads = ((asked.files as { id: string }[] | undefined) ?? []).map((f) => getUpload(f.id)).filter((u) => u !== null);
+    const uploads = ((asked.files as { id: string }[] | undefined) ?? []).map((f) => findUpload(f.id)).filter((u) => u !== null);
     this.close();
     this.agent = "codex";
     this.emit({ t: "switched", from: ENGINE_NAMES.claude, to: ENGINE_NAMES.openai, code: "claude_login" });
@@ -351,7 +390,7 @@ class Session {
       const verdict = decide(tool, input, this.remembered, this.unattended ? "ask" : this.access, this.setup);
       if (verdict.decision === "allow") return Promise.resolve({ behavior: "allow", updatedInput: input });
       if (this.unattended) return Promise.resolve(this.refuse(`${tool}: ${describeInput(tool, input).slice(0, 300)}`));
-      this.emit({ t: "permission", requestId, tool, input: describeInput(tool, input), canRemember: Boolean(verdict.rememberKey) });
+      this.emit({ t: "permission", requestId, tool, input: describeInput(tool, input), change: changeOf(tool, input), canRemember: Boolean(verdict.rememberKey) });
       return this.park(requestId, input, signal, verdict.rememberKey, tool);
     }
     if (this.unattended) return Promise.resolve(this.refuse(""));
@@ -399,6 +438,9 @@ class Session {
 
   async interrupt() {
     this.stopped = true;
+    // Stopped means stopped: the helpers it left at work in the background end too, alongside the turn's own stop, so
+    // a helper slow to answer doesn't hold that up.
+    const helpers = this.stopBackground();
     this.replying?.abort();
     await this.external?.interrupt();
     for (const [id, request] of this.pending) {
@@ -407,18 +449,35 @@ class Session {
     }
     this.pending.clear();
     await this.handle?.interrupt().catch(() => {});
+    await helpers;
   }
 
   private async consume() {
     for await (const message of this.handle!) {
       if (message.session_id) this.claudeId = message.session_id;
       const parent = (message as { parent_tool_use_id?: string | null }).parent_tool_use_id ?? null;
+      // Pip speaking again on his own after a run's end (a helper in the background finished and he took up what it
+      // found): running again, until that run's end.
+      if (!parent && (message.type === "assistant" || message.type === "stream_event") && (this.status === "idle" || this.status === "error")) {
+        clearTimeout(this.idleTimer);
+        this.setStatus("running");
+      }
+      const system = message as { type: string; subtype?: string; task_id?: string; tool_use_id?: string; tasks?: { task_id: string; task_type?: string; description?: string; ambient?: boolean }[] };
 
       // Each turn starts by saying where its credential came from: "none" (once "oauth") is no API key, which here
       // is the sign-in to a Claude plan; a key is named by where it came from.
       if (message.type === "system" && message.subtype === "init") {
         const source: string | undefined = message.apiKeySource;
         this.metered = Boolean(source) && source !== "none" && source !== "oauth";
+      } else if (system.type === "system" && system.subtype === "task_started" && system.task_id) {
+        // Which step started a task; it often joins the background set before this comes, so the set is said again.
+        if (system.tool_use_id) {
+          this.taskTools.set(system.task_id, system.tool_use_id);
+          if (this.background.some((x) => x.id === system.task_id && !x.tool)) this.setBackground(this.background);
+        }
+      } else if (system.type === "system" && system.subtype === "background_tasks_changed") {
+        // The whole set each time, replacing the last; those that aren't work (watchers) left out, as the SDK asks.
+        this.setBackground((system.tasks ?? []).filter((x) => !x.ambient).map((x) => ({ id: x.task_id, what: String(x.description ?? ""), kind: String(x.task_type ?? "") })));
       } else if (message.type === "stream_event" && !parent) {
         const event = message.event as { type: string; delta?: { type: string; text?: string } };
         if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
@@ -450,9 +509,51 @@ class Session {
         this.stopped = false;
         this.emit({ t: "result", ok, ...(this.metered ? { cost: message.total_cost_usd } : {}), durationMs: message.duration_ms });
         this.setStatus(ok ? "idle" : "error");
-        this.idleTimer = setTimeout(() => this.close(), IDLE_CLOSE_MS);
+        this.idleSince = Date.now();
+        this.armIdle();
       }
     }
+  }
+
+  // A process with nothing to do closes after IDLE_CLOSE_MS; one with helpers still at work in the background stays
+  // open for them, up to BACKGROUND_MOST_MS after the run ended.
+  private armIdle() {
+    clearTimeout(this.idleTimer);
+    if (this.status !== "idle" && this.status !== "error") return;
+    // A temporary conversation can't be picked up again once its process closes (nothing of it was kept), so rather than
+    // closing it goes whole, and only BACKGROUND_MOST_MS after its last run, even left open in a tab.
+    if (this.temporary) { this.idleTimer = setTimeout(() => { void deleteSession(this.id); }, Math.max(0, this.idleSince + BACKGROUND_MOST_MS - Date.now())); return; }
+    const wait = this.background.length ? Math.max(0, this.idleSince + BACKGROUND_MOST_MS - Date.now()) : IDLE_CLOSE_MS;
+    this.idleTimer = setTimeout(() => this.close(), wait);
+  }
+
+  // The helpers at work in the background, each with its step once known, said to the chat when they change (kept with
+  // the conversation, and emptied when the process goes: dropBackground, and on loading).
+  private setBackground(tasks: Aside[]) {
+    const next = tasks.map((x): Aside => {
+      const tool = this.taskTools.get(x.id);
+      return tool ? { id: x.id, what: x.what, kind: x.kind, tool } : { id: x.id, what: x.what, kind: x.kind };
+    });
+    if (JSON.stringify(next) === JSON.stringify(this.background)) return;
+    this.background = next;
+    this.emit({ t: "background", tasks: next });
+    this.armIdle();
+  }
+
+  // Ends the helpers still at work in the background; the SDK then says each one stopped and the set empties. A stop
+  // that doesn't answer holds nothing up for more than a few seconds.
+  async stopBackground() {
+    if (!this.background.length || !this.handle) return;
+    const stops = Promise.all(this.background.map((x) => this.handle!.stopTask(x.id).catch(() => {})));
+    await Promise.race([stops, new Promise((done) => setTimeout(done, 3000))]);
+  }
+
+  // The process gone, its helpers are too: said, so nothing shows them still at work.
+  private dropBackground() {
+    this.taskTools.clear();
+    if (!this.background.length) return;
+    this.background = [];
+    this.emit({ t: "background", tasks: [] });
   }
 
   // Deleted (deleteSession): what it still had to save is dropped and nothing more is, nor is it handed over; its
@@ -461,7 +562,21 @@ class Session {
     this.gone = true;
     clearTimeout(this.saveTimer);
     clearTimeout(this.idleTimer);
+    clearTimeout(this.leftTimer);
     this.close();
+    // A temporary conversation takes what was attached to it along: each upload no other conversation has.
+    if (!this.temporary) return;
+    const uploadsOf = (s: Session) => s.events.flatMap((e) => (e.t === "user" && Array.isArray(e.files) ? e.files.map((f: { id?: unknown }) => String(f?.id ?? "")) : []));
+    const elsewhere = new Set([...sessions.values()].filter((s) => s !== this).flatMap(uploadsOf));
+    // Each removal on its own and best-effort: a file the closing process still holds (on Windows) leaves the rest to go,
+    // and the conversation itself goes all the same.
+    const quietly = (remove: () => void) => { try { remove(); } catch { /* held open: it can't be removed now */ } };
+    for (const id of new Set(uploadsOf(this))) if (!elsewhere.has(id)) quietly(() => removeUpload(id));
+    // And what Claude kept by the session itself: the copies of files it took before editing them, and its environment.
+    if (this.claudeId && /^[0-9a-f-]{36}$/.test(this.claudeId)) {
+      const claude = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+      for (const kept of ["file-history", "session-env"]) quietly(() => rmSync(path.join(claude, kept, this.claudeId!), { recursive: true, force: true }));
+    }
   }
 
   close() {
@@ -469,6 +584,7 @@ class Session {
     this.handle?.close();
     this.external?.close();
     this.external = undefined;
+    this.dropBackground();
     this.wake?.();
   }
 }
@@ -480,6 +596,16 @@ function describeInput(tool: string, input: Record<string, unknown>) {
     return `${input.file_path}\n\n${String(change ?? "").slice(0, 3000)}`;
   }
   return JSON.stringify(input, null, 2).slice(0, 3000);
+}
+
+// What an edit or a new file would change, for the request to show as lines kept, taken out and put in (readChange in
+// ui/answer-parts.ts); describeInput's words, cut short, can't say where the new text starts. The path goes exactly as
+// given. Past 40,000 characters a side is cut, and cut says so: allowing still writes all of it.
+const CHANGE_SHOWN = 40_000;
+function changeOf(tool: string, input: Record<string, unknown>) {
+  if (tool !== "Edit" && tool !== "Write") return undefined;
+  const [before, after] = (tool === "Edit" ? [input.old_string, input.new_string] : ["", input.content]).map((v) => String(v ?? ""));
+  return { path: String(input.file_path ?? ""), before: before.slice(0, CHANGE_SHOWN), after: after.slice(0, CHANGE_SHOWN), cut: Math.max(before.length, after.length) > CHANGE_SHOWN };
 }
 
 // What a tool call acts on. The interface words the action in the reader's language.
@@ -515,6 +641,7 @@ function resultPreview(content: unknown): string {
 }
 
 const sessions = new Map<string, Session>();
+const DAILY_TITLE = /^(הריצה היומית|Daily run):/;
 
 // Restore finished conversations. A process that was running when the server stopped is gone.
 for (const name of readdirSync(DATA)) {
@@ -533,10 +660,16 @@ for (const name of readdirSync(DATA)) {
     session.pinned = typeof saved.pinned === "number" ? saved.pinned : undefined;
     session.archived = saved.archived === true;
     session.project = typeof saved.project === "string" ? saved.project : undefined;
+    // One saved before the daily run's conversations were marked is known by the title the run gives them
+    // (automation.ts WORDS title).
+    session.auto = saved.auto === true || DAILY_TITLE.test(String(saved.title ?? ""));
     // Saved before conversations knew how they were paid for: their ends showed the SDK's dollar figure, which on a
     // Claude plan is no bill, so it goes. On a key, that figure is all that is lost.
     if (session.metered === undefined) for (const e of session.events) if (e.t === "result") delete e.cost;
     session.status = saved.status === "running" || saved.status === "waiting" ? "error" : saved.status;
+    // Its process didn't outlive the server, nor did the helpers it had in the background.
+    const aside = [...session.events].reverse().find((e) => e.t === "background");
+    if (Array.isArray(aside?.tasks) && aside.tasks.length) session.events.push({ t: "background", tasks: [] });
     const settled = new Set(session.events.filter((e) => e.t === "resolved").map((e) => e.requestId));
     for (const e of [...session.events]) {
       if ((e.t === "permission" || e.t === "question") && !settled.has(e.requestId)) {
@@ -569,8 +702,9 @@ function pickAgent() {
   return { agent, usable: agent === "codex" || signed.claude };
 }
 
-export function createSession(prompt: string, model?: string, options: { title?: string; unattended?: boolean; access?: Access; uploads?: (Upload & { file: string })[] } = {}) {
-  const title = (options.title ?? (prompt || options.uploads?.map((u) => u.name).join(", ") || "")).replace(/\s+/g, " ").trim().slice(0, 70);
+export function createSession(prompt: string, model?: string, options: { title?: string; unattended?: boolean; access?: Access; uploads?: (Upload & { file: string })[]; temporary?: boolean } = {}) {
+  // A temporary conversation has no title: its first words would otherwise travel in the list (/api/state, the phone).
+  const title = options.temporary ? "" : (options.title ?? (prompt || options.uploads?.map((u) => u.name).join(", ") || "")).replace(/\s+/g, " ").trim().slice(0, 70);
   const access = options.unattended ? "ask" : options.access ?? "ask";
   const order = engineOrder(loadSettings().aiPrimary);
   const first = options.unattended ? "claude" : order[0];
@@ -578,17 +712,21 @@ export function createSession(prompt: string, model?: string, options: { title?:
   // can work at all while another AI can still answer; never a command, which needs an agent.
   const picked = options.unattended ? { agent: "claude" as const, usable: true } : pickAgent();
   const plain = !prompt.trim().startsWith("/") && picked.agent === "claude" && (first !== "claude" || (!picked.usable && order.length > 1));
-  const session = new Session(crypto.randomUUID(), title, !plain && picked.agent === "claude" && MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended, access, plain, picked.agent);
+  const session = new Session(crypto.randomUUID(), title, !plain && picked.agent === "claude" && MODELS.includes(model ?? "") ? model : undefined, Date.now(), options.unattended, access, plain, picked.agent, Boolean(options.temporary && !options.unattended));
   sessions.set(session.id, session);
+  // A temporary one nobody opens doesn't stay either.
+  session.watchLeaving();
   if (!plain && !picked.usable) session.cannotStart(prompt, options.uploads);
   else session.send(prompt, options.uploads);
   return session;
 }
 
-// A conversation for work the server does itself with the settings' AI (Session.task).
-export function createTaskSession(asked: string, work: Parameters<Session["task"]>[1]) {
-  const session = new Session(crypto.randomUUID(), asked, undefined, Date.now(), false, "ask", true);
+// A conversation for work the server does itself with the settings' AI (Session.task); auto, the daily run's.
+export function createTaskSession(asked: string, work: Parameters<Session["task"]>[1], temporary = false, auto = false) {
+  const session = new Session(crypto.randomUUID(), temporary ? "" : asked, undefined, Date.now(), false, "ask", true, "claude", temporary);
+  session.auto = auto;
   sessions.set(session.id, session);
+  session.watchLeaving();
   session.task(asked, work);
   return session;
 }
@@ -600,17 +738,22 @@ async function finished(session: Session, timeoutMs: number) {
     const unsubscribe = session.subscribe((e) => { if (e.t === "status" && (e.status === "idle" || e.status === "error")) finish(); });
     const finish = () => { clearTimeout(timer); unsubscribe(); resolve(); };
   });
+  // A run nobody watches leaves nothing at work behind it.
+  await session.stopBackground().catch(() => {});
   const lastText = [...session.events].reverse().find((e) => e.t === "text")?.text;
   return { id: session.id, ok: session.status === "idle", text: String(lastText ?? "") };
 }
 
-// Runs a session with nobody watching, until it finishes or runs out of time.
-export const runUnattended = (prompt: string, title: string, timeoutMs: number) =>
-  finished(createSession(prompt, undefined, { title, unattended: true }), timeoutMs);
+// Runs a session with nobody watching, until it finishes or runs out of time: the daily run's (Session.auto).
+export function runUnattended(prompt: string, title: string, timeoutMs: number) {
+  const session = createSession(prompt, undefined, { title, unattended: true });
+  session.auto = true;
+  return finished(session, timeoutMs);
+}
 
 // The same for a task the server does itself (createTaskSession), like the daily run's portals check.
 export const runTask = (title: string, work: Parameters<Session["task"]>[1], timeoutMs: number) =>
-  finished(createTaskSession(title, work), timeoutMs);
+  finished(createTaskSession(title, work, false, true), timeoutMs);
 
 export const getSession = (id: string) => sessions.get(id);
 // A conversation deleted: stopped first if it is working, then forgotten, so that what the stop still says is never
@@ -625,7 +768,7 @@ export async function deleteSession(id: string) {
   return true;
 }
 // The conversations a search finds (threads.ts matches), the newest first.
-export const searchSessions = (query: string) => [...sessions.values()].filter((s) => matches(s, query)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 100).map((s) => s.id);
+export const searchSessions = (query: string) => [...sessions.values()].filter((s) => !s.temporary && matches(s, query)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 100).map((s) => s.id);
 // A project deleted: its conversations leave it.
 export function leaveProject(project: string) {
   for (const s of sessions.values()) if (s.project === project) s.setMeta({ project: null });

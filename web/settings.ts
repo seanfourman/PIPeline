@@ -28,6 +28,9 @@ export type Settings = {
   // The server runs the automation, so none of this reaches the agent's files.
   // computer: the one of the account's computers that runs it (accounts.ts's computerId), "" for whichever has it on.
   automation: { enabled: boolean; email: string; maxPerDay: number; runTimes: string[]; minScore: number; computer: string };
+  // Live alerts (alerts.ts): the search watched with no AI, each new job told by email (to automation's address) and on
+  // the computer as it is found, every few minutes (every); the employers' own sites each at most once an hour.
+  alerts: { enabled: boolean; email: boolean; desktop: boolean; every: 15 | 30 | 60 };
   // The quick search's own choices on the jobs page, kept from one visit to the next: how recent, which market
   // ("all" or a code), the work type ("" follows workMode), and which areas show. Only the page uses these.
   quickSearch: { days: "1" | "7" | "14" | "30"; market: string; mode: "" | "any" | "remote" | "hybrid" | "onsite"; areas: "relevant" | "listed" | "all" };
@@ -50,6 +53,7 @@ export const EMPTY_SETTINGS: Settings = {
   roles: [{ id: "software", label: "Software", query: "Software Engineer" }],
   salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he", aiPrimary: "claude",
   automation: { enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "" },
+  alerts: { enabled: false, email: true, desktop: true, every: 15 },
   quickSearch: { days: "14", market: "all", mode: "", areas: "relevant" },
   introDone: false,
   industries: [], lowTech: true, portals: { off: [], mine: [] },
@@ -69,7 +73,8 @@ export const REGION_PRESETS: Record<string, { name: string; places: string[] }[]
 
 // The Israeli boards (boards.ts) name places in Hebrew, the areas above in English: each Hebrew name stands for the
 // English one the areas use, so a posting in "פתח תקווה" falls in the area with "petah". "קריית" is written "קרית"
-// and "תקוה" "תקווה" before they are looked up.
+// and "תקוה" "תקווה" before they are looked up. Ben Gurion Airport (נתב"ג, where IAI's head office is) stands for
+// Lod, the town beside it.
 export const HEBREW_PLACES: [string, string][] = [
   ["תל אביב", "tel aviv"], ["רמת גן", "ramat gan"], ["גבעתיים", "givatayim"], ["בני ברק", "bnei brak"], ["פתח תקווה", "petah tikva"],
   ["ראש העין", "rosh haayin"], ["חולון", "holon"], ["בת ים", "bat yam"], ["ראשון לציון", "rishon lezion"], ["רחובות", "rehovot"],
@@ -86,7 +91,7 @@ export const HEBREW_PLACES: [string, string][] = [
   ["מודיעין", "modiin"], ["ירושלים", "jerusalem"], ["בית שמש", "beit shemesh"], ["מבשרת ציון", "mevaseret"], ["מעלה אדומים", "maale adumim"],
   ["אשדוד", "ashdod"], ["אשקלון", "ashkelon"], ["קרית גת", "kiryat gat"], ["קרית מלאכי", "kiryat malakhi"], ["באר שבע", "beer sheva"],
   ["ירוחם", "yeruham"], ["דימונה", "dimona"], ["ערד", "arad"], ["אילת", "eilat"], ["שדרות", "sderot"], ["נתיבות", "netivot"], ["אופקים", "ofakim"],
-  ["גדרה", "gedera"], ["אריאל", "ariel"],
+  ["גדרה", "gedera"], ["אריאל", "ariel"], ["נתב\"ג", "lod"], ["נתב״ג", "lod"],
 ];
 export function inEnglish(place: string) {
   const he = place.replace(/קריית/g, "קרית").replace(/תקוה/g, "תקווה");
@@ -183,6 +188,12 @@ export function validateSettings(input: any): Settings {
       runTimes: times.length ? [...new Set<string>(times)].sort().slice(0, 24) : ["09:00"],
       minScore: wholeNumber(input?.automation?.minScore, 100) || 60,
       computer: /^[0-9a-f]{32}$/.test(String(input?.automation?.computer ?? "")) ? input.automation.computer : "",
+    },
+    alerts: {
+      enabled: input?.alerts?.enabled === true,
+      email: input?.alerts?.email !== false,
+      desktop: input?.alerts?.desktop !== false,
+      every: ([15, 30, 60] as const).find((n) => n === Number(input?.alerts?.every)) ?? 15,
     },
     // pick's first option is the one a missing or strange value gets; a market no longer chosen falls back to all.
     quickSearch: {

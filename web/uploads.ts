@@ -1,7 +1,7 @@
 // Files attached in the chat: images, PDFs and text, each saved in a folder of its own under user/app/uploads,
 // which git ignores, for the chat to show and the agent to read. A file is taken only when its first bytes are
 // what its name says, so a page or a script cannot come in dressed as an image.
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { REPO } from "./policy";
 import { APP_DIR } from "./user";
@@ -65,6 +65,23 @@ export function getUpload(id: string, dir = UPLOADS): (Upload & { file: string }
   const upload = JSON.parse(readFileSync(meta, "utf8")) as Upload;
   const file = path.join(dir, id, upload.name);
   return existsSync(file) ? { ...upload, file } : null;
+}
+
+// A temporary conversation's attachments: a folder of their own that the sync between computers leaves out (sync.ts
+// OWN), emptied whenever the server starts (an attachment never sent is in no conversation to take it along).
+export const TEMP_UPLOADS = path.join(APP_DIR, "uploads-temporary");
+export const clearTemporaryUploads = () => rmSync(TEMP_UPLOADS, { recursive: true, force: true });
+// An upload by its id, wherever it was kept.
+export const findUpload = (id: string) => getUpload(id) ?? getUpload(id, TEMP_UPLOADS);
+
+// An upload removed, its folder and all (a temporary conversation's, as it goes), from either place: only ever a UUID's
+// folder right inside one of them, checked once resolved, before anything is removed.
+export function removeUpload(id: string) {
+  if (!/^[0-9a-f-]{36}$/.test(id)) return;
+  for (const dir of [UPLOADS, TEMP_UPLOADS]) {
+    const folder = path.resolve(dir, id);
+    if (path.dirname(folder) === path.resolve(dir) && existsSync(path.join(folder, "upload.json"))) rmSync(folder, { recursive: true, force: true });
+  }
 }
 
 // What a message with attachments says to Claude: each image as an image it sees at once, and for a PDF or a

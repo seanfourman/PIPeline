@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { answerParts, docKind, docOrigin, docOwner, docPath, docSlug, placeDocs, turnItems, writingKind } from "./ui/answer-parts";
+import { answerParts, docKind, docOrigin, docOwner, docPath, docSlug, hasSteering, lineDiff, placeDocs, readChange, revealSteering, turnItems, writingKind } from "./ui/answer-parts";
 
 describe("answer parts", () => {
   test("turns a run of questions that each say how to answer them into cards, and leaves the words around them", () => {
@@ -88,6 +88,8 @@ describe("documents in the conversation", () => {
       .toEqual(["tools-0:a", "text", "user", "tools-4:b", "text"]);
     // A turn with no steps has no block, and a block keeps its key as steps come in.
     expect(shape([{ t: "user" }, { t: "text" }, { t: "result" }])).toEqual(["user", "text", "result"]);
+    // What runs in the background isn't an item, so the steps stay the last thing while a helper is started.
+    expect(shape([{ t: "user" }, { t: "tool", id: "a" }, { t: "background" }])).toEqual(["user", "tools-1:a"]);
     expect(shape([...turn, { t: "user" }, { t: "tool", id: "c" }]).slice(-2)).toEqual(["user", "tools-12:c"]);
   });
 
@@ -97,5 +99,41 @@ describe("documents in the conversation", () => {
     expect(writingKind([{ t: "tool", id: "b", name: "Write", files: ["cover_letters/cover_x.tex"] }], done)).toBe("letter");
     expect(writingKind([{ t: "tool", id: "b", name: "WebFetch" }], done)).toBeNull();
     expect(writingKind([{ t: "tool", id: "a", name: "DraftCv" }], done)).toBeNull();
+  });
+
+  test("shows an edit's change as lines kept, taken out and put in, even when a new line starts with a dash", () => {
+    const kinds = (x: { kind: string; text: string }[]) => x.map((l) => `${l.kind}:${l.text}`);
+    expect(kinds(lineDiff(["a", "b", "c"], ["a", "x", "c", "d"]))).toEqual(["same:a", "del:b", "add:x", "same:c", "add:d"]);
+    expect(kinds(lineDiff(["top", "a", "end"], ["top", "b", "end"]))).toEqual(["same:top", "del:a", "add:b", "same:end"]);
+    // Thousands of lines a side, all different: no table that big, just the lines taken out, then those put in, at once.
+    const many = (c: string) => Array.from({ length: 3000 }, (_, k) => `${c}${k}`);
+    const started = performance.now();
+    const big = lineDiff(["same", ...many("x"), "last"], ["same", ...many("y"), "last"]);
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(big.length).toBe(6002);
+    expect([big[0].kind, big[1].kind, big[3000].kind, big[3001].kind, big[6001].kind]).toEqual(["same", "del", "del", "add", "same"]);
+    // The server's words for an edit: a markdown bullet put in under a line kept is one line put in, not one taken out.
+    const input = ["C:/pip/user/profile/01-candidate-profile.md", "", "- - **Go** (coursework only)", "+ - **Go** (coursework only)", "- **No Go at work.**"].join("\n");
+    const edit = readChange({ tool: "Edit", input });
+    expect(edit?.path).toBe("C:/pip/user/profile/01-candidate-profile.md");
+    expect(kinds(edit!.lines)).toEqual(["same:- **Go** (coursework only)", "add:- **No Go at work.**"]);
+    // Sent whole, it is read as sent; a new file is all put in; a command has no change.
+    expect(kinds(readChange({ tool: "Edit", input, change: { path: "x.md", before: ["old", "kept"].join("\n"), after: ["kept", "new"].join("\n") } })!.lines))
+      .toEqual(["del:old", "same:kept", "add:new"]);
+    expect(kinds(readChange({ tool: "Write", input: ["a.txt", "", "hello", "world"].join("\n") })!.lines)).toEqual(["add:hello", "add:world"]);
+    expect(readChange({ tool: "Bash", input: "ls -la" })).toBeNull();
+    // Only part of it: said so, whether the server says it or its words stop at their length.
+    expect(readChange({ tool: "Edit", input, change: { path: "x.md", before: "a", after: "b", cut: true } })!.cut).toBe(true);
+    expect(edit!.cut).toBe(false);
+    expect(readChange({ tool: "Write", input: `a.txt\n\n${"x".repeat(3000)}` })!.cut).toBe(true);
+  });
+
+  test("shows the characters that reorder text as their codes, so a path or command reads as it is", () => {
+    expect(revealSteering("doc\u202efdp.exe")).toEqual(["doc", { code: "U+202E" }, "fdp.exe"]);
+    expect(revealSteering("\u2066rm -rf\u2069")).toEqual([{ code: "U+2066" }, "rm -rf", { code: "U+2069" }]);
+    expect(revealSteering("plain path.md")).toEqual(["plain path.md"]);
+    expect(revealSteering("")).toEqual([""]);
+    expect(hasSteering("plain")).toBe(false);
+    expect(hasSteering(revealSteering("x").join("") + String.fromCharCode(0x2067))).toBe(true);
   });
 });

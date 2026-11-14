@@ -11,8 +11,10 @@ import os from "node:os";
 import path from "node:path";
 import { ChatbotError } from "./chatbots";
 import { levelGate, requiredYears } from "./experience";
-import { greenhouseApi, greenhousePosting, markedLines, pageData, portalPlain, telegramEmbed, type Facts } from "./posting-read";
+import { greenhouseApi, greenhousePosting, hotJob, hotPosting, listedJob, mainContent, markedLines, nessApi, nessPosting, pageData, portalPlain, telegramEmbed, textPosting, type Facts } from "./posting-read";
 import { REPO } from "./policy";
+import { HOT_JOBS, jsonPoster, type Post } from "./boards";
+import { ownName, redmatchJob, textJob } from "./portals";
 import { loadSettings, renderBlock } from "./settings";
 
 export const PYTHON = process.platform === "win32" ? "python" : "python3";
@@ -37,7 +39,8 @@ export type Ask = (system: string, prompt: string, signal: AbortSignal) => Promi
 export type Steps = { start: (id: string, target: string, name?: string) => void; done: (id: string, ok: boolean, preview: string) => void };
 type Job = { key: string; title?: string; company?: string; url?: string; portal?: string };
 // source is where the words came from: the portal's detail command, a site's API, a page's own data, or its text.
-export type Fetched = { text: string; guard: string; findings?: Record<string, unknown> | null; source?: "portal" | "api" | "data" | "page"; facts?: Facts }
+// whole: the page read whole, menus and all, as no part of it held the job's words (posting-read.ts mainContent).
+export type Fetched = { text: string; guard: string; findings?: Record<string, unknown> | null; source?: "portal" | "api" | "data" | "page"; facts?: Facts; whole?: boolean }
   | { status: "expired" | "unreachable"; fetch_error: string };
 
 // A tool in the project, its output as text; stopped or too slow, it is killed.
@@ -75,7 +78,7 @@ export function guarded(out: string) {
 // that gets this far without text is unreachable, and the next run tries it again. A page that keeps its posting
 // in its own data (posting-read.ts), or a site that gives it through its API, is read from there, and the guard
 // cleans that HTML as it would the page. Headings and list items keep their marks (posting_guard.py --marks).
-export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scratch: string): Promise<Fetched> {
+export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scratch: string, post?: Post): Promise<Fetched> {
   const url = String(job.url ?? "");
   if (!/^https?:\/\//i.test(url)) return { status: "unreachable", fetch_error: "no posting URL" };
   const cli = job.portal && /^[a-z0-9-]+$/.test(job.portal) ? path.join(".agents", "skills", job.portal, "cli", "src", "cli.ts") : "";
@@ -89,8 +92,47 @@ export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scra
       if (clean.text) return { ...clean, source: "portal", facts: read.facts };
     }
   }
-  const api = greenhouseApi(url);
-  const target = api || telegramEmbed(url) || url;
+  // A Redmatch careers app's job (Clalit's), which its service gives only to a POST: its title, place and words.
+  const red = redmatchJob(url);
+  if (red) {
+    const answer = await (post ?? jsonPoster(run))(`${red.api}position/GetPositionDetails/${red.guid}/${red.id}`, {}, signal);
+    let position: any = null;
+    try { position = answer ? JSON.parse(answer.replace(/^﻿/, ""))?.position : null; } catch { /* no posting, below */ }
+    if (!position?.description && !position?.shortDescription) return { status: "unreachable", fetch_error: "the careers service gave no posting" };
+    const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+    const held = path.join(scratch, `${crypto.randomUUID()}.html`);
+    writeFileSync(held, `<h1>${esc(position.jobTitleText)}</h1><p>${esc(position.displayLocation || position.location)}</p>${position.description || `<p>${esc(position.shortDescription)}</p>`}`);
+    try {
+      const clean = guarded((await run([PYTHON, "tools/posting_guard.py", "--in", held, "--html", "--json", "--marks"], { signal })).out);
+      return clean.text ? { ...clean, source: "api" } : { status: "unreachable", fetch_error: "the careers service gave no posting text" };
+    } finally {
+      rmSync(held, { force: true });
+    }
+  }
+  // A HOT job, from HOT's service, which answers only a POST.
+  const hot = hotJob(url);
+  if (hot) {
+    const answer = await (post ?? jsonPoster(run))(HOT_JOBS, {}, signal);
+    const found = answer ? hotPosting(answer, hot) : null;
+    if (found === "closed") return { status: "expired", fetch_error: "" };
+    if (!found) return { status: "unreachable", fetch_error: "HOT's job service gave no posting" };
+    const held = path.join(scratch, `${crypto.randomUUID()}.html`);
+    writeFileSync(held, found.html);
+    try {
+      const clean = guarded((await run([PYTHON, "tools/posting_guard.py", "--in", held, "--html", "--json", "--marks"], { signal })).out);
+      return clean.text ? { ...clean, source: "api" } : { status: "unreachable", fetch_error: "HOT's job service gave no posting text" };
+    } finally {
+      rmSync(held, { force: true });
+    }
+  }
+  // A site that gives its job through a service rather than in its page: Greenhouse, Ness, or a list of all its jobs
+  // (Elbit's, Bezeq's).
+  const ness = nessApi(url);
+  const listed = listedJob(url);
+  const api = greenhouseApi(url) || ness || listed?.file || "";
+  // A job of a list written out in full: its block of the list's page, the page read without the job's mark.
+  const written = textJob(url);
+  const target = api || telegramEmbed(url) || written?.list.url || url;
   // Saved outside the project, as fetch_page.py insists: what comes back is untrusted.
   const file = path.join(scratch, `${crypto.randomUUID()}.html`);
   try {
@@ -102,7 +144,9 @@ export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scra
     if (status >= 400) return { status: "unreachable", fetch_error: `HTTP ${status}` };
     let body = "";
     try { body = readFileSync(file, "utf8"); } catch { /* the guard reads the file itself */ }
-    const found = body ? (api ? greenhousePosting(body) : pageData(body, target)) : null;
+    const fromList = listed && body ? listed.read(body) : written && body ? textPosting(body, written) : null;
+    if (fromList === "closed") return { status: "expired", fetch_error: "" };
+    const found = body ? (ness ? nessPosting(body) : listed || written ? fromList : api ? greenhousePosting(body) : pageData(body, target)) : null;
     if (found && !found.flat) {
       const held = path.join(scratch, `${crypto.randomUUID()}.html`);
       writeFileSync(held, found.html);
@@ -111,9 +155,21 @@ export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scra
       // A Telegram post can be a line or two; a page's own data shorter than that is not the posting.
       if (clean.text.length >= (target === url ? 120 : 20)) return { ...clean, source: api ? "api" : "data", facts: found.facts };
     }
-    if (api) return { status: "unreachable", fetch_error: "Greenhouse gave no posting text" };
+    if (api) return { status: "unreachable", fetch_error: `${ness ? "Ness" : listed ? listed.name : "Greenhouse"} gave no posting text` };
+    // The whole list is never read as one job's posting.
+    if (written) return { status: "unreachable", fetch_error: "the list's page no longer has its jobs where it had them" };
+    // The page's own part that holds the job, without its menus, header and footer (posting-read.ts mainContent); a
+    // page that isn't UTF-8 is left whole, for posting_guard.py to decode by its charset.
+    const part = body && !body.includes("�") ? mainContent(body) : null;
+    if (part) {
+      const held = path.join(scratch, `${crypto.randomUUID()}.html`);
+      writeFileSync(held, part);
+      const clean = guarded((await run([PYTHON, "tools/posting_guard.py", "--in", held, "--html", "--json", "--marks"], { signal })).out);
+      rmSync(held, { force: true });
+      if (clean.text.length >= 200) return { ...clean, source: "page", ...(found ? { facts: found.facts } : {}) };
+    }
     const clean = guarded((await run([PYTHON, "tools/posting_guard.py", "--in", file, "--html", "--json", "--marks"], { signal })).out);
-    return clean.text.length >= 200 ? { ...clean, source: "page", ...(found ? { facts: found.facts } : {}) } : { status: "unreachable", fetch_error: "the page had almost no text" };
+    return clean.text.length >= 200 ? { ...clean, source: "page", whole: true, ...(found ? { facts: found.facts } : {}) } : { status: "unreachable", fetch_error: "the page had almost no text" };
   } finally {
     rmSync(file, { force: true });
   }
@@ -161,7 +217,7 @@ export const postingLines = (text: string) => markedLines(text.slice(0, MAX_POST
 export function scoringPrompt(job: Job, text: string) {
   const mark = `POSTING-${crypto.randomUUID().slice(0, 8)}`;
   const lines = postingLines(text).map((line, i) => `${i}| ${line}`).join("\n");
-  return [`This should be the posting for "${job.title ?? ""}" at ${job.company ?? ""}. Its text is between the two ${mark} lines, each line after its number.`, mark, lines, mark, "Answer with the JSON object."].join("\n");
+  return [`This should be the posting for "${job.title ?? ""}" at ${ownName(job.company ?? "")}. Its text is between the two ${mark} lines, each line after its number.`, mark, lines, mark, "Answer with the JSON object."].join("\n");
 }
 
 const plain = (value: unknown, max: number) => oneLine(String(value ?? "").replace(/https?:\/\/\S+/g, "").replace(/[<>*_`#|[\]]/g, ""), max);
@@ -346,7 +402,7 @@ export async function rankJobs(o: { ask: Ask; steps: Steps; signal: AbortSignal;
       while (!halt.signal.aborted && next < selected.length) {
         const job = selected[next++];
         const id = `rank-${next}`;
-        steps.start(id, [job.title, job.company].filter(Boolean).join(", "));
+        steps.start(id, [job.title, ownName(job.company ?? "")].filter(Boolean).join(", "));
         if (levelGate({ title: String(job.title ?? ""), years: null, seniority }).verdict === "FAIL") {
           results.push({ key: job.key, status: "filtered", reason: "senior" });
           steps.done(id, false, "filtered: a senior title");

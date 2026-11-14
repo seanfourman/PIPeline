@@ -3,8 +3,10 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { BOARDS, pageFetcher, searchBoard, type Board, type Fetch } from "./boards";
 import { REPO } from "./policy";
-import { boardOn } from "./portals";
+import { boardOn, ownName } from "./portals";
 import { levelGate } from "./experience";
+import { jobGroup } from "./groups";
+import type { createAutoScores } from "./match";
 import { boardQueries } from "./roles";
 import { inEnglish, linkedinPlace, REMOTE, type Area, type Market, type Settings } from "./settings";
 import { asksForTranscript, TRANSCRIPT } from "./transcript";
@@ -55,34 +57,77 @@ export function classifyLocation(location: string, areas: Area[]): Area["tier"] 
 
 const httpUrl = (u: unknown) => (typeof u === "string" && /^https?:\/\//i.test(u) ? u : "");
 
-function seenJobs(areas: Area[], seniority: Settings["seniority"]) {
+// The list's automatic scores (match.ts), from the postings kept on this computer.
+export type AutoScores = ReturnType<typeof createAutoScores>;
+
+// A job the list has twice, from a job site and from the company's own site (a company read on its own site since,
+// portals.ts), shows once: the same title from the same employer (the portal it was read for, or else the same company
+// name). The company's own copy shows, unless the job site's copy carries a word on the job, dismissed, left out or
+// ranked by the AI, which then stays as it is, and the own copy goes. Display only: the list's file keeps both.
+const JOB_SITES = /(^|\.)(alljobs|drushim|jobmaster)\.co\.il$/i;
+const DECIDED = new Set(["skipped", "filtered", "ranked"]);
+const plainWords = (s: unknown) => String(s ?? "").toLowerCase().replace(/\/[תה](?=[^\p{L}]|$)/gu, "").replace(/[^\p{L}\p{N}]+/gu, "");
+const onJobSite = (url: string) => { try { return JOB_SITES.test(new URL(url).hostname); } catch { return false; } };
+export function withoutJobSiteCopies<T extends { url: string; title: string; company: string; status?: string; portalId?: string }>(jobs: T[]): T[] {
+  const own = new Map<string, T[]>();
+  for (const j of jobs) {
+    if (onJobSite(j.url)) continue;
+    const title = plainWords(j.title);
+    for (const key of [j.portalId ? `p:${j.portalId}|${title}` : "", `c:${plainWords(j.company)}|${title}`]) {
+      if (key) own.set(key, [...(own.get(key) ?? []), j]);
+    }
+  }
+  const gone = new Set<T>();
+  for (const j of jobs) {
+    if (!onJobSite(j.url)) continue;
+    const twins = own.get(j.portalId ? `p:${j.portalId}|${plainWords(j.title)}` : `c:${plainWords(j.company)}|${plainWords(j.title)}`);
+    if (!twins?.length) continue;
+    if (DECIDED.has(String(j.status ?? ""))) twins.forEach((t) => gone.add(t));
+    else gone.add(j);
+  }
+  return jobs.filter((j) => !gone.has(j));
+}
+
+function seenJobs(settings: Settings, auto?: AutoScores) {
+  const { areas, seniority } = settings;
   const seen: Record<string, any> = readJson(path.join(REPO, "user", "job_scraper", "seen_jobs.json"))?.seen ?? {};
-  return Object.entries(seen).map(([key, j]) => {
+  const scoreOf = auto?.scorer(settings);
+  return withoutJobSiteCopies(Object.entries(seen).map(([key, j]) => {
     // Above the level searched for: left out before scoring for the years its posting asks or its senior title
     // (rank_state.py's "filtered", written as it was read), or a senior title seen here, for a junior search.
     const level = j.status === "filtered" ? { verdict: "FAIL", why: j.filter_reason === "senior" ? "senior" : "years", years: j.experience_min } : levelGate({ title: String(j.title ?? ""), years: null, seniority });
     const levelOut = level.verdict === "FAIL";
+    const tier = classifyLocation(String(j.location ?? ""), areas);
+    // Its automatic score, from its posting's words with no AI, or its title's while its posting isn't read; the AI's
+    // (score), when the user asked for one, stands over it. None for a job skipped or closed.
+    const mine = scoreOf && j.status !== "skipped" && j.status !== "expired" ? scoreOf({ url: String(j.url ?? ""), title: String(j.title ?? ""), tier }) : null;
     return {
     key,
     title: String(j.title ?? ""),
-    company: String(j.company ?? ""),
+    company: ownName(String(j.company ?? "")),
     location: String(j.location ?? ""),
-    tier: classifyLocation(String(j.location ?? ""), areas),
+    tier,
     url: httpUrl(j.url),
     date: j.posted_date ?? j.first_seen ?? "",
     deadline: j.deadline ?? "",
     status: String(j.status ?? ""),
     score: typeof j.rank_score === "number" ? j.rank_score : null,
     verdict: String(j.rank_verdict ?? ""),
+    auto: mine?.score ?? null,
+    autoBasis: mine?.basis ?? "",
     veto: j.location_verdict === "FAIL" || j.language_gate === "FAIL" || levelOut,
     // Which check left it out: its place, its language, the years it asks, or its senior title; years how many.
     gate: j.location_verdict === "FAIL" ? "location" : j.language_gate === "FAIL" ? "language" : levelOut ? level.why ?? "years" : "",
     years: levelOut && typeof level.years === "number" ? level.years : null,
     fit: String(j.fit ?? ""),
-    // Where it was found: a job site's search, an employer's own page (careers-page), or another.
+    // Where it was found: a job site's search, an employer's own page (careers-page), or another; and the employer on
+    // the portals page it was read for, when it was.
     portal: String(j.portal ?? ""),
+    portalId: String(j.portal_id ?? "") || undefined,
+    // A high-tech company's or a known employer's, or another's (groups.ts), for the list's filter.
+    group: jobGroup({ portalId: String(j.portal_id ?? ""), company: String(j.company ?? ""), url: String(j.url ?? "") }),
     };
-  });
+  }));
 }
 
 function listFiles() {
@@ -158,11 +203,11 @@ export function cardLine(card: ScoreCard, lang: "he" | "en") {
   return [...lenses, `${lang === "he" ? "כללי" : "Overall"} ${card.overall ?? "–"}`].join(", ");
 }
 
-export function loadState(settings: Settings) {
+export function loadState(settings: Settings, auto?: AutoScores) {
   const trackerFile = path.join(REPO, "user", "job_search_tracker.csv");
   const applications = (existsSync(trackerFile) ? parseCsv(readFileSync(trackerFile, "utf8")) : [])
     .map((row) => ({ ...row, ats: readAts(row.cv_file), card: readCard(row.cv_file), asksTranscript: postingAsksTranscript(row.cv_file) }));
-  return { applications, jobs: seenJobs(settings.areas, settings.seniority), files: listFiles(), profileReady: profileReady() };
+  return { applications, jobs: seenJobs(settings, auto), files: listFiles(), profileReady: profileReady() };
 }
 
 // Only finished documents from the output folders are ever served.
@@ -266,7 +311,9 @@ async function runBoard(board: Board, q: string, days: number, areas: Area[], si
 // sources "boards" leaves LinkedIn and freehire out, for the daily run, whose agent searches those itself. The
 // Israeli boards are searched for a market in Israel, with the role's Hebrew name as well as its title; any site
 // switched off on the portals page is left out. Stopped (signal), what is still running is killed.
-export async function searchJobs(q: string, days: string, marketCode: string, workMode: string, settings: Settings, sources: "all" | "boards" = "all", signal?: AbortSignal) {
+// sources: everything, the Israeli boards alone (the portals check), or the portals' tools alone, LinkedIn and
+// freehire (the daily run's search, whose boards are the portals check's).
+export async function searchJobs(q: string, days: string, marketCode: string, workMode: string, settings: Settings, sources: "all" | "boards" | "tools" = "all", signal?: AbortSignal) {
   const query = q.trim().slice(0, 120);
   if (!query || query.startsWith("-")) throw new Error("bad query");
   const age = ["1", "7", "14", "30"].includes(days) ? days : "14";
@@ -280,7 +327,7 @@ export async function searchJobs(q: string, days: string, marketCode: string, wo
     const options = { days: age, market, workMode: mode, seniority: settings.seniority };
     return { label: `${source} ${market.label}`, run: runPortal(source, query, options, settings.areas, signal) };
   }));
-  if (markets.some((m) => m.code === "IL")) {
+  if (sources !== "tools" && markets.some((m) => m.code === "IL")) {
     const role = settings.roles.find((r) => r.query.toLowerCase() === query.toLowerCase());
     for (const board of BOARDS.filter((b) => boardOn(b, settings))) {
       for (const search of role ? boardQueries(role) : [query]) runs.push({ label: board, run: runBoard(board, search, Number(age), settings.areas, signal) });

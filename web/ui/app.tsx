@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useId, useLay
 import { translate, type Lang } from "./i18n";
 import { api, copyText, desktopSystem, errorText, goTo, Icon, isComputer, macCommand, ROUTED, type ApiError } from "./kit";
 import { AccountDialog } from "./accounts";
+import { FloatBar } from "./floatbar";
 import { Pip, PipMark, type Mood } from "./pip";
 import { Apps } from "./views/apps";
 import { Chat } from "./views/chat";
@@ -14,6 +15,7 @@ import { Jobs, SavedJobs } from "./views/jobs";
 import { Portals } from "./views/portals";
 import { ProfilePage } from "./views/profile";
 import { Portfolio } from "./views/portfolio";
+import { Companies } from "./views/companies";
 import { Settings } from "./views/settings";
 import { Welcome } from "./views/welcome";
 
@@ -23,7 +25,7 @@ export type AppState = {
   saved: { url: string; title: string; company: string; location: string; date: string; saved: string }[];
   // plain: chat only, answered by the settings' AI (agent.ts); engine: the name of the one that answered last.
   // agent: "codex" when ChatGPT works in it as an agent, through Codex (codex.ts).
-  sessions: { id: string; title: string; status: string; createdAt: number; model?: string; access?: string; plain?: boolean; engine?: string; agent?: string; pinned?: number; archived?: boolean; project?: string }[];
+  sessions: { id: string; title: string; status: string; createdAt: number; model?: string; access?: string; plain?: boolean; engine?: string; agent?: string; pinned?: number; archived?: boolean; project?: string; temporary?: boolean; auto?: boolean }[];
   // The conversations' projects (projects.ts); a Pip from before them has none.
   projects?: { id: string; name: string; createdAt: number }[];
   settings: Record<string, any>; presets: Record<string, { name: string; places: string[] }[]>; profileReady: boolean;
@@ -60,7 +62,7 @@ type Ctx = {
   say: (text: string, mood?: Mood, ms?: number) => void; news: News; update: Update;
   // access is how much the conversation may do without asking (policy.ts); left out, it asks. files are the ids
   // of uploads attached to the first message (uploads.ts).
-  start: (prompt: string, model?: string, access?: string, files?: string[]) => Promise<void>;
+  start: (prompt: string, model?: string, access?: string, files?: string[], temporary?: boolean) => Promise<void>;
   // The same in the background: the conversation is made and listed, but the page stays where it is, and Pip
   // peeks out while it works (PeekingPip).
   run: (prompt: string) => Promise<void>;
@@ -122,7 +124,7 @@ export function friendlyTitle(title: string, t: Ctx["t"]) {
 // SHOWN are in the list, and those after them in More's menu at its end, where any page added later goes too.
 const NAV: [string, string][] = [
   ["dash", "home"], ["jobs", "jobs"], ["saved", "saved"], ["portals", "portals"], ["apps", "apps"], ["chat", "chat"],
-  ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"], ["portfolio", "portfolio"],
+  ["profile", "profile"], ["settings", "settings"], ["rules", "rules"], ["tools", "tools"], ["files", "files"], ["portfolio", "portfolio"], ["companies", "companies"],
 ];
 const SHOWN = 10;
 // Every page an address can open: the sidebar's, a CV or a letter in the editor, the introduction, and a job's own
@@ -327,8 +329,9 @@ export function PopMenu({ className, face, label, children, near = false, onTogg
 }
 
 export function companionLine(s: AppState, view: string, t: Ctx["t"]): { text: string; mood: Mood; href?: string; action?: string; news?: boolean } {
-  const waiting = s.sessions.find((x) => x.status === "waiting");
-  const running = s.sessions.find((x) => x.status === "running");
+  // The daily run's conversations (agent.ts Session.auto) aren't the user's, so Pip never says he is on one for them.
+  const waiting = s.sessions.find((x) => x.status === "waiting" && !x.auto);
+  const running = s.sessions.find((x) => x.status === "running" && !x.auto);
   if (waiting) return { text: t("pip.waiting"), mood: "ask", href: `/chat/${waiting.id}`, action: t("pip.toChat"), news: true };
   if (running) return { text: t("pip.running"), mood: "work", href: `/chat/${running.id}`, action: t("pip.watch") };
   const line = t(`pip.views.${view}`);
@@ -361,8 +364,8 @@ type Peek = { key: string; text: string; mood?: Mood; href?: string; label?: str
 // with a Latin company name too. The pages' own Pips stay as they are.
 function PeekingPip() {
   const { s, t, view, say, news, update } = useApp();
-  const waiting = s.sessions.find((x) => x.status === "waiting");
-  const working = s.sessions.find((x) => x.status === "running" && inBackground(x.title));
+  const waiting = s.sessions.find((x) => x.status === "waiting" && !x.auto);
+  const working = s.sessions.find((x) => x.status === "running" && !x.auto && inBackground(x.title));
   const session = view === "chat" ? undefined : waiting ?? working;
   const work = session === working;
   const workLine = working ? BACKGROUND[working.title].work : "pip.peekWork";
@@ -388,7 +391,7 @@ function PeekingPip() {
   const seen = useRef(new Set<string>());
   useEffect(() => {
     for (const x of s.sessions) {
-      if (!inBackground(x.title)) continue;
+      if (x.auto || !inBackground(x.title)) continue;
       if (x.status === "running") seen.current.add(x.id);
       else if ((x.status === "idle" || x.status === "error") && seen.current.delete(x.id)) {
         const lines = BACKGROUND[x.title];
@@ -427,8 +430,10 @@ export function SpeechTail() {
 let lastChat = "";
 
 function Screen() {
-  const { view, arg } = useApp();
-  if (view === "chat" && arg) lastChat = arg;
+  const { s, view, arg } = useApp();
+  // A temporary conversation isn't remembered (it goes once left), nor is one that is gone.
+  if (view === "chat" && arg && !s.sessions.find((c) => c.id === arg)?.temporary) lastChat = arg;
+  if (lastChat && lastChat !== "new" && s.sessions.length && !s.sessions.some((c) => c.id === lastChat)) lastChat = "";
   switch (view) {
     case "jobs": return <Jobs />;
     case "saved": return <SavedJobs />;
@@ -438,6 +443,7 @@ function Screen() {
     case "chat": return <Chat id={arg ?? (lastChat || "new")} />;
     case "tools": return <Tools />;
     case "portfolio": return <Portfolio />;
+    case "companies": return <Companies />;
     case "profile": return <ProfilePage />;
     case "rules": return <Rules />;
     case "files": return <Files />;
@@ -579,6 +585,8 @@ export function App() {
   const [theme, setTheme] = useState(() => (THEMES_ON ? stored("theme") ?? "" : "light"));
   const [news, setNews] = useState<News>(null);
   const newsTimer = useRef<ReturnType<typeof setTimeout>>();
+  // The page's scroller, for its floating bar (floatbar.tsx).
+  const mainRef = useRef<HTMLElement>(null);
   const draft = useRef("");
   const prefersDark = useMemo(() => matchMedia("(prefers-color-scheme: dark)"), []);
   const [systemDark, setSystemDark] = useState(prefersDark.matches);
@@ -755,9 +763,11 @@ export function App() {
   // A conversation begun, and the state brought in with it listed. Ranking the new jobs and the smart search, with
   // nothing more asked, are done by the server with the settings' AI (ranker.ts, scraper.ts), from whichever
   // button asks for them; with more after them they are Claude's commands.
-  const begin = async (prompt: string, model?: string, access?: string, files?: string[]) => {
-    const own = files?.length ? "" : ({ "/rank": "rank", "/job-scraper": "scrape" } as Record<string, string>)[prompt.trim()] ?? "";
-    const session = own ? await api<{ id: string }>(own, {}) : await api<{ id: string }>("sessions", { prompt, model, access, files });
+  // temporary: a conversation that leaves nothing behind (agent.ts Session.temporary); the server's own runs keep
+  // records, so in one everything goes to the conversation itself.
+  const begin = async (prompt: string, model?: string, access?: string, files?: string[], temporary = false) => {
+    const own = temporary || files?.length ? "" : ({ "/rank": "rank", "/job-scraper": "scrape" } as Record<string, string>)[prompt.trim()] ?? "";
+    const session = own ? await api<{ id: string }>(own, {}) : await api<{ id: string }>("sessions", { prompt, model, access, files, ...(temporary ? { temporary: true } : {}) });
     await refresh();
     return session;
   };
@@ -784,8 +794,8 @@ export function App() {
       setNews({ text, mood });
       newsTimer.current = setTimeout(() => setNews(null), ms);
     },
-    start: async (prompt, model, access, files) => {
-      const session = await begin(prompt, model, access, files);
+    start: async (prompt, model, access, files, temporary) => {
+      const session = await begin(prompt, model, access, files, temporary);
       goTo(`/chat/${session.id}`);
     },
     run: async (prompt) => { await begin(prompt); },
@@ -807,7 +817,8 @@ export function App() {
       {auth === "in" && !welcome && !adding && (
         <div className={`shell ${booted && loaded ? "entering" : "waiting"}`} aria-busy={!(booted && loaded)}>
           <Sidebar />
-          <main id="main" tabIndex={-1}><Screen /></main>
+          <main id="main" tabIndex={-1} ref={mainRef}><Screen /></main>
+          <FloatBar scroller={mainRef} />
           <PeekingPip />
         </div>
       )}

@@ -16,10 +16,30 @@ describe("pickJobs", () => {
 
   test("skips what should not get a CV", () => {
     const skipped = [
-      job({ status: "new" }), job({ status: "expired" }), job({ score: 59 }), job({ score: null }),
+      job({ status: "new", score: null }), job({ status: "expired" }), job({ score: 59 }), job({ score: null }),
       job({ tier: "far" }), job({ veto: true }), job({ url: "" }),
+      // An automatic score from the title alone is too little to draft for.
+      job({ status: "new", score: null, auto: 90, autoBasis: "title" }), job({ status: "new", score: null, auto: 59, autoBasis: "posting" }),
     ];
     expect(pickJobs(skipped, [], [], settings())).toEqual([]);
+  });
+
+  test("picks by the AI's score when the user asked for one, else by the automatic one from the job's posting", () => {
+    // Each by how far it clears its own bar: 72 is 12 over the AI's 60, 85 is 10 over the automatic 75, 80 only 5.
+    const jobs = [
+      job({ url: "u1", company: "A", status: "new", score: null, auto: 85, autoBasis: "posting" }),
+      job({ url: "u2", company: "B", score: 72, auto: 50, autoBasis: "posting" }),
+      job({ url: "u3", company: "C", status: "new", score: null, auto: 80, autoBasis: "posting" }),
+    ];
+    expect(pickJobs(jobs, [], [], settings()).map((j) => j.url)).toEqual(["u2", "u1"]);
+  });
+
+  test("asks more of an automatic score than of the AI's, as a keyword match runs higher", () => {
+    const auto = (url: string, score: number) => job({ url, company: url, status: "new", score: null, auto: score, autoBasis: "posting" });
+    const all = [auto("a74", 74), auto("a75", 75), job({ url: "ai60", company: "ai60", score: 60 })];
+    expect(pickJobs(all, [], [], settings({ maxPerDay: 10 })).map((j) => j.url).sort()).toEqual(["a75", "ai60"]);
+    const higher = [auto("a84", 84), auto("a85", 85), job({ url: "ai69", company: "ai69", score: 69 })];
+    expect(pickJobs(higher, [], [], settings({ maxPerDay: 10, minScore: 70 })).map((j) => j.url)).toEqual(["a85"]);
   });
 
   test("never repeats a job already applied to or already tried", () => {
@@ -103,11 +123,11 @@ describe("a run", () => {
     return { deps, prompts, mails, root };
   }
 
-  test("searches, ranks, drafts, and emails the CV to the candidate only", async () => {
+  test("searches, drafts, and emails the CV to the candidate only, ranking nothing with the AI", async () => {
     const { deps, prompts, mails } = setup();
     const automation = createAutomation(deps);
     await automation.run("manual");
-    expect(prompts.map((p) => p.match(/(job-scraper|rank\.md|apply\.md)/)?.[1])).toEqual(["job-scraper", "rank.md", "apply.md"]);
+    expect(prompts.map((p) => p.match(/(job-scraper|rank\.md|apply\.md)/)?.[1])).toEqual(["job-scraper", "apply.md"]);
     expect(mails).toHaveLength(1);
     expect(mails[0].to).toBe("me@x.co");
     expect(mails[0].attachments[0].name).toBe("Dana Cohen - Resume.pdf");
@@ -118,16 +138,40 @@ describe("a run", () => {
     expect(automation.runs()[0].mail).toEqual({ status: "sent", detail: "me@x.co" });
   });
 
-  test("checks the portals between the search and the ranking, when the server can", async () => {
+  test("checks the portals after the search, then reads the new jobs' postings, when the server can", async () => {
     const order: string[] = [];
     const { deps } = setup({
       runSession: async (prompt) => { order.push(prompt.includes("job-scraper") ? "search" : prompt.includes("rank.md") ? "rank" : "apply"); return { id: "s", ok: true, text: "" }; },
       scanPortals: async (title) => { order.push(`portals:${title}`); return { id: "p", ok: false, text: "AllJobs did not answer" }; },
+      readJobs: async (title) => { order.push(`read:${title}`); return { id: "r", ok: true, text: "" }; },
     });
     const automation = createAutomation(deps);
     await automation.run("manual");
-    expect(order.slice(0, 3)).toEqual(["search", "portals:הריצה היומית: פורטלים", "rank"]);
+    expect(order.slice(0, 4)).toEqual(["search", "portals:הריצה היומית: פורטלים", "read:הריצה היומית: קריאת המשרות", "apply"]);
     expect(automation.runs()[0].steps.find((s) => s.step === "portals")).toEqual({ step: "portals", session: "p", ok: false, note: "AllJobs did not answer" });
+    expect(automation.runs()[0].steps.find((s) => s.step === "read")).toEqual({ step: "read", session: "r", ok: true });
+  });
+
+  test("searches through the server, with no AI, when it can, never starting the job-scraper agent", async () => {
+    const searched: string[] = [];
+    const { deps, prompts } = setup({ search: async (title) => { searched.push(title); return { id: "q", ok: true, text: "" }; } });
+    const automation = createAutomation(deps);
+    await automation.run("manual");
+    expect(searched).toEqual(["הריצה היומית: חיפוש"]);
+    expect(prompts.some((p) => p.includes("job-scraper"))).toBe(false);
+    expect(automation.runs()[0].steps[0]).toEqual({ step: "search", session: "q", ok: true });
+  });
+
+  test("applies through the server's own few calls when it can, never starting /apply as an agent", async () => {
+    const applied: string[] = [];
+    const { deps, prompts } = setup({
+      applyJob: async (url, title) => { applied.push(`${title} ${url}`); return { id: "a", ok: true, text: "the report" }; },
+    });
+    const automation = createAutomation(deps);
+    await automation.run("manual");
+    expect(applied).toEqual(["הריצה היומית: Acme https://x.co/1"]);
+    expect(prompts.some((p) => p.includes("apply.md"))).toBe(false);
+    expect(automation.runs()[0].steps.find((s) => s.step === "apply")).toEqual({ step: "apply", company: "Acme", session: "a", ok: true });
   });
 
   test("writes the email in the interface language", async () => {

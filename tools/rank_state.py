@@ -43,11 +43,14 @@ it writes back is part of that grant (path_guard.py).
 """
 
 import argparse
+import contextlib
+import hashlib
 import json
 import os
 import re
 import sys
 import tempfile
+import time
 import unicodedata
 from datetime import date, datetime, timedelta, timezone
 from fractions import Fraction
@@ -108,6 +111,66 @@ def load_state(path: Path) -> tuple[dict, dict]:
     if not isinstance(seen, dict):
         sys.exit(f"{path}: expected an object of job entries")
     return doc, seen
+
+
+# How long a writer waits for another to finish with the state file. A write
+# takes a second or two, even on a list of thousands.
+LOCK_WAIT = 60.0
+
+if os.name == "nt":
+    import msvcrt
+
+    def _lock(fh) -> None:
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+
+    def _unlock(fh) -> None:
+        fh.seek(0)
+        msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+else:
+    import fcntl
+
+    def _lock(fh) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+    def _unlock(fh) -> None:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+class StateLocked(ValueError):
+    """Another writer held the state file for longer than LOCK_WAIT."""
+
+
+@contextlib.contextmanager
+def state_lock(path: Path, wait: float | None = None):
+    """One writer of a state file at a time, across processes.
+
+    Changing seen_jobs.json is a read, a change and a write. Two writers at
+    once (the web app writing a job's score or filter while its portals check
+    stores new hits, or /scrape storing while /rank applies) each write back
+    the file as they read it, and the last one drops the other's change. Every
+    command that writes the file holds this lock from its read to its write.
+    Readers need none, since the write is an atomic replace.
+
+    The lock is the operating system's, on a file in the temp folder, so no
+    sync or git ever carries it, and it is released if the process dies.
+    """
+    digest = hashlib.sha1(str(path.resolve()).casefold().encode("utf-8")).hexdigest()[:16]
+    lock_path = Path(tempfile.gettempdir()) / f"ai-job-search-state-{digest}.lock"
+    deadline = time.monotonic() + (LOCK_WAIT if wait is None else wait)
+    with open(lock_path, "a+b") as fh:
+        while True:
+            try:
+                _lock(fh)
+                break
+            except OSError:
+                if time.monotonic() >= deadline:
+                    raise StateLocked(f"{path} is being written by another run; try again in a moment") from None
+                time.sleep(0.1)
+        try:
+            yield
+        finally:
+            _unlock(fh)
 
 
 def save_state(path: Path, doc: dict) -> None:
@@ -621,7 +684,12 @@ def main() -> int:
     reason = refused(args.state, [STATE.parent.resolve(), *temp_dirs()], suffix=".json")
     if reason:
         sys.exit(f"--state {args.state}: {reason}")
-    return args.func(args)
+    writes = (args.command == "apply" and not args.dry_run) or (args.command == "sweep" and args.write)
+    try:
+        with state_lock(args.state) if writes else contextlib.nullcontext():
+            return args.func(args)
+    except StateLocked as exc:
+        sys.exit(str(exc))
 
 
 if __name__ == "__main__":

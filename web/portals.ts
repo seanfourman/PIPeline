@@ -37,12 +37,39 @@ export type Kind = "board" | "platform" | "employer" | "community";
 // comeet: "<name>/<id>" as on comeet.com/jobs/), its Eightfold careers site's host, or its own careers site, by the
 // reader boards.ts has for it.
 export type Read = { alljobs: number } | { drushim: string } | { greenhouse: string } | { lever: string } | { ashby: string } | { comeet: string }
-  | { workable: string } | { jobvite: string } | { eightfold: string } | { own: "matrix" | "mobileye" | "amazon" | "apple" | "google" | "checkpoint" | "paloalto" | "hibob" | "unity" };
+  | { workable: string } | { jobvite: string } | { eightfold: string }
+  // A careers page that lists its jobs in its own markup: its address, what a job's link looks like there (a pattern
+  // over the link's path), so that the page's other links aren't taken for jobs, and where the page puts a job's title
+  // when its link's words don't say it (a pattern whose first group is the title) (boards.ts readLinks). A list over
+  // pages: what its next pages' links look like (pages), or the address parameter that steps through them (step,
+  // SAP SuccessFactors' startrow), up to ten pages.
+  | { links: { url: string; path: string; title?: string; pages?: string; step?: { param: string; size: number } } }
+  // A careers page that writes its jobs out in full, none with a page of its own: where each job's block starts, its
+  // title and id in named groups (boards.ts textBlocks).
+  | { text: { url: string; item: string; more?: string[]; link?: string } }
+  // A WordPress site whose jobs are a type of its own, read through its list (boards.ts readWp), or its feed of jobs
+  // (an RSS address, boards.ts parseJobFeed).
+  | { wp: { site: string; type: string; query?: string } }
+  | { feed: string }
+  // A government body: its offices' numbers in the civil service's list of tenders (boards.ts parseGov).
+  | { gov: string[] }
+  // A careers site on Jibe: its host and its search's query (boards.ts readJibe).
+  | { jibe: { host: string; query: string } }
+  // A careers app on Redmatch (TopMatch's hiring system): its service, the employer's id there, and the app's address,
+  // where each job has its page (boards.ts parseRedmatch). Its list answers only a POST.
+  | { redmatch: { api: string; guid: string; site: string } }
+  // A Workday career site (https://<tenant>.wd<n>.myworkdayjobs.com/<site>): its list answers only a POST to its own
+  // service, searched for Israel and kept to places in Israel (boards.ts parseWorkday).
+  | { workday: { host: string; tenant: string; site: string } }
+  | { own: "matrix" | "mobileye" | "amazon" | "apple" | "google" | "checkpoint" | "paloalto" | "hibob" | "unity" | "mimunyashir" | "ness" | "elad" | "aman" | "dialog" | "gotfriends" | "nisha" | "jobnet" | "nbn" | "ethosia" | "iai" | "elbit" | "menora" | "bezeq" | "phoenix" | "mod" | "hot" };
 export type Portal = {
   id: string; kind: Kind; how: How; he: string; en: string; industry: Industry; url: string;
   // Outside high-tech: read only while the low-tech setting is on.
   lowTech?: boolean;
   read?: Read;
+  // The employer's own careers site, for one read on a job board too: read first, and the board (read) only when its
+  // own site doesn't answer or shows no jobs at all (boards.ts readEmployer).
+  direct?: Read;
   // For web: the site the agent searches with site:, and for a community, what it is.
   site?: string; note?: { he: string; en: string };
   // A public Telegram channel, which the agent reads itself, its newest posts on its page (site), rather than searches.
@@ -53,6 +80,9 @@ const ALLJOBS = (cid: number) => `https://www.alljobs.co.il/Employer/HP/Default.
 export const DRUSHIM_SEARCH = (q: string) => `https://www.drushim.co.il/jobs/search/${encodeURIComponent(q)}/`;
 
 // An employer read on AllJobs; its own careers page, when it has one that opens, is what the page opens.
+// FIBI's pages of jobs (fibi.co.il/private/general/about/jobs/...): each job a section of its own, its id the site's,
+// its title the section's heading.
+const FIBI_JOBS = '<section\\b[^>]*id="(?<id>section_[0-9a-f-]+)"[^>]*>\\s*<h2[^>]*>(?<title>[\\s\\S]*?)</h2>';
 const aj = (id: string, industry: Industry, he: string, en: string, cid: number, own?: string): Portal =>
   ({ id, kind: "employer", how: "read", he, en, industry, lowTech: industry !== "defense", read: { alljobs: cid }, url: own ?? ALLJOBS(cid) });
 // One without a page on AllJobs, read through Drushim's search for its name.
@@ -86,6 +116,9 @@ const platform = (id: string, name: string, site: string): Portal => ({
 // A public Telegram channel of job posts, its page of newest posts what the agent reads and the page opens.
 const channel = (id: string, he: string, en: string, name: string): Portal =>
   ({ id, kind: "community", how: "web", he, en, industry: "hightech", site: `t.me/s/${name}`, url: `https://t.me/s/${name}`, channel: true });
+// One outside high-tech, or in defense, whose own careers site is read (its reader in boards.ts), so its jobs link there.
+const ownIn = (id: string, industry: Industry, he: string, en: string, own: Extract<Read, { own: string }>["own"], url: string): Portal =>
+  ({ id, kind: "employer", how: "read", he, en, industry, lowTech: industry !== "defense", read: { own }, url });
 // One whose site can't be read: only opened.
 const open = (id: string, industry: Industry, he: string, en: string, url: string): Portal =>
   ({ id, kind: "employer", how: "link", he, en, industry, lowTech: industry !== "defense", url });
@@ -100,14 +133,17 @@ export const PORTALS: Portal[] = [
   { id: "hireme", kind: "board", how: "web", he: "HireMe Tech", en: "HireMe Tech", industry: "hightech", site: "hiremetech.com", url: "https://hiremetech.com/jobs-app/?view=jobs&sort_by=posted_date&sort_order=desc&country=Israel" },
   { id: "hireme-juniors", kind: "board", how: "web", he: "HireMe ג'וניורים", en: "HireMe Juniors", industry: "hightech", site: "juniors.hiremetech.com", url: "https://juniors.hiremetech.com/" },
   { id: "jobify", kind: "board", how: "web", he: "Jobify", en: "Jobify", industry: "hightech", site: "jobify360.co.il", url: "https://jobify360.co.il/" },
-  { id: "jobnet", kind: "board", how: "web", he: "Jobnet", en: "Jobnet", industry: "hightech", site: "jobnet.co.il", url: "https://www.jobnet.co.il/" },
+  { id: "jobnet", kind: "board", how: "read", he: "Jobnet", en: "Jobnet", industry: "hightech", read: { own: "jobnet" }, url: "https://www.jobnet.co.il/" },
   { id: "indeed", kind: "board", how: "web", he: "Indeed", en: "Indeed", industry: "hightech", site: "il.indeed.com", url: "https://il.indeed.com/" },
   { id: "glassdoor", kind: "board", how: "web", he: "Glassdoor", en: "Glassdoor", industry: "hightech", site: "glassdoor.com", url: "https://www.glassdoor.com/Job/israel-jobs-SRCH_IL.0,6_IN119.htm" },
-  { id: "gotfriends", kind: "board", how: "web", he: "Gotfriends", en: "Gotfriends", industry: "hightech", site: "gotfriends.co.il", url: "https://www.gotfriends.co.il/" },
-  { id: "ethosia", kind: "board", how: "web", he: "אתוסיה", en: "Ethosia", industry: "hightech", site: "ethosia.co.il", url: "https://www.ethosia.co.il/" },
-  { id: "nisha", kind: "board", how: "web", he: "נישה", en: "Nisha", industry: "hightech", site: "nisha.co.il", url: "https://www.nisha.co.il/" },
+  // A placement agency's board, its jobs unnamed ("in a leading company"): read by its categories for the roles' fields
+  // (boards.ts readGotfriends), no longer searched for on the web.
+  { id: "gotfriends", kind: "board", how: "read", he: "Gotfriends", en: "Gotfriends", industry: "hightech", read: { own: "gotfriends" }, url: "https://www.gotfriends.co.il/jobslobby/" },
+  { id: "ethosia", kind: "board", how: "read", he: "אתוסיה", en: "Ethosia", industry: "hightech", read: { own: "ethosia" }, url: "https://ethosia.co.il/" },
+  // A placement agency's board, read by its pages for the roles (boards.ts readNisha), no longer searched for on the web.
+  { id: "nisha", kind: "board", how: "read", he: "נישה", en: "Nisha", industry: "hightech", read: { own: "nisha" }, url: "https://www.nisha.co.il/job_cat/high-tech/" },
   { id: "secret-tel-aviv", kind: "board", how: "web", he: "Secret Tel Aviv Jobs", en: "Secret Tel Aviv Jobs", industry: "hightech", site: "jobs.secrettelaviv.com", url: "https://jobs.secrettelaviv.com/" },
-  { id: "nbn-jobs", kind: "board", how: "web", he: "לוח המשרות של נפש בנפש", en: "Nefesh B'Nefesh job board", industry: "hightech", site: "nbn.org.il/jobboard", url: "https://www.nbn.org.il/jobboard/" },
+  { id: "nbn-jobs", kind: "board", how: "read", he: "לוח המשרות של נפש בנפש", en: "Nefesh B'Nefesh job board", industry: "hightech", read: { own: "nbn" }, url: "https://www.nbn.org.il/jobboard/" },
   { id: "civil-service", kind: "board", how: "link", he: "נציבות שירות המדינה", en: "Civil Service Commission", industry: "government", lowTech: true, url: "https://ejobs.gov.il/gius/" },
   { id: "taasuka", kind: "board", how: "link", he: "שירות התעסוקה", en: "Israeli Employment Service", industry: "government", lowTech: true, url: "https://www.taasuka.gov.il/" },
 
@@ -167,7 +203,8 @@ export const PORTALS: Portal[] = [
   tech("hibob", "הייבוב", "HiBob", { own: "hibob" }, "https://www.hibob.com/careers/"),
   tech("varonis", "ורוניס", "Varonis", { jobvite: "varonis" }, "https://careers.varonis.com/"),
   tech("unity", "יוניטי", "Unity", { own: "unity" }, "https://unity.com/careers/positions"),
-  webTech("intel", "אינטל", "Intel", "intel.wd1.myworkdayjobs.com", "https://jobs.intel.com/"),
+  // Intel's own jobs site refuses to be read (robots.txt), but its Workday site answers its service's POST.
+  tech("intel", "אינטל", "Intel", { workday: { host: "intel.wd1.myworkdayjobs.com", tenant: "intel", site: "External" } }, "https://intel.wd1.myworkdayjobs.com/en-US/External"),
   webTech("meta", "מטא", "Meta", "metacareers.com/jobs", "https://www.metacareers.com/jobs"),
   webTech("wix", "וויקס", "Wix", "jobs.smartrecruiters.com/Wix2", "https://careers.wix.com/positions"),
   webTech("lemonade", "למונייד", "Lemonade", "makers.lemonade.com", "https://makers.lemonade.com/careers"),
@@ -285,8 +322,12 @@ export const PORTALS: Portal[] = [
   // AllJobs, where they post (its directory's high-tech, computing and software-house industries, November 2026).
   ajTech("malam-team", "מלם תים", "Malam Team", 294086),
   ajTech("mertens", "מרטנס - מלם תים", "Mertens - Malam Team", 352881),
-  ajTech("elad-systems", "אלעד מערכות", "Elad Systems", 3637),
-  ajTech("ness", "נס טכנולוגיות", "Ness Technologies", 3172),
+  // Read on their own careers sites since 2026-11-12, so their jobs link there rather than to AllJobs.
+  tech("elad-systems", "אלעד מערכות", "Elad Systems", { own: "elad" }, "https://elad.a-2-z.co.il/jobs/"),
+  tech("ness", "נס טכנולוגיות", "Ness Technologies", { own: "ness" }, "https://www.ness-tech.co.il/careers/"),
+  // IT placement houses that list their jobs on their own sites, which the job sites' searches found them by before.
+  tech("aman", "קבוצת Aman", "Aman Group", { own: "aman" }, "https://www.aman.co.il/careers/"),
+  tech("dialog", "דיאלוג", "Dialog", { own: "dialog" }, "https://www.dialog.co.il/high-tech/jobs/"),
   ajTech("one", "וואן טכנולוגיות", "One Technologies", 61904),
   ajTech("calanit", "כלנית (וואן)", "Calanit by One", 151960),
   ajTech("consist", "קונסיסט", "Consist", 9322),
@@ -373,6 +414,8 @@ export const PORTALS: Portal[] = [
   cmIn("discount", "finance", "בנק דיסקונט", "Discount Bank", "dbank/F8.004"),
   aj("mizrahi", "finance", "מזרחי טפחות", "Mizrahi Tefahot", 180495),
   aj("fibi", "finance", "הבנק הבינלאומי", "First International Bank", 225397),
+  // The FIBI group's computing company, a technology employer, its jobs written out on the bank's site (FIBI_JOBS).
+  { id: "mataf", kind: "employer", how: "read", he: "מת\"ף", en: "Mataf", industry: "hightech", read: { text: { url: "https://www.fibi.co.il/private/general/about/jobs/jobsmataf/", item: FIBI_JOBS } }, url: "https://www.fibi.co.il/private/general/about/jobs/jobsmataf/" },
   aj("jerusalem-bank", "finance", "בנק ירושלים", "Bank of Jerusalem", 24498),
   aj("max", "finance", "MAX", "Max", 182),
   aj("cal", "finance", "כאל", "Cal", 235543),
@@ -394,7 +437,8 @@ export const PORTALS: Portal[] = [
   aj("helman-aldubi", "finance", "הלמן אלדובי", "Helman Aldubi", 191469),
   aj("more", "finance", "מור בית השקעות", "More Investment House", 229658),
   aj("analyst", "finance", "אנליסט בית השקעות", "Analyst Investment House", 221966),
-  aj("mimun-yashir", "finance", "מימון ישיר", "Direct Finance", 352108),
+  // Read on its own site (5555.co.il) since 2026-11-12, so its jobs link there rather than to AllJobs.
+  ownIn("mimun-yashir", "finance", "מימון ישיר", "Direct Finance", "mimunyashir", "https://www.5555.co.il/%D7%93%D7%A8%D7%95%D7%A9%D7%99%D7%9D/%D7%9B%D7%9C-%D7%94%D7%9E%D7%A9%D7%A8%D7%95%D7%AA"),
   cmIn("deloitte", "finance", "Deloitte", "Deloitte Israel", "deloitte/F7.00B"),
   cmIn("kpmg", "finance", "KPMG סומך חייקין", "KPMG Somekh Chaikin", "somekhchaikin/F3.007"),
   aj("ey", "finance", "EY", "EY Israel", 358395),
@@ -738,8 +782,283 @@ export const PORTALS: Portal[] = [
   cmIn("drs-rada", "defense", "DRS רדא", "DRS RADA", "rada/73.009"),
 ];
 
+// The employers above read on a job board that publish their jobs on their own careers sites too, each site read
+// first (Portal.direct) and the board only when it doesn't answer (Sean 2026-11-14: "כל אתר שמפרסם בעצמו אני לא רוצה
+// לקחת את זה ממקומות אחרים כל עוד זה אפשרי"). Each was found and its list checked on 2026-11-14: the page that lists
+// the jobs, what a job's link looks like there, and where a title sits when its link only says "read more". Those on
+// a hiring system (SAP SuccessFactors' career sites, AdamTotal, TopMatch) are read the same way, from the list the
+// system renders; one on Comeet is read on Comeet.
+const DIRECT: Record<string, Read> = {
+  aig: { links: { url: "https://www.aig.co.il/jobs/", path: "^/jobs/[^/]+/$" } },
+  // Bezeq: its list from its own service, read with a GET (boards.ts parseBezeq).
+  bezeq: { own: "bezeq" },
+  boi: { links: { url: "https://careers.boi.org.il/go/%D7%9B%D7%9C-%D7%94%D7%9E%D7%A9%D7%A8%D7%95%D7%AA/8804001/", path: "^/job/" } },
+  calanit: { links: { url: "https://calanit.co.il/%D7%9E%D7%A9%D7%A8%D7%95%D7%AA/", path: "[?]position=[0-9]+" } },
+  // Clalit's whole list, its hospitals' too (some 550 open positions on 2026-11-14), on Redmatch.
+  clalit: { redmatch: { api: "https://jobs.clalitapps.co.il/CandidateAPI/api/", guid: "9E6C0368-A39E-4D83-803E-CF2AF0BA28DD", site: "https://jobs.clalitapps.co.il/clalit/" } },
+  consist: { links: { url: "https://www.consist.co.il/jobs/", path: "[?&]job=[0-9]+", title: "שם המשרה:[^<]*<strong>([^<]{3,140})</strong>" } },
+  dexcel: { links: { url: "https://careers.dexcel.com/opening-jobs-at-dexcel", path: "^/open-positions/" } },
+  // Elbit Systems: its whole list (some 550 jobs on 2026-11-14) in one file its site reads (boards.ts parseElbit).
+  elbit: { own: "elbit" },
+  electra: { links: { url: "https://www.electra.co.il/career/%D7%9E%D7%A9%D7%A8%D7%95%D7%AA", path: "[?&]job_id=[0-9]+" } },
+  flex: { workday: { host: "flextronics.wd1.myworkdayjobs.com", tenant: "flextronics", site: "Careers" } },
+  fox: { links: { url: "https://dreamjobs.co.il/", path: "^/career/[0-9]+" } },
+  "ge-vernova": { workday: { host: "gevernova.wd5.myworkdayjobs.com", tenant: "gevernova", site: "Vernova" } },
+  gamida: { links: { url: "https://www.gamida-cell.com/careers/", path: "^/job-opportunities/" } },
+  hertz: { links: { url: "https://career.adamtotal.co.il/?token=7hg6f-673b-4266-aec1-a4snOhtrx-6575b32f91ext", path: "/Jobs/JobDetails", pages: "/Home/Index[?]page=[0-9]+" } },
+  "hisec-labs": { links: { url: "https://highseclabs.com/jobs/", path: "^/jobs/(?!feed)[^/]+/$" } },
+  // FIBI: its jobs written out on its site, each in a section of its own.
+  fibi: { text: { url: "https://www.fibi.co.il/private/general/about/jobs/jobsfibi/", item: FIBI_JOBS } },
+  // Israel Aerospace Industries: its whole list (515 jobs on 2026-11-14) in one file its site reads (boards.ts readIai).
+  iai: { own: "iai" },
+  ibi: { links: { url: "https://www.ibi.co.il/career/", path: "^/career/[^/]+/$" } },
+  icl: { links: { url: "https://careers.icl-group.com/search/?q=&locationsearch=Israel", path: "^/job/", step: { param: "startrow", size: 25 } } },
+  iscar: { links: { url: "https://www.iscar.com/marcom/iscar-career-job-list/", path: "^/marcom/[0-9]{4}/[0-9]{2}/[0-9]{2}/", pages: "/marcom/iscar-career-job-list/[0-9]+/?$" } },
+  kamada: { links: { url: "https://career.kamada.com/Positions", path: "^/Job-Search/[^/]+/[^/]+/[0-9]+[.]aspx$" } },
+  leumit: { links: { url: "https://www.leumit.co.il/jobs/work-in-leumit/", path: "^/jobs/work-in-leumit/[^/]+/[0-9]+/?$" } },
+  levinsky: { links: { url: "https://www.l-w.ac.il/jobs/", path: "^/jobs/[0-9]+-[0-9]+/?$", pages: "/jobs/page/[0-9]+/?$" } },
+  // Menora Mivtachim, its pension company's jobs too: the group's one list, in its careers page's own data. The same
+  // job read for both is one job, by its address.
+  menora: { own: "menora" },
+  "menora-pension": { own: "menora" },
+  "mei-avivim": { links: { url: "https://www.mei-avivim.co.il/%d7%93%d7%a8%d7%95%d7%a9%d7%99%d7%9d/", path: "^/job/" } },
+  migdal: { links: { url: "https://career.adamtotal.co.il?token=6C91E014-E0F6-4DE7-8270-E235245BD569", path: "/Jobs/JobDetails", pages: "/Home/Index[?]page=[0-9]+" } },
+  milgam: { links: { url: "https://www.milgam.co.il/careers/", path: "^/job/[^/]+/?$" } },
+  mor: { links: { url: "https://mor.org.il/career/", path: "^/career/[^/]+/$" } },
+  noga: { links: { url: "https://www.noga-iso.co.il/jobs/", path: "^/jobs/jb-[0-9]+/?$" } },
+  omc: { links: { url: "https://www.omc.co.il/careers/", path: "^/career/[^/]+/?$" } },
+  ormat: { links: { url: "https://careers.ormat.com/HebrewIsrael/search/", path: "/job/" } },
+  passportcard: { comeet: "passportcard/92.00a" },
+  // The Phoenix: its open positions in its careers page's own state (boards.ts parsePhoenix).
+  phoenix: { own: "phoenix" },
+  risco: { links: { url: "https://www.riscogroup.com/careers/", path: "/rscm_career/" } },
+  shastovitz: { links: { url: "https://www.sch.co.il/careers/", path: "^/job/" } },
+  // TAMI, ICL's research institute: its jobs are on ICL's career site.
+  tami: { links: { url: "https://careers.icl-group.com/search/?q=&locationsearch=Israel", path: "^/job/", step: { param: "startrow", size: 25 } } },
+  technion: { links: { url: "https://hr.technion.ac.il/positions/", path: "[?&]jobid=[0-9]+", title: "class=\"col-3\">(?:<span[^>]*></span>)?([^<]{3,140})</span>" } },
+  tempo: { links: { url: "https://career.adamtotal.co.il/?token=5fiBEcF763Em2KLOPNQ4OPb1hiX9SxJtoMDssWS", path: "/Jobs/JobDetails", pages: "/Home/Index[?]page=[0-9]+" } },
+  tidhar: { links: { url: "https://tidhar.co.il/careers/", path: "^/careers/[^/]+/$" } },
+  union: { links: { url: "https://unioncareer.co.il/קריירה/", path: "^/jobs/" } },
+  weizmann: { links: { url: "https://www.weizmann.ac.il/career/jobs", path: "^/career/jobs/[0-9]+$" } },
+  wizo: { links: { url: "https://wizo.org.il/jobs/", path: "^/jobs/(?!page/)[^/]+/$", pages: "/jobs/page/[0-9]+/?$" } },
+  wobi: { links: { url: "https://www.wobi.co.il/%D7%93%D7%A8%D7%95%D7%A9%D7%99%D7%9D/", path: "^/career/[^/]+/?$" } },
+  yes: { links: { url: "https://career.yes.co.il/jobs-lobby/", path: "^/jobs-lobby/[0-9]+(-[0-9]+)?/?$" } },
+  // The second pass (2026-11-14): pages whose jobs have no link but a share button's (One), a card that is all one
+  // link (Mayanei HaYeshua), a title only in the button that applies (Shapir), or none in the list at all (Unipharm,
+  // whose titles are its pages' addresses).
+  one: { links: { url: "https://www.one1.co.il/careers/", path: "share_job_id=[0-9]+", title: 'class="job_title">([^<]{3,140})</span>' } },
+  mayanei: { links: { url: "https://www.mymc.co.il/jobs/", path: "^/jobs/[^/]+/$", title: '<h2 class="elementor-heading-title[^"]*">([^<]{3,140})</h2>' } },
+  shapir: { links: { url: "https://www.shapir.co.il/en/careers/", path: "^/משרות/[^/]+/?$", title: 'data-jobTitle="([^"]{3,160})"' } },
+  unipharm: { links: { url: "https://www.unipharm.co.il/%d7%a7%d7%a8%d7%99%d7%99%d7%a8%d7%94-%d7%91%d7%90%d7%95%d7%a0%d7%99%d7%a4%d7%90%d7%a8%d7%9d/", path: "^/jobs/[^/]+/?$" } },
+  // The survey of the other employers read on a board (2026-11-14). Municipalities: most run one site builder, its
+  // jobs at /wanted/ or /bids/ (some mixed with tenders for supplies, which the roles' words leave out), their links
+  // relative to the site's root (<base href>).
+  akko: { links: { url: "https://www.akko.muni.il/he/wanted/", path: "/wanted/[?]id=[0-9]+" } },
+  arad: { links: { url: "https://www.arad.muni.il/wanted/", path: "/wanted/[?]id=[0-9]+" } },
+  "bat-yam": { links: { url: "https://www.bat-yam.muni.il/bids/?archive=0&category=2", path: "^/bids/[0-9]+/$" } },
+  "beit-shemesh": { links: { url: "https://www.betshemesh.muni.il/bids/", path: "/bids/[?]id=[0-9]+" } },
+  "givat-shmuel": { links: { url: "https://www.givat-shmuel.muni.il/bids/", path: "/bids/[?]id=[0-9]+" } },
+  herzliya: { links: { url: "https://www.herzliya.muni.il/drushim/", path: "^/wanted/[0-9]+/$" } },
+  "hod-hasharon": { links: { url: "https://www.hod-hasharon.muni.il/bids/?archive=0&category=3", path: "^/bids/[0-9]+/$" } },
+  karmiel: { links: { url: "https://www.karmiel.muni.il/ראשי/shkifut/tenders/", path: "^/gd_bids/[^/]+/$" } },
+  "kfar-saba": { links: { url: "https://www.kfar-saba.muni.il/wanted/", path: "^/wanted/[0-9]+/$" } },
+  "kiryat-ata": { links: { url: "https://www.kiryat-ata.org.il/auctions/category/manpower_auctions/", path: "^/gd_auctions/[^/]+/$" } },
+  "kiryat-malachi": { links: { url: "https://www.k-m.org.il/wanted/", path: "/wanted/[?]id=[0-9]+" } },
+  "kiryat-motzkin": { links: { url: "https://www.kiryat-motzkin.muni.il/wanted/", path: "/wanted/[?]id=[0-9]+" } },
+  "kiryat-ono": { links: { url: "https://www.kiryatono.muni.il/bids/?archive=0&category=7", path: "^/bids/[0-9]+/$" } },
+  lod: { links: { url: "https://www.lod.muni.il/he/wanted/", path: "/wanted/[?]id=[0-9]+" } },
+  netivot: { links: { url: "https://www.netivot.muni.il/wanted/", path: "/wanted/[?]id=[0-9]+" } },
+  "or-yehuda": { links: { url: "https://www.oryehuda.muni.il/bids/", path: "/bids/[?]id=[0-9]+" } },
+  ramla: { links: { url: "https://www.ramle.org.il/bids/?archive=0&category=3", path: "^/bids/[0-9]+/$" } },
+  rehovot: { links: { url: "https://www.rehovot.muni.il/wanted/", path: "/wanted/[?]id=[0-9]+" } },
+  "rosh-haayin": { links: { url: "https://www.rosh-haayin.muni.il/bids/?archive=0&category=4", path: "^/bids/[0-9]+/$" } },
+  tiberias: { links: { url: "https://www.tiberias.muni.il/bids/category/jobs/", path: "^/gd_bids/[^/]+/$" } },
+  yavne: { links: { url: "https://www.yavne.muni.il/wanted/", path: "^/wanted/[0-9]+/$" } },
+  // Public bodies and others.
+  innovation: { links: { url: "https://innovationisrael.org.il/job/", path: "^/job/[^/]+/$", title: 'class="job_item_title[^"]*"[^>]*>([^<]{3,160})<' } },
+  "jewish-agency": { links: { url: "https://careers.jewishagency.org/", path: "^/career/[^/]+/$" } },
+  jdc: { comeet: "jdc/f3.004" },
+  leket: { links: { url: "https://www.leket.org/jobs/", path: "^/jobs/[^/]+/$" } },
+  naamat: { links: { url: "https://naamat.org.il/jobs/", path: "^/job/[^/]+/$" } },
+  golf: { links: { url: "https://www.golfgroup.co.il/jobs", path: "^/jobs-1/[^/]+$" } },
+  tambour: { links: { url: "https://tambour.co.il/career-lobby/", path: "^/career/career-[0-9]+/$" } },
+  rotem: { links: { url: "https://rotem-career.co.il/category/jobs/", path: "^/[0-9]{4}/[0-9]{2}/[0-9]{2}/[^/]+/$", pages: "/category/jobs/page/[0-9]+/?$" } },
+  jnj: { links: { url: "https://www.careers.jnj.com/en/jobs/?country=Israel", path: "^/en/jobs/r-[0-9]+/[^/]+/$", pages: "[?&]page=[0-9]+" } },
+  // Boards on Topmatch's Redmatch, as Clalit's: the same service, each employer's id from its board's settings file.
+  analyst: { redmatch: { api: "https://careers.topmatch.co.il/CandidateAPI/api/", guid: "48D0F6AE-9E14-4A81-B0DE-4C4A1A185109", site: "https://careers.topmatch.co.il/Analyst/" } },
+  "bar-ilan": { redmatch: { api: "https://careers.topmatch.co.il/CandidateAPI/api/", guid: "D8D6FFC7-31E2-46C1-94B4-985C99B9A913", site: "https://careers.topmatch.co.il/biu/" } },
+  diplomat: { redmatch: { api: "https://careers.topmatch.co.il/CandidateAPI/api/", guid: "F3191127-13AA-4B85-87DB-7A749A6A953F", site: "https://careers.topmatch.co.il/diplomat-il/" } },
+  "home-center": { redmatch: { api: "https://careers.topmatch.co.il/CandidateAPI/api/", guid: "31E779BE-C6C6-42BD-9269-74E03DDEBBE8", site: "https://careers.topmatch.co.il/homecenter/" } },
+  spni: { redmatch: { api: "https://careers.topmatch.co.il/CandidateAPI/api/", guid: "F2386168-7127-4B1A-8965-853D5D1CDCE4", site: "https://careers.topmatch.co.il/teva_org/" } },
+  tadiran: { redmatch: { api: "https://careers.topmatch.co.il/CandidateAPI/api/", guid: "76949C31-CA73-465E-A9DA-D374605B9212", site: "https://careers.topmatch.co.il/tadiran/" } },
+  // HOT: its careers page's jobs from its own service, which answers only a POST (boards.ts parseHot).
+  hot: { own: "hot" },
+  // Schneider Electric: its Jibe site's jobs in Israel.
+  "schneider-electric": { jibe: { host: "careers.se.com", query: "location=Israel" } },
+  // The Ministry of Defense: its own jobs site, not the civil service's (boards.ts parseMod).
+  mod: { own: "mod" },
+  // Government bodies: their offices' tenders in the civil service's list (boards.ts parseGov). Its hospitals hire
+  // outside these tenders too, so they stay on their boards. The Tax Authority's include the government's computing
+  // service (שע"מ, 0510).
+  agriculture: { gov: ["1100", "1156"] },
+  aliyah: { gov: ["3900"] },
+  cbs: { gov: ["0450"] },
+  courts: { gov: ["1670"] },
+  economy: { gov: ["1300"] },
+  education: { gov: ["1000"] },
+  enforcement: { gov: ["1680"] },
+  "energy-ministry": { gov: ["3400"] },
+  environment: { gov: ["2600"] },
+  "finance-ministry": { gov: ["0500"] },
+  "fire-rescue": { gov: ["0710"] },
+  foreign: { gov: ["0900"] },
+  housing: { gov: ["3600"] },
+  interior: { gov: ["2000"] },
+  moh: { gov: ["2401"] },
+  moj: { gov: ["1600"] },
+  mot: { gov: ["2200"] },
+  planning: { gov: ["0555"] },
+  pmo: { gov: ["0400"] },
+  population: { gov: ["2020"] },
+  tax: { gov: ["0560", "0570", "0580", "0510"] },
+  welfare: { gov: ["1870"] },
+  // Companies, banks, public bodies and colleges with a page of their own per job.
+  altshuler: { links: { url: "https://career.adamtotal.co.il/Home/Index?token=1EB6B34D-8783-4AD3-8SS80-7FA0CFA5DFC8", path: "/Jobs/JobDetails", pages: "/Home/Index[?]page=[0-9]+" } },
+  amitim: { links: { url: "https://www.amitim.com/career/jobs/", path: "^/job/[^/]+/$" } },
+  avis: { links: { url: "https://www.avis.co.il/%D7%93%D7%A8%D7%95%D7%A9%D7%99%D7%9D/", path: "/positionlist/[^/]+-jb-[0-9]+/?$" } },
+  cet: { links: { url: "https://cet.ac.il/jobs/", path: "^/jobs/[^/?]+/+$" } },
+  champion: { links: { url: "https://www.championmotors.co.il/careers/?ctype=&carea=&csearch=true", path: "[?&]careerid=[0-9]+", title: 'class="ctitle"[^>]*>([^<]{3,160})<' } },
+  channel14: { links: { url: "https://pirsum.now14.co.il/career/", path: "^/jobs/[^/]+/$" } },
+  che: { links: { url: "https://che.org.il/%d7%9e%d7%9b%d7%a8%d7%96%d7%99%d7%9d-%d7%93%d7%a8%d7%95%d7%a9%d7%99%d7%9d-%d7%95%d7%a7%d7%95%d7%9c-%d7%a7%d7%95%d7%a8%d7%90/%d7%93%d7%a8%d7%95%d7%a9%d7%99%d7%9d/", path: "^/job/[^/]+/$" } },
+  colman: { links: { url: "https://www.colman.ac.il/about/jobs/", path: "/promo/id=[0-9]+&src=5221" } },
+  ey: { links: { url: "https://careers.ey.com/ey/search/?q=&locationsearch=Israel", path: "^/ey/job/[^/]+/[0-9]+/$", step: { param: "startrow", size: 25 } } },
+  "israel-ports": { links: { url: "https://jobs.israports.co.il/go/%D7%9B%D7%9C-%D7%94%D7%9E%D7%A9%D7%A8%D7%95%D7%AA/4374101/", path: "^/job/[^/]+/[0-9]+/$" } },
+  mekorot: { links: { url: "https://careers.mekorot.co.il/open-jobs/", path: "[?&]job=[^&]+", title: 'class="[^"]*job-name[^"]*"[^>]*>([^<]{3,160})<' } },
+  melisron: { links: { url: "https://www.melisron.co.il/career/", path: "^/careers-inner/[0-9A-F]+[.][0-9A-F]+/$" } },
+  "mifal-hapais": { links: { url: "https://www.pais.co.il/info/careers.aspx", path: "[?&]jid=[0-9]+", title: 'class="home_news_title[^"]*"[^>]*>([^<]{3,160})<' } },
+  nii: { links: { url: "https://jobs.btl.gov.il/search/?q=&locale=he_IL", path: "^/job/[^/]+/[0-9]+/$", step: { param: "startrow", size: 25 } } },
+  novolog: { links: { url: "https://career.adamtotal.co.il/?token=7675h424-frd01-42a-a879-0fs13Rvgd16b0Novolog", path: "/Jobs/JobDetails", pages: "/Home/Index[?]page=[0-9]+" } },
+  // Paz's one list for the group (its retail and gas companies' jobs among them).
+  paz: { links: { url: "https://www.paz.co.il/jobs", path: "^/jobs/[^/]+/[^/]+$" } },
+  "rami-levy": { links: { url: "https://jobs.rami-levy.co.il/", path: "^/job/[^/]+/$" } },
+  sce: { links: { url: "https://www.sce.ac.il/administration/human-resources1/wanted/administration", path: "/promo/id=[0-9]+&src=8126" } },
+  taavura: { links: { url: "https://www.taavura.co.il/%d7%a7%d7%a8%d7%99%d7%99%d7%a8%d7%94/", path: "^/portfolio-item/[^/]+/$" } },
+  tau: { links: { url: "https://www.tau.ac.il/positions", path: "/jb-[0-9]+/" } },
+  // WordPress sites whose jobs are a type of their own, read through their own list, and one's feed of them.
+  amisragas: { wp: { site: "https://www.amisragas.co.il/", type: "job" } },
+  amit: { wp: { site: "https://amit.org.il/", type: "career" } },
+  enosh: { wp: { site: "https://www.enosh.org.il/", type: "career" } },
+  histadrut: { feed: "https://www.histadrut.org.il/jobs/feed/" },
+  issta: { wp: { site: "https://jobs.issta.co.il/", type: "awsm_job_openings" } },
+  nature: { wp: { site: "https://www.parks.org.il/", type: "jobs" } },
+  hadassah: { links: { url: "https://www.hadassah.org.il/careers/", path: "^/(wanted|research-and-development)/position-[0-9]+/$" } },
+  "hadassah-research": { links: { url: "https://he.hadassah.org.il/research-and-development/research-fund-careers/", path: "^/(wanted|research-and-development)/position-[0-9]+/$" } },
+  hapoalim: { links: { url: "https://www.bankhapoalim.co.il/forms/he/jobs-site/lobby", path: "^/he/node/[0-9]+$" } },
+  isracard: { links: { url: "https://www.isracard.co.il/career/jobs", path: "^/career/job/[0-9]+$" } },
+  "cancer-association": { links: { url: "https://www.cancer.org.il/subcategories/yy4oh6opzjc1710170905153/", path: "^/articles/[0-9]+" } },
+  "one-zero": { comeet: "onezerobank/36.00a" },
+  // Leumi: a table of its jobs, each row's id making its page (/he/node/<id>), which only a share-by-email link names.
+  leumi: { text: { url: "https://www.leumi.co.il/he/leumi_main/searchjobs", link: "https://www.leumi.co.il/he/node/{id}", item: 'name="job_checkbox" value="(?<id>[0-9]+)"[\\s\\S]{0,600}?<button aria-expanded="false">(?<title>[^<]{3,200})</button>[\\s\\S]{0,300}?<span>(?<place>[^<]{0,800})</span>' } },
+  // Freesbe: its cards have no link, each one's number makes its page (/jobs/<n>).
+  freesbe: { text: { url: "https://careers.freesbe.com/jobs", link: "https://careers.freesbe.com/jobs/{id}", item: 'מספר משרה(?:<!-- -->|\\s)*(?<id>[0-9]+)</span>\\s*<h3[^>]*>(?<title>[^<]{3,200})</h3>' } },
+  // Tel-Hai's jobs on Civi: each card's number makes its page on Civi (promo/id=<n>&src=17197).
+  "tel-hai": { text: { url: "https://app.civi.co.il/promos/id=6YYC76GKV6&src=17197", link: "https://app.civi.co.il/promo/id={id}&src=17197", item: "openPromo\\(event,(?<id>[0-9]+),17197,1\\)'>[\\s\\S]{0,300}?<div class='title'[^>]*>(?<title>[^<]{3,200})</div>" } },
+  // Lists written out in full found by the survey, each job's block where its title's markup is.
+  afcon: { text: { url: "https://www.afcon.co.il/%d7%a7%d7%a8%d7%99%d7%99%d7%a8%d7%94/", item: '<h2 class="elementor-heading-title[^"]*"[^>]*>(?<title>[^<]{3,200})</h2>' } },
+  akim: { text: { url: "https://akim.org.il/jobs/", item: '<div class="jet-toggle__label-text"[^>]*>(?<title>[\\s\\S]{3,200}?)</div>' } },
+  braude: { text: { url: "https://w3.braude.ac.il/about/jobs/", item: '<a[^>]*class="accordion-title"[^>]*>(?<title>[\\s\\S]{3,200}?)</a>' } },
+  brinks: { text: { url: "https://brinks.co.il/%d7%a7%d7%a8%d7%99%d7%99%d7%a8%d7%94-%d7%91%d7%91%d7%a8%d7%99%d7%a0%d7%a7%d7%a1/", item: '<h2 class="career__item-title"[^>]*>(?<title>[\\s\\S]{3,200}?)</h2>' } },
+  budget: { text: { url: "https://www.budget.co.il/%d7%90%d7%95%d7%93%d7%95%d7%aa-%d7%91%d7%90%d7%93%d7%92%d7%98/25795-2/", item: '<span class="[^"]*isName[^"]*"[^>]*>\\s*<span[^>]*>(?<title>[^<]{3,200})</span>' } },
+  delek: { text: { url: "https://delek.co.il/%d7%93%d7%a8%d7%95%d7%a9%d7%99%d7%9d-%d7%97%d7%93%d7%a9/", item: '<h4[^>]*data-tab="(?<id>jc[0-9]+)"[^>]*>(?<title>[^<]{3,200})</h4>' } },
+  "delek-motors": { text: { url: "https://www.delek-motors.co.il/%d7%a7%d7%a8%d7%99%d7%99%d7%a8%d7%94/", item: '<h2 class="position-title"[^>]*>(?<title>[\\s\\S]{3,200}?)</h2>' } },
+  "dor-alon": { text: { url: "https://www.doralon.co.il/%d7%93%d7%a8%d7%95%d7%a9%d7%99%d7%9d-2/", item: '<strong style="color: #009e52; font-size: 22px;">(?<title>[\\s\\S]{3,200}?)</strong>' } },
+  "emek-yezreel": { text: { url: "https://www.yvc.ac.il/jobs/", item: '<a[^>]*class="question-link"[^>]*>\\s*<span[^>]*>(?<title>[\\s\\S]{3,200}?)</span>' } },
+  gordon: { text: { url: "https://www.gordon.ac.il/ContentPage?id=217", item: '<a[^>]*class="faq_button"[^>]*>(?<title>[\\s\\S]{3,200}?)</a>' } },
+  hfd: { text: { url: "https://www.hfd.co.il/%d7%93%d7%a8%d7%95%d7%a9%d7%99%d7%9d/", item: '<h3[^>]*>\\s*<strong>(?<title>[^<]{3,200})</strong>' } },
+  "hot-mobile": { text: { url: "https://www.hotmobile.co.il/Pages/Career.aspx", item: '<div class="generalText"[^>]*>[\\s\\S]{0,400}?<strong>(?<title>[^<]{3,200})</strong>' } },
+  idi: { text: { url: "https://www.555.co.il/about/career.html", item: '<div class="career-title">(?<title>[^<]{3,200})</div>' } },
+  kaye: { text: { url: "https://kaye.ac.il/לוח-דרושים/", item: '<h2[^>]*>(?<title>[^<]{3,200})</h2>' } },
+  libra: { text: { url: "https://www.lbr.co.il/%D7%A7%D7%A8%D7%99%D7%99%D7%A8%D7%94-%D7%91%D7%9C%D7%99%D7%91%D7%A8%D7%94/", item: '<div class="text-block"[^>]*>\\s*<h3[^>]*>(?<title>[\\s\\S]{3,300}?)</h3>' } },
+  metropoline: { text: { url: "https://www.metropoline.com/Content/job", item: '<h3[^>]*class="[^"]*faq_quest[^"]*"[^>]*>(?<title>[\\s\\S]{3,200}?)</h3>' } },
+  "migdal-capital": { text: { url: "https://www.msh.co.il/migdal-capital-markets/careers/", item: '<div class="panel-title__el"[^>]*>(?<title>[\\s\\S]{3,300}?)</div>' } },
+  nesher: { text: { url: "https://www.nesher.co.il/jobs", item: '<h2[^>]*class="[^"]*job-title[^"]*"[^>]*>(?<title>[\\s\\S]{3,200}?)</h2>' } },
+  "netivei-israel": { text: { url: "https://www.iroads.co.il/%D7%A2%D7%9C-%D7%94%D7%97%D7%91%D7%A8%D7%94/jobs-page/", item: '<h3 class="jobTitle"[^>]*>(?<title>[\\s\\S]{3,200}?)</h3>' } },
+  ort: { text: { url: "https://landing.ort.org.il/ort-career/", item: '<h2[^>]*>\\s*דרוש/ה:?\\s*</h2>[\\s\\S]{0,600}?<h2[^>]*>(?<title>[\\s\\S]{3,200}?)</h2>' } },
+  rsm: { text: { url: "https://www.rsm.global/israel/he/%D7%A7%D7%A8%D7%99%D7%99%D7%A8%D7%94", item: '<h3[^>]*>(?<title>[^<]{3,200})</h3>' } },
+  shl: { text: { url: "https://join.shahal.co.il/pages/jobs", item: '<details class="shj-job"[^>]*>[\\s\\S]{0,300}?<span class="j-title">(?<title>[^<]{3,200})</span>' } },
+  steimatzky: { text: { url: "https://www.steimatzky.co.il/drvwim-mth", more: ["https://www.steimatzky.co.il/drvwim-mnhlim", "https://www.steimatzky.co.il/drvwim-mvkrnim", "https://www.steimatzky.co.il/drvwim-mrlvg"], item: '<h1[^>]*>(?<title>[^<]{3,200})</h1>' } },
+  "western-galilee": { text: { url: "https://wgalil.ac.il/staff/wgc_career/", item: '<h2 class="title"[^>]*>(?<title>[\\s\\S]{3,200}?)</h2>' } },
+  wingate: { text: { url: "https://wingate.org.il/לוח-דרושים/?career_type=1779", item: '<li[^>]*data-id="(?<id>[0-9]+)"[\\s\\S]{0,400}?<h3[^>]*>(?<title>[\\s\\S]{3,200}?)</h3>' } },
+  // Lists written out in full, to apply by email or a form (boards.ts textBlocks).
+  alyn: { text: { url: "https://alyn.org/Were-hiring", item: '<h3[^>]*>\\s*(?:<strong>)?(?<title>[^<]{3,160})(?:</strong>)?\\s*</h3>' } },
+  amal: { text: { url: "https://www.amalnet.k12.il/career/", item: '<h2 class="title_job"[^>]*>(?<title>[\\s\\S]{3,300}?)</h2>' } },
+  btg: { text: { url: "https://www.btgil.com/vacancies", item: '<h3 onclick="openNextDiv\\(this\\)"[^>]*>(?<title>[^<]{3,200})</h3>' } },
+  // Bank of Jerusalem: a page per field, technology's among them.
+  "jerusalem-bank": { text: { url: "https://www.bankjerusalem.co.il/others/technology", more: ["https://www.bankjerusalem.co.il/others/banking", "https://www.bankjerusalem.co.il/others/management"], item: '<h3 class="press-heading"[^>]*>(?<title>[^<]{3,200})</h3>' } },
+  kan: { text: { url: "https://www.kan.org.il/jobs/", item: '<div class="number[^"]*">\\s*משרה מספר\\s*(?<id>[0-9]+)\\s*</div>\\s*<div class="title">(?<title>[^<]{3,200})</div>' } },
+  kibbutzim: { text: { url: "https://www.smkb.ac.il/staff/resources/jobs/", item: '<div class="title">(?<title>[^<]{3,200})</div>\\s*<div class="location">(?<place>[^<]{0,80})</div>' } },
+  sano: { text: { url: "https://www.sano.co.il/company/%d7%93%d7%a8%d7%95%d7%a9%d7%99%d7%9d-2/", item: '<div class="top-job">\\s*<div class="line">\\s*<span class="title">(?<title>[^<]{3,140})</span>' } },
+  schindler: { text: { url: "https://www.schindler.co.il/he/careers/open-positions.html", item: '<h2[^>]*>(?<title>[^<]{3,140})</h2>' } },
+  sonol: { text: { url: "https://www.sonol.co.il/job/", item: '<div class="job_item">\\s*<div class="job_title"[^>]*>\\s*<h2>(?<title>[^<]{2,140})</h2>\\s*<div>(?<place>[^<]{0,80})</div>' } },
+  standards: { text: { url: "https://www.sii.org.il/he/career", item: '<button[^>]*class="accordion-button[^"]*"[^>]*>(?<title>[^<]{3,300})</button>' } },
+};
+// The list a reader of its own (boards.ts) reads, for the portals page to open.
+const OWN_PAGE: Partial<Record<string, string>> = { iai: "https://jobs.iai.co.il/jobs/", elbit: "https://elbitsystemscareer.com/jobs", menora: "https://www.menoramivt.co.il/job-posting/jobs", bezeq: "https://www.bezeq.co.il/career_new/", phoenix: "https://www.fnx.co.il/career/open-positions/", mod: "https://jobs.mod.gov.il/#/Tenders", hot: "https://www.hot.net.il/heb/careersearch/" };
+for (const p of PORTALS) {
+  const direct = DIRECT[p.id];
+  if (!direct) continue;
+  p.direct = direct;
+  // What the portals page opens: the employer's own list.
+  p.url = "links" in direct ? direct.links.url : "text" in direct ? direct.text.url : "wp" in direct ? direct.wp.site : "feed" in direct ? direct.feed.replace(/feed\/?$/, "") : "gov" in direct ? "https://merkava.mrp.gov.il/giusp/index.html" : "jibe" in direct ? `https://${direct.jibe.host}/jobs?${direct.jibe.query}` : "comeet" in direct ? `https://www.comeet.com/jobs/${direct.comeet}`
+    : "redmatch" in direct ? `${direct.redmatch.site}index.html`
+    : "workday" in direct ? `https://${direct.workday.host}/en-US/${direct.workday.site}`
+    : "own" in direct ? OWN_PAGE[direct.own] ?? p.url : p.url;
+}
+
+// A job's page in a Redmatch careers app this list reads (portals.ts direct): the service that gives the job, the
+// employer's id there and the job's own; null for any other address.
+export function redmatchJob(url: string) {
+  for (const p of PORTALS) {
+    const r = p.direct && "redmatch" in p.direct ? p.direct.redmatch : null;
+    if (!r || !url.startsWith(`${r.site}redmatch-apply/`)) continue;
+    const id = /[?&]compPositionID=(\d{1,10})(?:&|$)/.exec(url)?.[1];
+    return id ? { api: r.api, guid: r.guid, id } : null;
+  }
+  return null;
+}
+
+// A job from a list this list reads written out in full (portals.ts direct { text }): the list, and the job's id in it
+// (boards.ts textJobUrl); null for any other address.
+export function textJob(url: string) {
+  let at: URL;
+  try { at = new URL(url); } catch { return null; }
+  const id = at.searchParams.get("pip-job");
+  if (!id || !/^[\w-]{1,64}$/.test(id)) return null;
+  at.searchParams.delete("pip-job");
+  for (const p of PORTALS) {
+    for (const read of [p.direct, p.read]) {
+      const list = read && "text" in read ? read.text : null;
+      // The page the job is on, of the list's pages.
+      const page = list ? [list.url, ...(list.more ?? [])].find((u) => new URL(u).href === at.href) : undefined;
+      if (list && page) return { list: { ...list, url: page }, id };
+    }
+  }
+  return null;
+}
+
 const BY_ID = new Map(PORTALS.map((p) => [p.id, p]));
 export const portalById = (id: string) => BY_ID.get(id);
+
+// A company's name as the company writes it (Sean 2026-11-12: "למה לעזאזל אתה מתרגם שמות... סיירה או רדא DRS"):
+// a high-tech company's is its English brand in either language, its Hebrew here being only that brand spelled out
+// ("סיירה" for Cyera), as is one whose Hebrew name already holds English letters ("DRS רדא"); any other's Hebrew
+// name is its own (כללית, הראל), and is said in Hebrew in Hebrew.
+export function employerName(p: Pick<Portal, "he" | "en" | "industry">, lang: string) {
+  return lang !== "he" || p.industry === "hightech" || /[A-Za-z]/.test(p.he) ? p.en : p.he;
+}
+// A job kept from before this under a company's spelled-out name ("סיירה"): the company's own name instead.
+const SPELLED = new Map(PORTALS.filter((p) => p.kind === "employer" && p.he !== p.en && employerName(p, "he") === p.en).map((p) => [p.he, p.en]));
+export const ownName = (company: string) => SPELLED.get(company.trim()) ?? company;
 
 // The user's own portals, added on the portals page: a careers page the system reads like an employer's, or a group
 // or anything else only to open.

@@ -109,7 +109,7 @@ legend { padding: 0; }
 /* The onward chevron points left, onward in Hebrew; in English it turns to the right. */
 [dir="ltr"] .icon-onward, [dir="ltr"] .icon-back { transform: scaleX(-1); }
 
-/* Scrollbars: the browser's own, given only the colours (--scroll-thumb, with each theme), so Chromium browsers
+/* Scrollbars: the browser's own (but the page's, which floats, floatbar.tsx), given only the colours (--scroll-thumb, with each theme), so Chromium browsers
    on Windows draw their own smooth arrows and round bar, in a strip of the page's own colour, white or black.
    Drawing the bar ourselves (::-webkit-scrollbar) loses those arrows, and once scrollbar-color is set Chromium
    ignores it. */
@@ -247,11 +247,18 @@ legend { padding: 0; }
 .later { opacity: 0.5; pointer-events: none; user-select: none; }
 .table-note { padding: 10px 16px 4px; }
 
-/* The page's scrollbar never moves it: room is kept for the bar even while the page is too short to scroll, so a
-   page that grows past the window, a tab with fewer jobs, or the next page doesn't shift sideways. The
-   conversations page fills the window and never scrolls, so it keeps no room. */
-main { overflow-y: auto; scrollbar-gutter: stable; }
-main:has(> .chat) { scrollbar-gutter: auto; }
+/* The page scrolls with a bar of our own floating over its edge (FloatBar, floatbar.tsx), so the browser's, whose
+   lane on Windows nothing of the page can be drawn in, is hidden: a banner runs to the window's edge, and no page
+   shifts sideways as a bar comes or goes. The bar shows whenever the page scrolls, clear of its top and bottom edges
+   (floatbar.tsx's INSET), its thumb a little wider under the pointer and while it is held. */
+main { overflow-y: auto; scrollbar-width: none; }
+main::-webkit-scrollbar { display: none; }
+.float-bar { position: fixed; z-index: 25; width: 14px; display: flex; justify-content: center; }
+.float-bar:not([data-room]) { display: none; }
+.float-thumb { position: absolute; top: 0; width: 6px; border-radius: 999px; background: var(--scroll-thumb); opacity: 0.85; transition: width 0.15s ease, opacity 0.15s ease; }
+.float-bar:hover .float-thumb, .float-bar.held .float-thumb { width: 10px; opacity: 1; }
+/* On a touch screen the page is moved by the finger; the bar only shows where it is. */
+@media (hover: none) { .float-bar { pointer-events: none; } }
 main:focus, main:focus-visible { outline: none; }
 .page { max-width: 1100px; margin: 0 auto; padding: 38px 38px 80px; display: flex; flex-direction: column; gap: 22px; }
 .page.wide { max-width: 1560px; }
@@ -1251,7 +1258,7 @@ textarea { resize: vertical; width: 100%; }
   content: ""; position: absolute; top: calc(100% - 4px); left: 50%; width: 8px; height: 8px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
   background: var(--surface); translate: -50% 0; rotate: 45deg;
 }
-:is(.result-act, .seek-ai, .seek-icon, .voice-go, .voice-lang, .threads-icon, .threads-add):is(:hover, :focus-visible) .act-label {
+:is(.result-act, .seek-ai, .seek-icon, .voice-go, .voice-lang, .threads-icon, .threads-add, .chat-temp):is(:hover, :focus-visible) .act-label {
   opacity: 1; translate: -50% 0; scale: 1; transition-delay: 0.25s; transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 /* The sparkles' and the search settings' go as they are pressed: what they open says it all. */
@@ -1424,14 +1431,77 @@ textarea { resize: vertical; width: 100%; }
    as they are, the bookmark empty, to save it again. */
 .result.faded > :is(.result-mark, .result-text) { opacity: 0.45; transition: opacity 0.2s ease; }
 /* A score at the start of a job Pip found, on the round tile a search result has its initial on: green for a strong
-   or good fit, amber for a fair one, grey below. Not ranked yet, an empty ring with three grey dots, which rise in
-   turn while the ranking runs. A score just come in pops up. */
+   or good fit, amber for a fair one, grey below. The automatic score is the plain tile; the AI's stands on the AI's
+   moving colours; a guess from the title alone is the tile's outline (below the bands). A score just come in pops up. */
 .result-mark.score-mark { font-size: 16px; font-variant-numeric: tabular-nums; }
+.score-mark { position: relative; }
+
+/* Companies hiring now (views/companies.tsx, Sean 2026-11-12, after Sequoia's jobs board and JobSpace): the hero of
+   "המשרות שלי" (.saved-top) with a line under its title on how many jobs, and a glass search pill; then a grid of cards,
+   each a company's mark (the found list's tile, bigger), its name and how many jobs, its best fit small in a corner.
+   A company opened: back to all, its head (mark, name, what it does and where, its own jobs page), then its jobs as the
+   found list's rows, as wide as that list. */
+.companies-sub { margin: -10px 0 0; color: var(--ink-2); font-size: 15px; text-align: center; }
+.companies-search { width: min(420px, 100%); justify-content: flex-start; gap: 8px; padding: 0 16px; cursor: text; }
+.companies-search .icon { flex: none; width: 17px; height: 17px; color: var(--ink-3); }
+.companies-search input, .companies-search input:hover, .companies-search input:focus {
+  flex: 1; min-width: 0; min-height: 42px; padding: 0; border: 0; background: none; box-shadow: none; color: var(--ink); font: inherit; font-size: 15px;
+}
+.companies-search input::-webkit-search-cancel-button { display: none; }
+.companies-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 12px; width: min(1040px, calc(100% - 76px)); margin: 0 auto 64px; }
+.company-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 0; padding: 24px 12px 16px;
+  border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); font: inherit; text-align: center; cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.company-card:hover { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); background: color-mix(in srgb, var(--hover-soft) 50%, var(--surface)); }
+.company-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.company-mark .result-mark { width: 56px; height: 56px; font-size: 24px; }
+.company-mark.big .result-mark { width: 68px; height: 68px; font-size: 28px; }
+.company-name { max-width: 100%; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.company-count { color: var(--ink-3); font-size: 13px; }
+.company-fit { position: absolute; top: 10px; inset-inline-start: 10px; }
+.company-fit .result-mark { width: 32px; height: 32px; font-size: 12.5px; }
+.companies-none { margin: 0 auto 64px; color: var(--ink-3); text-align: center; }
+.company-view { display: flex; flex-direction: column; gap: 16px; width: min(760px, calc(100% - 76px)); margin: 0 auto 64px; }
+.company-back {
+  display: inline-flex; align-self: flex-start; align-items: center; gap: 4px; padding: 6px 12px 6px 10px; border: 0; border-radius: 999px;
+  background: none; color: var(--ink-2); font: inherit; font-size: 14px; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+}
+.company-back:hover { background: var(--hover-soft); color: var(--ink); }
+.company-back .icon { width: 16px; height: 16px; }
+.company-head { display: flex; align-items: center; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.company-head-text { display: flex; flex: 1; flex-direction: column; gap: 8px; min-width: 0; }
+.company-head h2 { font-size: 24px; font-weight: 700; }
+.company-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.company-tag { padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--ink) 6%, var(--surface)); color: var(--ink-2); font-size: 12.5px; }
+.company-site {
+  display: inline-flex; flex: none; align-items: center; gap: 6px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px;
+  color: var(--ink-2); font-size: 13.5px; text-decoration: none; transition: border-color 0.2s ease, color 0.2s ease;
+}
+.company-site:hover { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); color: var(--ink); }
+.company-site .icon { width: 15px; height: 15px; }
+@media (max-width: 640px) {
+  .companies-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); width: calc(100% - 32px); gap: 10px; }
+  .company-view { width: calc(100% - 32px); }
+  .company-head { flex-wrap: wrap; }
+}
 .score-mark.strong, .score-mark.good { background: color-mix(in srgb, var(--good) 15%, var(--surface)); color: color-mix(in srgb, var(--good) 80%, var(--ink)); }
 .score-mark.fair { background: color-mix(in srgb, var(--warn) 17%, var(--surface)); color: color-mix(in srgb, var(--warn) 75%, var(--ink)); }
 .score-mark.low { background: color-mix(in srgb, var(--ink) 6%, var(--surface)); color: var(--ink-3); }
 .score-mark.fresh { animation: score-pop 0.45s cubic-bezier(0.34, 1.4, 0.64, 1); }
 @keyframes score-pop { from { scale: 0.4; } }
+/* A guess from the title alone, until the posting is read: the tile's outline, dashed, in its band's colour. */
+.score-mark.title { background: none; border: 1.5px dashed color-mix(in srgb, currentColor 55%, transparent); }
+/* The AI's score: its number in white on the AI's moving colours (AiSky), as the job page's AI score has it. */
+.score-mark.ai { isolation: isolate; background: none; color: #fff; text-shadow: 0 1px 2px rgb(0 0 0 / 30%); }
+.score-mark.ai .ai-sky.orb > i { --cloud-w: 40px; --cloud-h: 34px; }
+.company-fit .score-mark.ai .ai-sky.orb > i { --cloud-w: 30px; --cloud-h: 26px; }
+/* Its name floats over the tile under the pointer, from the tile's start, so a long one stays on the page. */
+.score-mark .act-label { left: auto; inset-inline-start: -4px; translate: 0 4px; }
+.score-mark .act-label::after { left: auto; inset-inline-start: 22px; translate: 0 0; }
+.score-mark:hover .act-label { opacity: 1; translate: 0 0; scale: 1; transition-delay: 0.25s; transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1); }
+.company-fit .score-mark .act-label::after { inset-inline-start: 16px; }
 /* An empty list: Pip lying on the top edge of what to do about it, near its start, three screen pixels to each of
    his, as on the search box; under it, the list's title and what it waits for. */
 .saved-empty { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 80px 20px 40px; text-align: center; }
@@ -1538,8 +1608,8 @@ select.status { font-weight: 600; }
 .threads-icon:hover, .threads-icon[aria-pressed="true"], .threads-add:hover { background: var(--hover); color: var(--ink); }
 .threads-icon .icon { width: 19px; height: 19px; }
 .threads-add .icon { width: 16px; height: 16px; }
-.threads-head .act-label { bottom: auto; top: calc(100% + 10px); transform-origin: 50% 0; }
-.threads-head .act-label::after { top: -5px; rotate: 225deg; }
+:is(.threads-head, .chat-temp) .act-label { bottom: auto; top: calc(100% + 10px); transform-origin: 50% 0; }
+:is(.threads-head, .chat-temp) .act-label::after { top: -5px; rotate: 225deg; }
 /* At the list's outer edge, the hide button's name and the new project's grow inward from it, so they never stand past
    the window. */
 :is(.threads-hide, .threads-add) .act-label { left: auto; inset-inline-end: -4px; translate: 0 4px; }
@@ -1592,7 +1662,7 @@ select.status { font-weight: 600; }
 .threads-back button { display: inline-flex; align-items: center; gap: 4px; padding: 0; border: 0; background: none; color: var(--ink-2); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
 .threads-back button:hover { color: var(--ink); }
 .threads-back .icon { width: 15px; height: 15px; }
-/* The archive, at the list's foot. */
+/* The archive and the daily run's conversations, at the list's foot. */
 .threads-archive {
   display: flex; flex: none; align-items: center; gap: 10px; min-height: 40px; padding-inline: 12px; border: 0; border-radius: 10px; background: none;
   color: var(--ink-2); font: inherit; font-size: 14px; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease;
@@ -1619,6 +1689,20 @@ select.status { font-weight: 600; }
 .chat-lists:hover { background: var(--hover-soft); color: var(--ink); }
 .chat-lists .icon { width: 20px; height: 20px; }
 .chat-title { font-family: inherit; font-size: 16px; font-weight: 600; }
+/* A temporary conversation (Sean 2026-11-12): its switch at the top of a new one, round like the list button at the
+   row's far end, filled in ink while on, its name under it; the page then says what it is and what it keeps; once
+   begun, its title is its dashed bubble and what it is. */
+.chat-temp {
+  position: relative; display: grid; flex: none; place-items: center; width: 38px; height: 38px; margin-inline-start: auto; border: 0; border-radius: 50%;
+  background: none; color: var(--ink-2); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+}
+.chat-temp:hover { background: var(--hover-soft); color: var(--ink); }
+.chat-temp.on { background: var(--ink); color: var(--surface); }
+.chat-temp.on:hover { background: color-mix(in srgb, var(--ink) 84%, var(--surface)); color: var(--surface); }
+.chat-temp .icon { width: 20px; height: 20px; }
+.chat-temp-note { max-width: 520px; margin: 0; color: var(--ink-3); font-size: 14px; line-height: 1.55; text-align: center; }
+.chat-title-temp { display: inline-flex; align-items: center; gap: 8px; }
+.chat-title-temp .icon { flex: none; width: 18px; height: 18px; color: var(--ink-2); }
 .chat-state { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--hover-soft); font-size: 12.5px; font-weight: 600; }
 .chat-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .chat-state.running { color: var(--live); }
@@ -1630,17 +1714,17 @@ select.status { font-weight: 600; }
 .chat-model { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--hover-soft); color: var(--ink-2); font-size: 12.5px; font-weight: 600; }
 .chat-model .icon { width: 14px; height: 14px; }
 
-/* The messages in one column, as a chat app has them, with no Pip among them: yours in the site's mint at the
-   column's end, Pip's words plain across it; the tool calls between them one quiet folded line, with the AI's orb
-   and a passing light on it while Pip works; what Pip made after the answer that brought it, as what it is (a
-   document, questions to prepare as cards that turn over); a request or a question as a card. */
+/* The messages in one column, as a chat app has them, with no Pip among them: yours a round mint bubble on the
+   column's right (in Hebrew too), Pip's words plain across it; each turn's steps one quiet line at its top, with the
+   AI's orb and a passing light on it while Pip works; what Pip made after the answer that brought it, as what it is
+   (a document, questions to prepare as cards that turn over); a request or a question as a card. */
 .convo { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .log-frame { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .log { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
 .log-column { display: flex; flex-direction: column; gap: 22px; width: min(760px, 100% - 48px); margin: 0 auto; padding: 14px 0 32px; }
 .msg-user { display: flex; justify-content: flex-end; }
 .msg-bubble {
-  max-width: min(560px, 80%); padding: 10px 18px; border-radius: 22px; border-end-end-radius: 8px; background: var(--primary); color: var(--primary-ink);
+  max-width: min(560px, 80%); padding: 10px 18px; border-radius: 24px; background: var(--primary); color: var(--primary-ink);
   font-size: 15px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .msg-pip { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -1661,16 +1745,28 @@ select.status { font-weight: 600; }
 }
 :root[dir="ltr"] :is(.steps-now, .working-line .typing-text, .doc-card.ghost .doc-name) { animation-direction: reverse; }
 @keyframes pass-light { from { background-position: 0% 0; } to { background-position: 100% 0; } }
-/* Pip at work before any step: the orb and what he is doing. */
+/* Pip at work with no step to show: the orb and one funny word that changes now and then (WorkWord in chat.tsx, like
+   Claude Code's spinner, Sean 2026-11-11). The two words share one place as they cross: the old one blurs away while
+   the new one sharpens in, in 0.3s (Sean's pick of four sketches). Unclipped in the steps line, so the blur isn't cut. */
 .working-line { display: flex; align-items: center; gap: 10px; font-size: 14.5px; font-weight: 500; }
+.work { display: inline-grid; }
+.work-word { grid-area: 1 / 1; white-space: nowrap; animation: work-in 0.3s ease-out both; }
+.work-word.out { animation-name: work-out; }
+@keyframes work-in { from { opacity: 0; filter: blur(4px); } }
+@keyframes work-out { to { opacity: 0; filter: blur(4px); } }
+.steps-title:has(.work) { overflow: visible; }
 /* The steps between two messages, as a chat app's work line (ToolSteps in chat.tsx; OpenAI's "Worked for 44s",
    Sean's pick 2026-11-11): no box, a quiet line of words at the column's start (the kinds of steps as a stack of
    coloured icons, how many there were and how long the run took, and an arrow that turns down when it opens), and a
    hairline across the column under it, between the work and the answer. It opens and shuts by growing (.fold), the
    steps as rows above the line. At work, the AI's orb, the step under way lit by the passing light, its number, and
-   the AI's colours running along the line. */
-.steps { position: relative; display: flex; flex-direction: column; margin-bottom: -8px; padding-bottom: 10px; color: var(--ink-3); font-size: 13.5px; }
-.steps::after { content: ""; position: absolute; inset-inline: 0; bottom: 0; height: 1px; background: var(--line); }
+   the AI's colours running along the line. The line fades out at both ends, and the colours with it (Sean,
+   2026-11-12): --line-ends is that fade, for both. */
+.steps {
+  --line-ends: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent);
+  position: relative; display: flex; flex-direction: column; margin-bottom: -8px; padding-bottom: 10px; color: var(--ink-3); font-size: 13.5px;
+}
+.steps::after { content: ""; position: absolute; inset-inline: 0; bottom: 0; height: 1px; background: var(--line); mask-image: var(--line-ends); }
 /* A button in the page's font (a button takes the browser's), its words deepening on hover. */
 .steps-head {
   display: inline-flex; align-self: flex-start; align-items: center; gap: 8px; max-width: 100%; min-height: 30px; padding: 0; border: 0; border-radius: 6px;
@@ -1693,12 +1789,15 @@ select.status { font-weight: 600; }
 .steps-stack .step-icon { width: 22px; height: 22px; box-shadow: 0 0 0 2px var(--surface); }
 .steps-stack .step-icon .icon { width: 12px; height: 12px; }
 .steps-stack .step-icon + .step-icon { margin-inline-start: -6px; }
+/* The colours, a band 40% of the line long, run from wholly past one end to wholly past the other (-67% and 167% put a
+   band that long just outside the line), so a run never ends, or starts, in sight. */
 .steps-bar {
   position: absolute; inset-inline: 0; bottom: -0.5px; z-index: 1; height: 2px; pointer-events: none;
-  background: linear-gradient(90deg, transparent, var(--sky-3), var(--sky-6), var(--sky-1), transparent) 0 0 / 40% 100% no-repeat; animation: steps-run 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, var(--sky-3), var(--sky-6), var(--sky-1), transparent) -67% 0 / 40% 100% no-repeat;
+  mask-image: var(--line-ends); animation: steps-run 1.8s ease-in-out infinite;
 }
 :root[dir="rtl"] .steps-bar { animation-direction: reverse; }
-@keyframes steps-run { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+@keyframes steps-run { from { background-position: -67% 0; } to { background-position: 167% 0; } }
 /* A step's icon, in its family's colour: the web blue, files grey, writing mint, judging amber, keeping pink. */
 .step-icon { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in srgb, var(--ink) 7%, var(--surface)); color: var(--ink-2); }
 .step-icon .icon { width: 14px; height: 14px; }
@@ -1742,12 +1841,16 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
 .tool-row > .steps-orb { margin-inline: 1px 5px; }
 /* The tree (stepTree in chat.tsx), as files under a folder: a step a helper ran inside another step is set in under
    it, a guide runs down from its parent's mark, a branch reaches into each, and the last one's turns round a corner. */
-.steps { --tree: color-mix(in srgb, var(--ink) 18%, transparent); }
+/* Every piece is a border of one width at whole pixels, in a solid colour: a thin background lands between the screen's
+   pixels and blurs wider where a border snaps to them, and see-through pieces darken where they meet, so the guide drew
+   thicker than its corner (Sean, 2026-11-12). Pseudo-elements size as content boxes, so the corner's stroke lies on the
+   branches' line, 15px down, and ends where they do. */
+.steps { --tree: color-mix(in srgb, var(--ink) 22%, var(--surface)); }
 .tool.child > .tool-in > .tool-row { padding-inline-start: 30px; }
-.tool.parent::after { content: ""; position: absolute; top: 25px; bottom: 0; inset-inline-start: 9.25px; width: 1.5px; background: var(--tree); }
-.tool.child::before { content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 9.25px; width: 1.5px; background: var(--tree); }
-.tool.child::after { content: ""; position: absolute; top: 15.25px; inset-inline-start: 9.25px; width: 14px; height: 1.5px; background: var(--tree); }
-.tool.child.last::before { bottom: auto; width: 14px; height: 16.75px; border-bottom: 1.5px solid var(--tree); border-inline-start: 1.5px solid var(--tree); border-end-start-radius: 7px; background: none; }
+.tool.parent::after { content: ""; position: absolute; top: 25px; bottom: 0; inset-inline-start: 9px; border-inline-start: 1.5px solid var(--tree); }
+.tool.child::before { content: ""; position: absolute; top: 0; bottom: 0; inset-inline-start: 9px; border-inline-start: 1.5px solid var(--tree); }
+.tool.child::after { content: ""; position: absolute; top: 15px; inset-inline-start: 9px; width: 15px; border-top: 1.5px solid var(--tree); }
+.tool.child.last::before { bottom: auto; width: 13.5px; height: 15px; border-bottom: 1.5px solid var(--tree); border-end-start-radius: 7px; }
 .tool.child.last::after { display: none; }
 /* What a step did, in the page's direction, up to two lines. */
 .step-text {
@@ -1760,24 +1863,64 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
 .step-state.failed { color: var(--bad); }
 .tool .pre { max-height: 240px; margin-block: 2px 8px; margin-inline: 60px 14px; overflow: auto; font-size: 12.5px; }
 .tool.child .pre { margin-inline-start: 90px; }
-/* A request to allow something, or Pip's question: a warm card waiting for an answer. */
-.ask-card {
-  display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--warn) 40%, var(--line)); border-radius: 20px;
-  background: color-mix(in srgb, var(--warn-soft) 55%, var(--surface));
+/* A request to allow a step (Permission in chat.tsx), as a line in the conversation like the steps' (Sean's pick of
+   three sketches, 2026-11-12), no box: a slow amber dot while it waits, the question in words, what it would do
+   folded under it (the file's whole path over its lines, those put in on green and those taken out on red; a command
+   whole), a note when only part of it is shown, and small round buttons. Characters that reorder text show as their
+   codes, marked red. Pip's own questions (Question) wait the same way, their options as rows. */
+.ask-line, .ask-card { display: flex; flex-direction: column; gap: 10px; }
+.ask-row { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.ask-wait { flex: none; width: 9px; height: 9px; margin-inline: 4px 2px; border-radius: 50%; background: var(--warn); animation: ask-wait 2s ease-in-out infinite; }
+@keyframes ask-wait { 50% { opacity: 0.35; } }
+.ask-title { min-width: 0; color: var(--ink); font-size: 14.5px; font-weight: 500; overflow-wrap: anywhere; }
+.ask-show {
+  display: inline-flex; flex: none; align-items: center; gap: 4px; margin-inline-start: auto; padding: 4px 6px; border: 0; border-radius: 6px;
+  background: none; color: var(--ink-3); font: inherit; font-size: 13px; cursor: pointer; transition: color 0.2s ease;
 }
-.ask-card-head { display: flex; align-items: center; gap: 10px; }
-.ask-card-head .icon { flex: none; width: 20px; height: 20px; color: color-mix(in srgb, var(--warn) 75%, var(--ink)); }
-.ask-card .pre { max-height: 260px; margin: 0; overflow: auto; }
-.ask-hint { color: var(--ink-2); font-size: 12.5px; }
+.ask-show:hover { color: var(--ink); }
+.ask-show .icon { width: 15px; height: 15px; transition: rotate 0.25s cubic-bezier(0.2, 0.8, 0.3, 1); }
+.ask-show[aria-expanded="true"] .icon { rotate: 180deg; }
+.ask-line .pre { max-height: 300px; overflow-y: auto; font-size: 12.5px; scrollbar-width: thin; }
+.ask-line .ask-diff { padding: 0 0 6px; }
+.ask-path { margin-bottom: 4px; padding: 8px 12px 6px; border-bottom: 1px solid var(--line); color: var(--ink-3); }
+.ask-diff-line { display: grid; grid-template-columns: 26px minmax(0, 1fr); padding-inline-end: 12px; color: var(--ink-2); }
+.ask-diff-line.add { background: color-mix(in srgb, var(--good) 11%, transparent); color: var(--ink); }
+.ask-diff-line.del { background: color-mix(in srgb, var(--bad) 9%, transparent); color: var(--ink); }
+.ask-sign { color: var(--ink-3); text-align: center; user-select: none; }
+.ask-diff-line.add .ask-sign { color: var(--good); }
+.ask-diff-line.del .ask-sign { color: var(--bad); }
+/* In a hidden character's place: a small red chip with two arrows (the order turned round), the line under the change
+   saying in words what it is (Sean found the codes, "U+2066", ugly). */
+.ask-control {
+  display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 16px; margin-inline: 2px; vertical-align: -3px; border-radius: 5px;
+  background: color-mix(in srgb, var(--bad) 14%, transparent); color: var(--bad);
+}
+.ask-control .icon { width: 12px; height: 12px; }
+/* Helpers still at work in the background once Pip is done: the orb, how many, and what they're doing, quieter. */
+.aside-what { min-width: 0; overflow: hidden; color: var(--ink-3); font-size: 13px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
+.ask-partial { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: color-mix(in srgb, var(--warn) 70%, var(--ink)); font-size: 12.5px; }
+.ask-partial .icon { flex: none; width: 14px; height: 14px; margin-top: 2px; }
+.ask-acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.ask-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  color: var(--ink-2); font: inherit; font-size: 13px; cursor: pointer; transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+.ask-btn .icon { width: 14px; height: 14px; }
+.ask-btn:hover { border-color: color-mix(in srgb, var(--ink) 14%, var(--line)); color: var(--ink); }
+.ask-btn.yes { border-color: transparent; background: var(--primary); color: var(--primary-ink); }
+.ask-btn.yes:hover { background: color-mix(in srgb, var(--primary) 88%, var(--ink)); }
+.ask-btn.no { color: var(--bad); }
+.ask-btn:disabled { opacity: 0.55; cursor: default; }
 .ask-question { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; border: 0; }
-.ask-question legend { margin-bottom: 6px; font-size: 15.5px; font-weight: 700; }
+.ask-question legend { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; color: var(--ink); font-size: 14.5px; font-weight: 500; }
+/* An option: its round mark in the middle of the row, top to bottom, a little bigger than the browser's. */
 .ask-option {
-  display: flex; align-items: flex-start; gap: 10px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
+  display: flex; align-items: center; gap: 12px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
   cursor: pointer; transition: border-color 0.2s ease;
 }
 .ask-option:hover { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); }
 .ask-option:has(input:checked) { border-color: var(--ink); }
-.ask-option input { margin-top: 4px; accent-color: var(--ink); }
+.ask-option input { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
 .ask-option strong { display: block; font-weight: 600; }
 .ask-option small { display: block; color: var(--ink-2); font-size: 13px; }
 .settled { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13.5px; }
@@ -1859,8 +2002,9 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
   .q-card { flex: 0 0 80%; min-height: 168px; scroll-snap-align: center; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .q-card, .q-face, .doc-card, .doc-page, .doc-page > i, .steps-orb .ai-sky > i, .steps-bar, .fold, .tool.fresh, .tool.fresh > .tool-in,
+  .q-card, .q-face, .doc-card, .doc-page, .doc-page > i, .steps-orb .ai-sky > i, .steps-bar, .fold, .tool.fresh, .tool.fresh > .tool-in, .work-word, .ask-wait, .ask-show .icon,
   :is(.steps-now, .working-line .typing-text, .doc-card.ghost .doc-name) { animation: none !important; transition: none !important; }
+  .work-word.out { visibility: hidden; }
 }
 
 /* The box to write in, shaped like the jobs search's: one pill-shaped row, the + at its start, the words, then the
@@ -1920,19 +2064,24 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
 .select.circle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .composer-attach .icon { width: 22px; height: 22px; }
 .select.circle > .icon { width: 20px; height: 20px; }
-.select.circle.access-full { background: color-mix(in srgb, var(--bad) 11%, var(--surface)); color: var(--bad); }
 .composer-error { display: flex; align-items: flex-start; gap: 8px; margin: 8px 8px 0; color: var(--bad); font-size: 12.5px; line-height: 1.45; }
 .composer-error .icon { flex: none; width: 15px; height: 15px; margin-top: 1px; }
-/* In a message: the pictures and files attached, at the same end as its words. */
+/* In a message: the pictures and files attached, on the same side as its words: the right, in Hebrew too (Sean,
+   2026-11-11), as chat apps keep yours. */
 .msg-user { flex-direction: column; align-items: flex-end; gap: 6px; }
 .msg-files { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: flex-end; gap: 8px; max-width: min(560px, 80%); }
+:root[dir="rtl"] .msg-user { align-items: flex-start; }
+:root[dir="rtl"] .msg-files { justify-content: flex-start; }
 .msg-image { display: block; border-radius: 16px; overflow: hidden; border: 1px solid var(--line); }
 .msg-image img { display: block; max-width: 260px; max-height: 220px; object-fit: cover; }
 .msg-file { display: flex; align-items: center; gap: 10px; max-width: 260px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--ink); text-decoration: none; }
 .msg-file:hover { border-color: color-mix(in srgb, var(--ink) 16%, var(--line)); }
-.composer-warn { display: flex; align-items: flex-start; gap: 8px; margin: 8px 8px 0; color: color-mix(in srgb, var(--bad) 80%, var(--ink)); font-size: 12.5px; line-height: 1.45; }
-.composer-warn .icon { flex: none; width: 15px; height: 15px; margin-top: 1px; }
-.composer-warn a { margin-inline-start: 4px; color: inherit; font-weight: 600; }
+/* Full access's note under the box (FullWarn in chat.tsx): a quiet line in the middle, its name first, the access's
+   shield before it, as chat apps put their notes there (Sean's pick of three sketches, 2026-11-12). The access button
+   itself stays plain, like the box's other round buttons. */
+.composer-warn { display: flex; justify-content: center; align-items: flex-start; gap: 6px; margin: 10px 32px 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.5; text-align: center; }
+.composer-warn .icon { flex: none; width: 14px; height: 14px; margin-top: 2px; }
+.composer-warn b { color: var(--ink-2); font-weight: 600; }
 .composer-hint { margin: 8px 8px 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.45; }
 /* Voice typing (voice.tsx). Its button by the box's others: round, the AI's colours with a white microphone, the
    colours deepening under the pointer; while it listens, four white bars with round ends, each as tall as the voice is
@@ -1971,12 +2120,12 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
   .voice-bars i { height: 12px; }
 }
 
-/* A new conversation: Pip and the question in the middle, the box under them, and a few starts as pills. Room for
-   the scrollbar is kept on both sides, so when a short window scrolls it, the middle stays the middle. */
+/* A new conversation: a line for the time of day in the middle (Hello in chat.tsx), the box under it, and a few
+   starts as pills. Room for the scrollbar is kept on both sides, so when a short window scrolls it, the middle stays
+   the middle. */
 .chat-new { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-y: auto; scrollbar-gutter: stable both-edges; }
 .chat-new-body { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding-bottom: 12vh; }
 .chat-new-head { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.chat-new-pip { width: 74px; }
 .chat-new h1 { font-size: 28px; text-align: center; }
 .chat-new .composer { padding-bottom: 0; }
 .chat-starts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; width: min(760px, 100% - 32px); }
@@ -1985,6 +2134,15 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
   cursor: pointer; transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
 }
 .chat-start:hover { border-color: color-mix(in srgb, var(--ink) 14%, var(--line)); background: var(--hover-soft); color: var(--ink); }
+/* A conversation's start (launch.ts): the greeting and the starts, copied where they stood, fading behind the
+   conversation as it opens (under everything in it, as VoiceGlow); a box grown taller than a line keeps its shape
+   behind its words a moment. */
+.chat-new.launch-ghosts { position: absolute; inset: 0; z-index: -1; display: block; overflow: visible; pointer-events: none; }
+.launch-ghosts > * { position: absolute; margin: 0; }
+.launch-shape {
+  position: absolute; z-index: -1; box-sizing: border-box; border: 1px solid var(--line); border-radius: 28px; background: var(--surface);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 6%); pointer-events: none;
+}
 
 /* Narrower windows: the list slides in over the page from its far side, from the button at the top. */
 @media (max-width: 1100px) {
@@ -3575,6 +3733,9 @@ a.ai-pill { text-decoration: none; }
 .result-open::after { content: ""; position: absolute; inset: 0; z-index: 0; border-radius: inherit; }
 .result-open:focus-visible::after { outline: 2px solid var(--accent); outline-offset: -2px; }
 .result.opens .result-actions { position: relative; z-index: 1; }
+/* A score's tile over the link too, for its name under the pointer; a click on it opens the page all the same. */
+.result-lead { display: contents; }
+.result.opens .score-mark { z-index: 1; cursor: pointer; }
 
 /* The page: as wide as a careers page reads, under the jobs' moving sky, with the way back above it. */
 .page.job-page { max-width: 920px; padding-top: 0; gap: 0; }
@@ -3621,6 +3782,19 @@ a.ai-pill { text-decoration: none; }
 .job-match { display: flex; flex-direction: column; gap: 16px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
 .job-match.none { padding: 12px 14px; }
 .job-match.none .rank-row { margin: 0; }
+/* Not scored by the AI yet: the automatic score on the list's plain tile, bigger, its band in words, and its four parts,
+   each a line with a short bar in its own tone; the AI's button under them. */
+.match-orb.plain b { text-shadow: none; }
+.auto-parts { display: grid; gap: 12px; margin: 0; padding: 14px 0 2px; border-top: 1px solid var(--line); }
+.auto-part { display: grid; grid-template-columns: 84px minmax(0, 1fr) 96px; align-items: center; gap: 14px; }
+.auto-part dt { color: var(--ink-3); font-size: 13.5px; font-weight: 600; }
+.auto-part dd { margin: 0; font-size: 15px; line-height: 1.45; }
+.auto-bar { height: 6px; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--ink) 8%, var(--surface)); }
+.auto-bar i { display: block; height: 100%; border-radius: inherit; background: var(--tone); }
+.auto-part.good { --tone: color-mix(in srgb, var(--good) 70%, var(--surface)); }
+.auto-part.fair { --tone: color-mix(in srgb, var(--warn) 75%, var(--surface)); }
+.auto-part.low { --tone: color-mix(in srgb, var(--ink) 28%, var(--surface)); }
+.job-match.auto .rank-row { margin: 2px 0 0; }
 /* Above the level searched for: why the job isn't on the list, in the left-out chips' red. */
 .job-above { display: flex; align-items: center; gap: 8px; margin: 0; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--bad) 9%, var(--surface)); color: color-mix(in srgb, var(--bad) 72%, var(--ink)); font-size: 14.5px; font-weight: 600; line-height: 1.45; }
 .job-above .icon { flex: none; width: 18px; height: 18px; }
@@ -3685,6 +3859,8 @@ a.ai-pill { text-decoration: none; }
   .job-head .result-actions { order: 3; width: 100%; padding-top: 0; }
   .job-title { font-size: 22px; }
   .job-match { padding: 16px; }
+  .auto-part { grid-template-columns: 76px minmax(0, 1fr); gap: 6px 12px; }
+  .auto-bar { grid-column: 1 / -1; }
   .match-orb { width: 56px; height: 56px; }
   .job-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
   .job-reading, .job-notread { padding: 18px; gap: 14px; }

@@ -152,5 +152,11 @@ export function titleWords(roles: Role[]) {
 
 export const titleMatches = (title: string, words: string[]) => words.some((w) => wordAt(title, w));
 
+// The words a title needs one of to be in the roles' field: titleWords without those that only say a level (the
+// "start" field's, and the graduates' Hebrew name), so that a "Junior Recruiter" isn't in a developer's field just
+// for being junior. For judging a job by its title with no AI (scraper.ts judgeByRules, telegram.ts).
+const LEVEL_ONLY = new Set([...(ROLE_FIELDS.find((f) => f.id === "start")?.words ?? []), "בוגרי", "תואר"].map((w) => lower(w)));
+export const fieldWords = (roles: Role[]) => titleWords(roles).filter((w) => !LEVEL_ONLY.has(w));
+
 // A role's searches on the Israeli boards: its title, and its Hebrew name when it has one.
 export const boardQueries = (role: Role) => [...new Set([role.query, listedRole(role.id)?.hebrew].filter((q): q is string => Boolean(q)))];

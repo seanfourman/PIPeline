@@ -172,6 +172,49 @@ export function AreasEditor({ draft, update }: { draft: any; update: Update }) {
 
 type Run = { started: string; finished?: string; steps: { step: string; company?: string; ok: boolean; note?: string }[]; drafted: string[]; mail: { status: string; detail?: string } | null };
 
+// The live alerts (alerts.ts): the search watched with no AI every few minutes, each new job told on this computer
+// and by email (to the daily run's address, through its Gmail account), the high-tech and known companies' marked apart.
+function Alerts({ draft, update }: { draft: any; update: Update }) {
+  const { t, err } = useApp();
+  const alerts = draft.alerts ?? { enabled: false, email: true, desktop: true, every: 15 };
+  const [status, setStatus] = useState<[string, boolean]>(["", false]);
+  const [last, setLast] = useState<{ last: string; lastTold: string; told: number; running: boolean } | null>(null);
+  useEffect(() => {
+    const load = () => api("automation").then((d) => setLast(d.alerts ?? null)).catch(() => {});
+    load();
+    const timer = setInterval(load, 15_000);
+    return () => clearInterval(timer);
+  }, []);
+  const set = (key: string, value: unknown) => update((d) => { d.alerts = { ...alerts, [key]: value }; });
+  const test = async () => {
+    try {
+      setStatus([t("settings.sending"), false]);
+      const r = await api("automation/alert-test", {});
+      setStatus([[r.desktop ? t("settings.alertDesktopShown") : t("settings.alertDesktopFailed"), t(`settings.mail.${r.mail.status}`, { detail: r.mail.detail ?? "" })].join(" "), !r.desktop || r.mail.status !== "sent"]);
+    } catch (e) { setStatus([err(e), true]); }
+  };
+  const time = (iso: string) => (iso ? new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
+  return (
+    <Card className="stack alerts">
+      <h2>{t("settings.alerts")}</h2>
+      <p className="note">{t("settings.alertsNote")}</p>
+      <label className="check"><input type="checkbox" checked={alerts.enabled} onChange={(e) => set("enabled", e.target.checked)} />{t("settings.alertsOn")}</label>
+      <label className="check"><input type="checkbox" checked={alerts.desktop} onChange={(e) => set("desktop", e.target.checked)} />{t("settings.alertsDesktop")}</label>
+      <label className="check"><input type="checkbox" checked={alerts.email} onChange={(e) => set("email", e.target.checked)} />{t("settings.alertsEmail")}</label>      <Field label={t("settings.alertsEvery")} hint={t("settings.alertsEveryNote")}>
+        <Select value={String(alerts.every)} onChange={(v) => set("every", Number(v))} options={[15, 30, 60].map((n) => ({ value: String(n), label: t("settings.alertsMinutes", { n }) }))} />
+      </Field>
+      <div className="row"><Btn onClick={test}>{t("settings.alertTest")}</Btn></div>
+      {status[0] && <p className={status[1] ? "error-line" : "note"} role="status" dir="auto">{status[0]}</p>}
+      {alerts.enabled && last && (
+        <p className="note" role="status">
+          {last.running ? t("settings.alertsRunning") : last.last ? t("settings.alertsLast", { time: time(last.last) }) : t("settings.alertsSoon")}
+          {last.told ? ` ${t("settings.alertsTold", { n: last.told, time: time(last.lastTold) })}` : ""}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 // Apart from the settings form, which a half-typed password would otherwise ride along with.
 function Runner() {
   const { t, lang, err } = useApp();
@@ -573,6 +616,7 @@ export function Settings() {
         <p className="note">{t("settings.dailyTip")}</p>
         <Runner />
       </Card>
+      <Alerts draft={draft} update={update} />
     </Page>
   );
 }

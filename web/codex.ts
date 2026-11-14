@@ -72,7 +72,8 @@ export class CodexAgent {
   private stop = new AbortController();
 
   // command is the app-server to start; a test gives one of its own.
-  constructor(private hooks: CodexHooks, private threadId?: string, private cwd = REPO, private command = [EXE, "app-server"]) {}
+  // ephemeral: a temporary conversation's thread (agent.ts Session.temporary), which Codex keeps nowhere on disk.
+  constructor(private hooks: CodexHooks, private threadId?: string, private cwd = REPO, private command = [EXE, "app-server"], private ephemeral = false) {}
 
   private write(message: unknown) {
     (this.proc!.stdin as unknown as { write: (s: string) => void }).write(`${JSON.stringify({ jsonrpc: "2.0", ...(message as object) })}\n`);
@@ -106,8 +107,12 @@ export class CodexAgent {
       const params = {
         cwd: this.cwd, approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: CODEX_INSTRUCTIONS,
         config: { sandbox_workspace_write: { network_access: true }, web_search: "live" },
+        ...(this.ephemeral ? { ephemeral: true } : {}),
       };
-      const resumed = this.threadId ? await this.request("thread/resume", { threadId: this.threadId, ...params, excludeTurns: true }).catch(() => null) : null;
+      // An ephemeral thread's words don't go into Codex's message history either.
+      if (this.ephemeral) Object.assign(params.config, { history: { persistence: "none" } });
+      // An ephemeral thread was never kept, so there is nothing of it to pick up again.
+      const resumed = this.threadId && !this.ephemeral ? await this.request("thread/resume", { threadId: this.threadId, ...params, excludeTurns: true }).catch(() => null) : null;
       if (!resumed) {
         const started = await this.request("thread/start", params);
         this.threadId = started.thread.id as string;

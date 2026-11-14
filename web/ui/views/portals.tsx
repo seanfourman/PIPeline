@@ -7,7 +7,7 @@ import { SaveNote, useAutoSave } from "../autosave";
 import { api, Btn, Card, External, goTo, Icon, Page, Spinner } from "../kit";
 import { useMore } from "../more";
 import { Select } from "../select";
-import { employersToRead, INDUSTRIES, portalOn, PORTALS, webPortals, type How, type OwnPortal, type Portal } from "../../portals";
+import { employerName, employersToRead, INDUSTRIES, portalOn, PORTALS, webPortals, type How, type OwnPortal, type Portal } from "../../portals";
 
 // How many employers show at first, and how many more each time their end comes near the bottom of the screen
 // (ui/more.tsx), and the group the companies the daily search found are in.
@@ -119,7 +119,7 @@ export function Portals() {
     d.portals ??= { off: [], mine: [] };
     d.portals.off = off.includes(id) ? off.filter((x) => x !== id) : [...off, id];
   });
-  const name = (p: Portal) => (lang === "he" ? p.he : p.en);
+  const name = (p: Portal) => (p.kind === "employer" ? employerName(p, lang) : lang === "he" ? p.he : p.en);
   const row = (p: Portal) => {
     const followed = p.how !== "link";
     const reason = p.lowTech && !picks.lowTech ? t("portals.lowTechIsOff") : p.kind === "employer" && picks.industries.length && !picks.industries.includes(p.industry) ? t("portals.notIndustry") : "";

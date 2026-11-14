@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ChatbotError } from "./chatbots";
@@ -69,6 +69,34 @@ describe("postings", () => {
     // Opened again, it is all there and nothing is read.
     expect(s.postings.open(JOB)!.reading).toBeNull();
     expect(s.fetches()).toBe(1);
+  });
+
+  test("a posting read whole by the older page reader is read again on opening, its old words kept if no part is found", async () => {
+    const old = (dir: string) => {
+      const id = jobId(JOB.url)!;
+      writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ id, ...JOB, read: { at: "2026-11-01T00:00:00Z", status: "read", source: "page", lines: ["Menu", "Old words"] } }));
+      return id;
+    };
+    // The page holds a part with the job: read again, its words in place of the old ones, and not again after.
+    const html = `<html><body><nav><a href="/">Home</a></nav><div class="job"><p>${PAGE_TEXT}</p></div></body></html>`;
+    const runPart: Run = async (argv) => {
+      if (!argv.some((a) => a.includes("fetch_page.py"))) return { code: 0, out: guardOut(PAGE_TEXT), err: "" };
+      writeFileSync(argv[argv.indexOf("--out") + 1], html);
+      return { code: 0, out: "HTTP 200 size=10 saved=x", err: "" };
+    };
+    const withPart = setup({ run: runPart });
+    const id = old(withPart.dir);
+    expect(withPart.postings.open(JOB)!.reading).toBe("page");
+    await withPart.postings.readJob(id);
+    expect(withPart.postings.view(id)!.posting.lines).toHaveLength(11);
+    expect(withPart.postings.open(JOB)!.reading).toBeNull();
+    // The page has no such part now (a job taken down, its page all footer): the old words stay, and it isn't read again.
+    const noPart = setup();
+    const kept = old(noPart.dir);
+    await noPart.postings.readJob(noPart.postings.open(JOB)!.id);
+    expect(noPart.postings.view(kept)!.posting.lines).toEqual(["Menu", "Old words"]);
+    expect(noPart.postings.open(JOB)!.reading).toBeNull();
+    expect(noPart.fetches()).toBe(1);
   });
 
   test("the AI reads a job only when asked, once, and its score and layout are kept for the page", async () => {
@@ -152,7 +180,7 @@ describe("postings", () => {
     expect(v.match?.score).toBe(73);
   });
 
-  test("reads a junior search's list in the background: the jobs not read yet, never LinkedIn, and not for other searches", async () => {
+  test("reads the list in the background, for any search: the jobs not read yet, never LinkedIn", async () => {
     const seen: Record<string, Record<string, any>> = {
       a: { url: JOB.url, title: "Data Engineer", company: "Acme", status: "new", posted_date: "2026-11-09" },
       b: { url: "https://il.linkedin.com/jobs/view/123", title: "Developer", company: "Beta", status: "new", posted_date: "2026-11-10" },
@@ -165,12 +193,36 @@ describe("postings", () => {
     expect(s.postings.view(jobId(JOB.url))!.posting.status).toBe("read");
     // Read once: the next round has nothing to read.
     expect(await s.postings.crawl()).toBe(0);
-    const other = setup({ seen: () => seen, seniority: () => "middle" });
-    expect(await other.postings.crawl()).toBe(0);
-    // A site that turns the background reading away says nothing of its jobs to the list.
-    const refused = setup({ seen: () => seen }, { code: 0, out: "HTTP 403 size=1 saved=x" });
-    expect(await refused.postings.crawl()).toBe(1);
+    // Any other search reads it too, for its automatic score, and keeps it on the list.
+    const other = setup({ seen: () => seen, seniority: () => "middle" }, undefined, SENIOR_TEXT);
+    expect(await other.postings.crawl()).toBe(1);
+    expect(other.applied).toEqual([]);
+  });
+
+  test("a site that turns the background reading away rests, and says nothing of its jobs to the list", async () => {
+    const seen: Record<string, Record<string, any>> = {
+      a: { url: JOB.url, title: "Data Engineer", company: "Acme", status: "new", posted_date: "2026-11-10" },
+      b: { url: "https://careers.acme.example/jobs/8", title: "Data Analyst", company: "Acme", status: "new", posted_date: "2026-11-09" },
+    };
+    const steps: string[] = [];
+    const refused = setup({ seen: () => seen }, { code: 0, out: "HTTP 429 size=1 saved=x" });
+    const read = await refused.postings.crawl(undefined, { steps: { start: (_id, target, name) => steps.push(`${name} ${target}`), done: (_id, ok, preview) => steps.push(`${ok} ${preview}`) } });
+    // The first page was asked for, and its site wasn't asked again.
+    expect(read).toBe(1);
+    expect(refused.fetches()).toBe(1);
     expect(refused.applied).toEqual([]);
+    expect(steps).toEqual(["ReadJob Acme: Data Engineer", "false HTTP 429"]);
+  });
+
+  test("a reading asked to wait while one goes waits for it, then reads what is left", async () => {
+    const seen: Record<string, Record<string, any>> = { a: { url: JOB.url, title: "Data Engineer", company: "Acme", status: "new" } };
+    const s = setup({ seen: () => seen });
+    const first = s.postings.crawl();
+    expect(await s.postings.crawl()).toBe(0);
+    const waited = s.postings.crawl(undefined, { wait: true });
+    expect(await first).toBe(1);
+    expect(await waited).toBe(0);
+    expect(s.fetches()).toBe(1);
   });
 
   test("a ranking run keeps each job's posting for its page, and sections past the last line are cut to it", () => {

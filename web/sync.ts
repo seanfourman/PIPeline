@@ -17,7 +17,8 @@ export type Peers = {
   peer: (account: string, to: string, what: "manifest" | "file", rel?: string) => Promise<Response | null>;
 };
 
-const OWN = /^(app\/(sessions\.json(\.new)?|token|server\.log|update\.json|sync-key\.json|sync-state\.json|remote\.json|sync-backup\/.*)|_backup[^/]*\/.*|.*\.sync-new)$/;
+// A temporary conversation's attachments (uploads.ts TEMP_UPLOADS) never travel: they're kept nowhere but here, briefly.
+const OWN = /^(app\/(sessions\.json(\.new)?|token|server\.log|update\.json|sync-key\.json|sync-state\.json|remote\.json|sync-backup\/.*|uploads-temporary\/.*)|_backup[^/]*\/.*|.*\.sync-new)$/;
 const MAX_FILE = 40 * 1024 * 1024;
 const KEEP_DAYS = 7;
 const DELETIONS_DAYS = 30;

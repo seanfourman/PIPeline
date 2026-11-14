@@ -6,7 +6,7 @@ import type { Fetch } from "./boards";
 import { ChatbotError } from "./chatbots";
 import { PORTALS } from "./portals";
 import type { Run } from "./ranker";
-import { fitSystem, parseFits, scanPortals, scrapeJobs, type Search } from "./scraper";
+import { fitSystem, judgeByRules, parseFits, scanPortals, scrapeJobs, searchDaily, type Search } from "./scraper";
 import { EMPTY_SETTINGS, validateSettings, type Settings } from "./settings";
 
 const never = new AbortController().signal;
@@ -110,7 +110,7 @@ describe("scraper", () => {
   // The insurers, with every one but the Phoenix switched off.
   const onlyPhoenix = () => validateSettings({
     ...settings, roles: [{ id: "analyst" }], industries: ["insurance"],
-    portals: { off: PORTALS.filter((p) => p.industry === "insurance" && p.id !== "phoenix").map((p) => p.id) },
+    portals: { off: [...PORTALS.filter((p) => p.industry === "insurance" && p.id !== "phoenix").map((p) => p.id), "gotfriends", "nisha", "jobnet", "nbn-jobs", "ethosia"] },
   });
 
   test("the portals check reads each employer, judges what fits the roles, stores it with its portal, and keeps each one's result", async () => {
@@ -141,13 +141,50 @@ describe("scraper", () => {
     expect(asked).toEqual([]);
     writeFileSync(checks, JSON.stringify({ phoenix: { checked: new Date(Date.now() - 4 * 86_400_000).toISOString(), found: 0, kept: 0 } }));
     await scan(3);
-    expect(asked).toEqual(["https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=173831"]);
+    // Its own careers page first, then AllJobs, as its page gave nothing.
+    expect(asked).toEqual(["https://www.fnx.co.il/career/open-positions/", "https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=173831"]);
   });
 
   test("the portals check with nothing to read says so", async () => {
-    const off = validateSettings({ ...settings, roles: [{ id: "analyst" }], lowTech: false, industries: ["health"] });
+    const off = validateSettings({ ...settings, roles: [{ id: "analyst" }], lowTech: false, industries: ["health"], portals: { off: ["gotfriends", "nisha", "jobnet", "nbn-jobs", "ethosia", "intel"] } });
     const text = await scanPortals({ ask: async () => "[]", steps: steps().steps, signal: never, lang: "en", settings: { ...off, markets: [] }, run: fakeTools().run, fetch: async () => null, system: "rules" });
     expect(text).toContain("no portals to read");
+  });
+
+  test("judges a hit by its title and area with no AI: a senior title, an excluded area, a title outside the field", () => {
+    const junior = { ...settings, seniority: "junior" as const, studentJobs: "exclude" as const };
+    const judged = judgeByRules([
+      { title: "Junior Backend Developer", tier: "near" }, { title: "Senior Backend Engineer", tier: "near" }, { title: "Backend Developer", tier: "far" },
+      { title: "Junior Recruiter", tier: "near" }, { title: "QA Automation Student", tier: "near" }, { title: "מפתח/ת צד שרת", tier: "ok" },
+    ], junior, "en");
+    expect(judged.get(0)).toEqual({ fit: "high", keep: true, reason: "" });
+    expect(judged.get(1)?.reason).toContain("senior title");
+    expect(judged.get(2)?.reason).toContain("area");
+    // "Junior" alone doesn't put a title in a developer's field.
+    expect(judged.get(3)?.reason).toContain("field");
+    expect(judged.get(4)?.reason).toContain("student");
+    expect(judged.get(5)?.keep).toBe(true);
+  });
+
+  test("the daily search runs no AI: LinkedIn and freehire for each role, then the Telegram channels, judged by the rules", async () => {
+    const searched: string[] = [];
+    const search: Search = async (role) => { searched.push(role); return { results: [hit(1, { title: "Junior Backend Developer" })], failed: [] }; };
+    const now = Date.parse("2026-11-14T12:00:00Z");
+    const channel = `<div class="tgme_widget_message_wrap"><div data-post="jobsil/7"><div class="tgme_widget_message_text js-message_text" dir="auto">🔹 Junior QA Engineer<br/>🏢 Acme · 📍 Tel Aviv<br/><br/>🔹 Junior Accountant<br/>🏢 Beta · 📍 Haifa</div><time datetime="2026-11-13T08:00:00+00:00"></time></div></div>`;
+    const fetched: string[] = [];
+    const fetch: Fetch = async (url) => { fetched.push(url); return url.includes("t.me/s/") ? channel : null; };
+    const { run, stored } = fakeTools();
+    const text = await searchDaily({ steps: steps().steps, signal: never, lang: "en", settings, run, fetch, search, now });
+    expect(searched.sort()).toEqual(["Junior Backend Developer", "Junior QA Engineer"]);
+    expect(fetched.every((u) => u.startsWith("https://t.me/s/"))).toBe(true);
+    const rows = stored[0];
+    expect(rows).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: "Junior Backend Developer", status: "new", portal: "linkedin-search" }),
+      expect.objectContaining({ title: "Junior QA Engineer", company: "Acme", location: "Tel Aviv", url: "https://t.me/jobsil/7?job=1", portal: "telegram-search", status: "new" }),
+    ]));
+    // The accountant is outside the roles' field, and never reaches the list.
+    expect(rows.some((r: any) => r.title === "Junior Accountant")).toBe(false);
+    expect(text).toContain("with no AI");
   });
 
   test("needs a market and a role first", async () => {

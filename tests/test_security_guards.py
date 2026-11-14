@@ -794,6 +794,39 @@ class SubdirectoryGitignoreTests(GuardRepoFixture):
         self.assertEqual(result.returncode, 1)
         self.assertIn("documents/.gitignore", result.stdout.replace("\\", "/"))
 
+    def _git(self, *args):
+        try:
+            return subprocess.run(["git", *args], cwd=self.root, capture_output=True, check=False)
+        except OSError:
+            self.skipTest("git is not installed")
+
+    def test_gitignore_in_a_folder_git_leaves_out_is_not_read(self):
+        # The installer's staged copy of the program carries the root rules' negations in its own
+        # .gitignore; git never looks inside an ignored folder, so that file has no effect.
+        if self._git("init", "-q").returncode != 0:
+            self.skipTest("git init failed")
+        root_rules = (self.root / ".gitignore").read_text(encoding="utf-8")
+        (self.root / ".gitignore").write_text(root_rules + "\n/installer/stage/\n", encoding="utf-8")
+        stage = self.root / "installer" / "stage" / "app"
+        stage.mkdir(parents=True)
+        (stage / ".gitignore").write_text("!personal_cv.pdf\n", encoding="utf-8")
+        result = run_guards(self.root)
+        self.assertNotIn("installer/stage", result.stdout.replace("\\", "/"))
+
+    def test_ignored_gitignore_in_a_folder_git_enters_is_still_read(self):
+        # A .gitignore that a rule matches is still read by git when git enters its folder.
+        if self._git("init", "-q").returncode != 0:
+            self.skipTest("git init failed")
+        root_rules = (self.root / ".gitignore").read_text(encoding="utf-8")
+        (self.root / ".gitignore").write_text(root_rules + "\nnotes/**\n!notes/**/\n", encoding="utf-8")
+        sub = self.root / "notes" / "cv"
+        sub.mkdir(parents=True)
+        (sub / ".gitignore").write_text("!personal_cv.pdf\n", encoding="utf-8")
+        self.assertEqual(self._git("check-ignore", "-q", "notes/cv/.gitignore").returncode, 0, "the file must be ignored itself")
+        result = run_guards(self.root)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("notes/cv/.gitignore", result.stdout.replace("\\", "/"))
+
     def test_gitignore_inside_node_modules_or_git_is_not_read(self):
         for parts in (("node_modules", "pkg"), (".git", "info")):
             sub = self.root.joinpath(*parts)

@@ -1,6 +1,7 @@
-// The daily run: find jobs, rank them, draft a CV for the best few, and email them to the candidate, at each of the
-// run times the settings give, up to one an hour. It never contacts an employer. The candidate reads each CV and
-// sends it.
+// The daily run: find jobs, read their postings with no AI so each has its automatic score (match.ts), draft a CV for
+// the best few, and email them to the candidate, at each of the run times the settings give, up to one an hour. It
+// ranks nothing with the AI: a job's AI score comes only when the user asks for it. It never contacts an employer.
+// The candidate reads each CV and sends it.
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -14,6 +15,8 @@ const STATE_FILE = path.join(APP_DIR, "automation.json");
 // Outside the project, so a session's free reads of the project cannot reach the password.
 const MAIL_FILE = path.join(os.homedir(), ".ai-job-search", "mail.json");
 const STEP_TIMEOUT = 30 * 60 * 1000;
+// Reading the new jobs' postings goes slowly, a few seconds between two pages of a site.
+const READ_TIMEOUT = 30 * 60 * 1000;
 const APPLY_TIMEOUT = 40 * 60 * 1000;
 // The portals check reads a few hundred employers' pages, from AllJobs one at a time.
 const PORTALS_TIMEOUT = 60 * 60 * 1000;
@@ -22,15 +25,16 @@ const KEPT_TRIED = 500;
 
 const UNATTENDED = "This is an unattended daily run, and nobody is watching. Nobody can answer a question or approve anything, so a tool call that needs approval is refused: do not retry it or work around it. Skip that step and say so in your final message. Never send anything to an employer.";
 export const SEARCH_PROMPT = `${UNATTENDED}\n\nUse the job-scraper skill to search for new jobs under Search settings in user/CLAUDE.md, and save the results. Where it asks for a choice, use the defaults.`;
-export const RANK_PROMPT = `${UNATTENDED}\n\nRead .claude/commands/rank.md and follow it with no arguments.`;
 export const applyPrompt = (url: string) => `${UNATTENDED}\n\nRead .claude/commands/apply.md and follow it, with this as $ARGUMENTS: ${url}\n\nWhere it asks the candidate something, decide like this:\n- Continue to drafting only for a Strong Fit or Good Fit with no failed hard requirement. Otherwise stop, record nothing in the tracker, and say why.\n- Stop if the posting guard flags the posting.\n- Write a cover letter only if the posting asks for one.\n\nEnd with what was added beyond the profile, as user/CV_RULES.md requires, and any step you had to skip.`;
 
 export type MailResult = { status: "sent" | "no_address" | "no_account" | "failed"; detail?: string };
-export type RunStep = { step: "search" | "portals" | "rank" | "apply" | "stopped"; company?: string; session?: string; ok: boolean; note?: string };
+// "rank" is an older run's AI ranking, kept in its history.
+export type RunStep = { step: "search" | "portals" | "read" | "rank" | "apply" | "stopped"; company?: string; session?: string; ok: boolean; note?: string };
 export type Run = { started: string; finished?: string; trigger: "schedule" | "manual"; steps: RunStep[]; drafted: string[]; mail: MailResult | null };
 // lastSlot is the run time the last run stood for, "2026-11-05 13:00"; an older file has only lastRunDate.
 type State = { lastRunDate: string; lastSlot?: string; tried: string[]; runs: Run[] };
-type Job = { title: string; company: string; url: string; status: string; score: number | null; tier: string; veto?: boolean };
+// score is the AI's, when the user asked for one; auto the automatic one, by the job's posting or its title alone (autoBasis).
+type Job = { title: string; company: string; url: string; status: string; score: number | null; auto?: number | null; autoBasis?: string; tier: string; veto?: boolean };
 type Application = Record<string, any>;
 type Mail = { to: string; subject: string; body: string; attachments: { path: string; name: string }[] };
 
@@ -38,9 +42,18 @@ export type Deps = {
   loadSettings: () => Settings;
   loadState: (settings: Settings) => { applications: Application[]; jobs: Job[] };
   runSession: (prompt: string, title: string, timeoutMs: number) => Promise<{ id: string; ok: boolean; text: string }>;
-  // The portals check (scraper.ts scanPortals), done by the server between the search and the ranking: the Israeli
-  // boards and the employers on the portals page, which the search's agent doesn't cover.
+  // The search, done by the server with no AI (scraper.ts searchDaily): LinkedIn, freehire and the Telegram channels.
+  // Without it, the search is the job-scraper skill run by an agent (SEARCH_PROMPT), at the cost of a model's run.
+  search?: (title: string, timeoutMs: number) => Promise<{ id: string; ok: boolean; text: string }>;
+  // The portals check (scraper.ts scanPortals), done by the server after the search: the Israeli boards and the
+  // employers on the portals page, which the search's agent doesn't cover.
   scanPortals?: (title: string, timeoutMs: number) => Promise<{ id: string; ok: boolean; text: string }>;
+  // The new jobs' postings read with no AI (postings.ts crawl), done by the server after the portals check, so each has
+  // its automatic score to be picked by.
+  readJobs?: (title: string, timeoutMs: number) => Promise<{ id: string; ok: boolean; text: string }>;
+  // Applying for one job, done by the server with a few calls to the AI (applier.ts), strict as nobody is watching:
+  // a CV only for a strong or good fit. Without it, each job is /apply as an agent (applyPrompt), at many times the cost.
+  applyJob?: (url: string, title: string, timeoutMs: number) => Promise<{ id: string; ok: boolean; text: string }>;
   sendMail: (mail: Mail) => Promise<MailResult>;
   stateFile?: string;
   root?: string;
@@ -52,7 +65,7 @@ export type Deps = {
 // The email and the conversation titles follow the interface language.
 const WORDS = {
   he: {
-    title: { search: "הריצה היומית: חיפוש", portals: "הריצה היומית: פורטלים", rank: "הריצה היומית: דירוג", apply: "הריצה היומית: " },
+    title: { search: "הריצה היומית: חיפוש", portals: "הריצה היומית: פורטלים", read: "הריצה היומית: קריאת המשרות", apply: "הריצה היומית: " },
     drafted: (n: number) => `נוצרו ${n} קורות חיים. כדאי לבדוק כל אחד ולשלוח אותו בעצמך.`,
     none: "הריצה הסתיימה בלי קורות חיים חדשים.",
     noCv: "לא נוצרו קורות חיים.",
@@ -63,12 +76,12 @@ const WORDS = {
     unfinished: "לא הסתיים",
     footer: "הפרטים המלאים בשיחות, באתר המקומי.",
     subject: (n: number) => `חיפוש עבודה: ${n} קורות חיים חדשים`,
-    steps: { search: "חיפוש", portals: "פורטלים", rank: "דירוג", apply: "הגשה", stopped: "הריצה נעצרה" },
+    steps: { search: "חיפוש", portals: "פורטלים", read: "קריאת המשרות", rank: "דירוג", apply: "הגשה", stopped: "הריצה נעצרה" },
     testSubject: "חיפוש עבודה: מייל בדיקה",
     testBody: "אם הגיע אליך המייל הזה, הריצה היומית תוכל לשלוח לך קורות חיים.",
   },
   en: {
-    title: { search: "Daily run: search", portals: "Daily run: portals", rank: "Daily run: ranking", apply: "Daily run: " },
+    title: { search: "Daily run: search", portals: "Daily run: portals", read: "Daily run: reading the jobs", apply: "Daily run: " },
     drafted: (n: number) => `${n} new CV${n === 1 ? "" : "s"}. Read each one and send it yourself.`,
     none: "The run finished with no new CVs.",
     noCv: "No CV came out.",
@@ -79,7 +92,7 @@ const WORDS = {
     unfinished: "did not finish",
     footer: "The full details are in the conversations on the local site.",
     subject: (n: number) => `Job search: ${n} new CV${n === 1 ? "" : "s"}`,
-    steps: { search: "Search", portals: "Portals", rank: "Ranking", apply: "Application", stopped: "The run stopped" },
+    steps: { search: "Search", portals: "Portals", read: "Reading the jobs", rank: "Ranking", apply: "Application", stopped: "The run stopped" },
     testSubject: "Job search: test email",
     testBody: "If this email reached you, the daily run can send you CVs.",
   },
@@ -90,13 +103,26 @@ const localDate = (d: Date) => d.toLocaleDateString("en-CA");
 const localTime = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 const same = (a: unknown, b: unknown) => String(a ?? "").trim().toLowerCase() === String(b ?? "").trim().toLowerCase();
 
-// The best open jobs that have not been tried, by the score /rank gave them, up to limit.
+// A job's score to be picked by: the AI's, when the user asked for one, else its automatic one, but only once its
+// posting is read, since a title alone is too little to draft a CV for.
+export const pickScore = (j: Job) => j.score ?? (j.autoBasis === "posting" && typeof j.auto === "number" ? j.auto : null);
+
+// The settings' lowest score is on the AI's scale (the framework's bands: 60 a good fit). The automatic score is a
+// keyword match, and runs higher: a junior posting in the roles searched for, in a near area and asking no more years
+// than the level, has most of its score before a single skill counts, so most of the jobs the search keeps clear 60.
+// A job picked by its automatic score needs AUTO_LIFT more, and /apply's own evaluation still stops a poor fit before
+// any CV. The picks are ordered by how far each clears its own bar, so neither scale crowds out the other.
+export const AUTO_LIFT = 15;
+export const pickBar = (j: Job, minScore: number) => (j.score != null ? minScore : Math.min(100, minScore + AUTO_LIFT));
+
+// The best open jobs that have not been tried, by their scores, up to limit.
 export function pickJobs(jobs: Job[], applications: Application[], tried: string[], settings: Settings, limit = settings.automation.maxPerDay) {
   const { minScore } = settings.automation;
+  const margin = (j: Job) => (pickScore(j) ?? -1) - pickBar(j, minScore);
   return jobs
-    .filter((j) => j.status === "ranked" && j.url && j.score !== null && j.score >= minScore && j.tier !== "far" && !j.veto && !tried.includes(j.url))
+    .filter((j) => (j.status === "ranked" || j.status === "new") && j.url && pickScore(j) !== null && margin(j) >= 0 && j.tier !== "far" && !j.veto && !tried.includes(j.url))
     .filter((j) => !applications.some((a) => same(a.source, j.url) || (same(a.company, j.company) && same(a.role, j.title))))
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .sort((a, b) => margin(b) - margin(a))
     .slice(0, Math.max(0, limit));
 }
 
@@ -170,27 +196,35 @@ export function createAutomation(deps: Deps) {
     const before = read().runs;
     const entry: Run = { started: now().toISOString(), trigger, steps: [], drafted: [], mail: null };
     saveRun(entry, { lastRunDate: localDate(now()), lastSlot: slotOf(settings, now()) });
-    const step = async (name: RunStep["step"], title: string, prompt: string, timeout: number, company?: string) => {
-      const result = await deps.runSession(prompt, title, timeout);
+    const kept = (name: RunStep["step"], result: { id: string; ok: boolean; text: string }, company?: string) => {
       entry.steps.push({ step: name, company, session: result.id, ok: result.ok, note: result.ok ? undefined : result.text.slice(0, 200) });
       saveRun(entry);
       return result;
     };
+    const step = async (name: RunStep["step"], title: string, prompt: string, timeout: number, company?: string) => kept(name, await deps.runSession(prompt, title, timeout), company);
     try {
-      await step("search", words.title.search, SEARCH_PROMPT, STEP_TIMEOUT);
+      if (deps.search) kept("search", await deps.search(words.title.search, STEP_TIMEOUT));
+      else await step("search", words.title.search, SEARCH_PROMPT, STEP_TIMEOUT);
       if (deps.scanPortals) {
         const result = await deps.scanPortals(words.title.portals, PORTALS_TIMEOUT);
         entry.steps.push({ step: "portals", session: result.id, ok: result.ok, note: result.ok ? undefined : result.text.slice(0, 200) });
         saveRun(entry);
       }
-      await step("rank", words.title.rank, RANK_PROMPT, STEP_TIMEOUT);
+      if (deps.readJobs) {
+        const result = await deps.readJobs(words.title.read, READ_TIMEOUT);
+        entry.steps.push({ step: "read", session: result.id, ok: result.ok, note: result.ok ? undefined : result.text.slice(0, 200) });
+        saveRun(entry);
+      }
       const { applications, jobs } = deps.loadState(settings);
       const limit = trigger === "schedule" ? leftToday(settings, before, now()) : settings.automation.maxPerDay;
       const picks = pickJobs(jobs, applications, read().tried, settings, limit);
       const details: string[] = [];
       const attachments: Mail["attachments"] = [];
       for (const job of picks) {
-        const result = await step("apply", `${words.title.apply}${job.company}`, applyPrompt(job.url), APPLY_TIMEOUT, job.company);
+        const title = `${words.title.apply}${job.company}`;
+        const result = deps.applyJob
+          ? kept("apply", await deps.applyJob(job.url, title, APPLY_TIMEOUT), job.company)
+          : await step("apply", title, applyPrompt(job.url), APPLY_TIMEOUT, job.company);
         saveRun(entry, { tried: [job.url, ...read().tried].slice(0, KEPT_TRIED) });
         const row = deps.loadState(settings).applications.find((a) => same(a.source, job.url) && !applications.includes(a));
         const name = inUserFolder(row?.cv_file).match(/^user\/cv\/main_([a-z0-9_]+)\.\w+$/)?.[1];

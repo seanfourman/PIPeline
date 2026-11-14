@@ -8,6 +8,7 @@ import { buildInterface } from "./build";
 import { DICTS, translate } from "./ui/i18n";
 import { tabIcon } from "./icon";
 import { foxPixels, ICON, ICON_COLORS, Pip } from "./ui/pip";
+import { langDir, Markdown } from "./ui/kit";
 
 const paths = (value: unknown, prefix = ""): string[] =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -87,6 +88,19 @@ describe("the two languages", () => {
     for (const code of codes) expect(translate("en", `errors.${code}`)).not.toBe(`errors.${code}`);
   });
 
+  // The tab's title is the page's name (app.tsx), so a page an address can open with no name showed its key instead.
+  test("name every page an address can open, for the tab's title", () => {
+    const src = readFileSync(path.join(import.meta.dir, "ui", "app.tsx"), "utf8");
+    const nav = [...(src.match(/const NAV\b[^=]*=\s*\[([\s\S]*?)\];/)?.[1] ?? "").matchAll(/\["(\w+)",/g)].map((m) => m[1]);
+    const more = [...(src.match(/const PAGES = .*/)?.[0] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]);
+    expect(nav.length).toBeGreaterThan(5);
+    expect(more).toContain("job");
+    for (const page of [...nav, ...more]) {
+      const key = `nav.${page === "dash" ? "home" : page}`;
+      for (const lang of ["he", "en"] as const) expect(translate(lang, key)).not.toBe(key);
+    }
+  });
+
   // What Pip says from behind the sidebar breaks only where its words do (\n), each line short enough for one line of
   // his bubble, a long company name too, so no sentence is cut in the middle and its end carried over.
   test("give Pip's status lines lines short enough for his bubble", () => {
@@ -149,5 +163,21 @@ describe("the interface", () => {
     for (const file of glob.scanSync(import.meta.dir)) {
       expect(readFileSync(path.join(import.meta.dir, file), "utf8")).not.toMatch(/dangerouslySetInnerHTML|innerHTML/);
     }
+  });
+});
+
+describe("Pip's answers", () => {
+  test("a list keeps one side, its items' most common language, and an item in the other is set apart in its own", () => {
+    expect(langDir("מהנדס פול סטאק, Wix Code")).toBe("rtl");
+    expect(langDir("KickstartX 2026")).toBe("ltr");
+    expect(langDir("[המשרות של Wix](https://www.wix.com/jobs/locations/tel-aviv)")).toBe("rtl");
+    expect(langDir("2026")).toBeUndefined();
+    const html = renderToStaticMarkup(createElement(Markdown, { src: "מקורות:\n- המשרות הפתוחות של וויקס\n- מהנדס פול סטאק, Wix Code\n- KickstartX 2026" }));
+    expect(html).toContain('<ul dir="rtl">');
+    expect(html).toContain("<li>מהנדס פול סטאק, Wix Code</li>");
+    expect(html).toContain('<li><bdi dir="ltr">KickstartX 2026</bdi></li>');
+    const english = renderToStaticMarkup(createElement(Markdown, { src: "- FastAPI\n- PostgreSQL\n- פייתון" }));
+    expect(english).toContain('<ul dir="ltr">');
+    expect(english).toContain('<li><bdi dir="rtl">פייתון</bdi></li>');
   });
 });

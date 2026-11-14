@@ -2,10 +2,35 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cardLine, classifyLocation, documentPaths, matchesQuery, parseCsv, portalArgs, readAts, readCard, resolveDocument } from "./data";
+import { cardLine, classifyLocation, documentPaths, matchesQuery, parseCsv, portalArgs, readAts, readCard, resolveDocument, withoutJobSiteCopies } from "./data";
 import { REGION_PRESETS, type Area, type Tier } from "./settings";
 
 const israel = (tiers: Tier[]): Area[] => REGION_PRESETS.IL.map((a, i) => ({ ...a, tier: tiers[i] }));
+
+describe("the list", () => {
+  test("leaves out a job site's copy of a job it also has from the company's own site, by employer and title", () => {
+    const jobs = [
+      { url: "https://www.ness-tech.co.il/careers/job/43561", title: "בודק/ת תוכנה ג'וניור", company: "נס טכנולוגיות", portalId: "ness" },
+      { url: "https://www.alljobs.co.il/Search/UploadSingle.aspx?JobID=1", title: "בודק/ה תוכנה ג'וניור", company: "Ness", portalId: "ness" },
+      { url: "https://www.drushim.co.il/job/2/x/", title: "בודק/ת תוכנה ג'וניור", company: "נס טכנולוגיות" },
+      { url: "https://www.alljobs.co.il/Search/UploadSingle.aspx?JobID=3", title: "DevOps Engineer", company: "Ness", portalId: "ness" },
+      { url: "https://www.drushim.co.il/job/4/y/", title: "בודק/ת תוכנה ג'וניור", company: "SQLink" },
+    ];
+    // Ness's own copy stays, and the job sites' copies of it go; another job, or another company's, stays.
+    expect(withoutJobSiteCopies(jobs).map((j) => j.url)).toEqual([jobs[0].url, jobs[3].url, jobs[4].url]);
+  });
+
+  test("keeps the job site's copy that carries a word on the job, dismissed, left out or ranked, and drops the own copy then", () => {
+    const own = { url: "https://elad.a-2-z.co.il/jobs/1007770/", title: "QA Automation Lead", company: "אלעד מערכות", status: "new", portalId: "elad-systems" };
+    for (const status of ["skipped", "filtered", "ranked"]) {
+      const board = { url: "https://www.alljobs.co.il/Search/UploadSingle.aspx?JobID=9", title: "QA Automation Lead", company: "אלעד מערכות", status, portalId: "elad-systems" };
+      expect(withoutJobSiteCopies([own, board])).toEqual([board]);
+    }
+    // A job site's copy that only closed there, or wouldn't open, says nothing of the job: the own copy shows.
+    const closed = { url: "https://www.alljobs.co.il/Search/UploadSingle.aspx?JobID=9", title: "QA Automation Lead", company: "אלעד מערכות", status: "expired", portalId: "elad-systems" };
+    expect(withoutJobSiteCopies([own, closed])).toEqual([own]);
+  });
+});
 
 describe("readAts", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "ats-"));

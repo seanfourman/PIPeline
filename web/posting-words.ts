@@ -1,6 +1,7 @@
-// What a posting says in its own words, read with no AI, for its page: the skills it names (each the usual way, whether
-// it requires one or counts it an advantage, and whether the profile shows it), and how it is worked: its kind, where
-// and how many days in the office. The page's own data (posting-read.ts) comes first; these fill in what it lacks.
+// What a posting says in its own words, read with no AI, for its page and its automatic score (match.ts): the skills
+// it names (each the usual way, whether it requires one or counts it an advantage, and whether the profile shows it),
+// and how it is worked: its kind, where and how many days in the office. The page's own data (posting-read.ts) comes
+// first; these fill in what it lacks.
 import { PLUS } from "./experience";
 
 // A skill and how a posting names it. A short or common word is matched only where it can mean the skill.
@@ -113,12 +114,13 @@ const SHOWN = 12;
 // A heading over the lines it counts an advantage ("Nice to have", "יתרון").
 const PLUS_HEAD = /nice|advantage|bonus|preferred|plus|desirable|יתרון|יתרונות|רצוי/i;
 
-export type Skill = { name: string; must: boolean; have: boolean };
+export type Named = { name: string; must: boolean };
+export type Skill = Named & { have: boolean };
 
-// The skills a posting names, in the order it names them, up to twelve: required unless every line naming one counts
-// it an advantage (or stands under a heading that does), and had when the profile names it too.
-export function skillsIn(lines: string[], profile: string): Skill[] {
-  const seen = new Map<string, Skill>();
+// Every skill a posting names, in the order it names them: required unless every line naming one counts it an
+// advantage (or stands under a heading that does).
+export function namedSkills(lines: string[]): Named[] {
+  const seen = new Map<string, Named>();
   let plusHead = false;
   for (const line of lines) {
     if (line.startsWith("## ")) { plusHead = PLUS_HEAD.test(line); continue; }
@@ -126,11 +128,20 @@ export function skillsIn(lines: string[], profile: string): Skill[] {
     for (const [name, re] of SKILLS) {
       if (!re.test(line)) continue;
       const had = seen.get(name);
-      if (had) { had.must ||= !plus; continue; }
-      seen.set(name, { name, must: !plus, have: re.test(profile) });
+      if (had) had.must ||= !plus;
+      else seen.set(name, { name, must: !plus });
     }
   }
-  return [...seen.values()].slice(0, SHOWN);
+  return [...seen.values()];
+}
+
+// The skills a profile names, by the same names.
+export const profileSkills = (profile: string) => new Set(SKILLS.filter(([, re]) => re.test(profile)).map(([name]) => name));
+
+// The skills a posting names, up to twelve, each had when the profile names it too.
+export function skillsIn(lines: string[], profile: string): Skill[] {
+  const have = profileSkills(profile);
+  return namedSkills(lines).slice(0, SHOWN).map((s) => ({ ...s, have: have.has(s.name) }));
 }
 
 // How a posting is worked, from its words: its kind, where, and how many days a week in the office.

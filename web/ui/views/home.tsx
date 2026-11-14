@@ -4,6 +4,7 @@ import { paintStill } from "../intro";
 import { Btn, goTo } from "../kit";
 import { useMore } from "../more";
 import { Pip, PipAsleep, pixelPath } from "../pip";
+import { firmScore } from "./jobs";
 
 // Small one-colour drawings in the banner's pixel blocks rather than a font's or an icon set's: the tick on a
 // stage passed, the numbers, and the pictures on the signs under the banner.
@@ -113,8 +114,8 @@ export function nextStep(s: AppState, t: ReturnType<typeof useApp>["t"], start: 
   if (interview) return step("interview", () => start(`/interview ${interview.company} ${interview.role}`), { company: interview.company });
   const drafted = s.applications.find((a) => status(a) === "drafted");
   if (drafted) return step("drafted", go("/apps"), { company: drafted.company });
-  const top = s.jobs.filter((j) => j.status === "ranked" && j.score !== null && j.tier !== "far" && !j.veto && j.url).sort((a, b) => b.score - a.score)[0];
-  if (top) return step("top", () => start(`/apply ${top.url}`), { title: top.title, company: top.company, score: top.score });
+  const top = s.jobs.filter((j) => (j.status === "ranked" || j.status === "new") && firmScore(j) !== null && j.tier !== "far" && !j.veto && j.url).sort((a, b) => firmScore(b)! - firmScore(a)!)[0];
+  if (top) return step("top", () => start(`/apply ${top.url}`), { title: top.title, company: top.company, score: firmScore(top)! });
   const fresh = s.jobs.filter((j) => j.status === "new" || j.status === "unreachable").length;
   if (fresh) return step("fresh", go("/saved/found"), { n: fresh });
   return step("start", go("/jobs"));
@@ -350,8 +351,8 @@ const PIN = [".XXX.", "XX.XX", "XX.XX", ".XXX.", "..X.."];
 // company, and the place by a pin.
 function Item({ job }: { job: Job }) {
   return (
-    <a className="item" href="/saved/found" aria-label={`${job.score}: ${job.title}, ${job.company}`}>
-      <span className="item-score"><Digits n={job.score} /></span>
+    <a className="item" href="/saved/found" aria-label={`${firmScore(job)}: ${job.title}, ${job.company}`}>
+      <span className="item-score"><Digits n={firmScore(job)!} /></span>
       {/* The words run in their own language's direction inside each line. */}
       <strong className="item-title"><bdi dir="auto">{job.title}</bdi></strong>
       <span className="item-company"><bdi dir="auto">{job.company}</bdi></span>
@@ -363,8 +364,9 @@ function Item({ job }: { job: Job }) {
 export function Home() {
   const { s, t } = useApp();
   const st = appStats(s);
-  // Every job with a score, best first, more shelves of them as the page is scrolled down (Shelves).
-  const top = s.jobs.filter((j) => j.score !== null && j.tier !== "far").sort((a, b) => b.score - a.score);
+  // Every job with a firm score (the AI's, else the automatic one from its posting), best first, more shelves of them
+  // as the page is scrolled down (Shelves).
+  const top = s.jobs.filter((j) => firmScore(j) !== null && j.tier !== "far").sort((a, b) => firmScore(b)! - firmScore(a)!);
   const fresh = s.jobs.filter((j) => j.status === "new").length;
   // A plain card in the banner's colours: a pixel picture, the number in pixel digits, the words.
   const stat = (key: "sent" | "interview" | "offer" | "fresh", n: number, href: string) => (

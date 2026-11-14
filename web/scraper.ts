@@ -12,12 +12,17 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pageFetcher, readEmployer, readOwnPage, type Fetch, type Found } from "./boards";
+import { jsonPoster, pageFetcher, readEmployer, readOwnPage, type Fetch, type Found, type Post } from "./boards";
 import { ChatbotError } from "./chatbots";
 import { classifyLocation, searchJobs } from "./data";
 import { discoverEmployers, foundPortals } from "./discover";
-import { employersToRead, portalOn } from "./portals";
+import { seniorTitle } from "./experience";
+import { roleFit, roleWords } from "./match";
+import { employerName, employersToRead, portalOn, webPortals } from "./portals";
+import { fieldWords, titleMatches } from "./roles";
+import { channelJobs, channelName } from "./telegram";
 import { candidateContext, FATAL, PYTHON, runTool, type Ask, type Run, type Steps } from "./ranker";
+import type { NewJob } from "./alerts";
 import { loadSettings, type Settings } from "./settings";
 import { APP_DIR } from "./user";
 
@@ -67,6 +72,7 @@ const WORDS = {
     unjudged: (n: number) => `${n} לא נבדקו, ויימצאו שוב בחיפוש הבא.`, stopped: "החיפוש נעצר באמצע, ומה שכבר נבדק נשמר.",
     cols: ["#", "התאמה", "תפקיד", "חברה", "מקום", "קישור"], open: "פתיחה", fits: { high: "גבוהה", medium: "בינונית", low: "נמוכה" } as Record<string, string>,
     next: "הן מחכות בדף המשרות שלי, בלשונית \"השלל של פיפ\", הכי מתאימות קודם. ליד כל אחת יש כפתור לדירוג מדויק.",
+    daily: "חיפוש יומי", searchedDaily: (roles: number, channels: number) => `חיפשתי ${roles} תפקידים בלינקדאין וב-freehire, וקראתי ${channels} ערוצי טלגרם, בלי AI.`,
     portals: "בדיקת פורטלים", read: (n: number) => `קראתי את רשימות המשרות של ${n === 1 ? "מעסיק אחד" : `${n} מעסיקים`}.`, boards: "וחיפשתי את התפקידים ב-AllJobs, בדרושים וב-JobMaster.",
     discovered: (names: string[]) => `מצאתי במערכות הגיוס ${names.length === 1 ? "חברה חדשה" : `${names.length} חברות חדשות`} עם משרות בישראל, ומעכשיו אקרא גם את המשרות שלהן: ${names.join(", ")}.`,
     none: "אין עכשיו פורטלים לקרוא: כולם כבויים, או שמעסיקים שמחוץ להייטק כבויים בהגדרות.",
@@ -78,6 +84,7 @@ const WORDS = {
     unjudged: (n: number) => `${n} weren't checked, and will be found again next search.`, stopped: "The search stopped partway; what was checked is saved.",
     cols: ["#", "Fit", "Role", "Company", "Place", "Link"], open: "Open", fits: { high: "High", medium: "Medium", low: "Low" } as Record<string, string>,
     next: "They're waiting on the My jobs page, in the Pip's haul tab, the best fits first. Each has a button for an exact ranking.",
+    daily: "Daily search", searchedDaily: (roles: number, channels: number) => `Searched ${roles} roles on LinkedIn and freehire and read ${channels} Telegram channels, with no AI.`,
     portals: "Portals check", read: (n: number) => `Read the job lists of ${n === 1 ? "one employer" : `${n} employers`}.`, boards: "Searched the roles on AllJobs, Drushim and JobMaster too.",
     discovered: (names: string[]) => `Found ${names.length === 1 ? "a new company" : `${names.length} new companies`} with jobs in Israel on the recruiting platforms, and will read their jobs from now on: ${names.join(", ")}.`,
     none: "There are no portals to read right now: they're all switched off, or employers outside high-tech are off in the settings.",
@@ -86,7 +93,37 @@ const WORDS = {
 
 const defaultSearch: Search = (role, settings, signal) => searchJobs(role, "14", "all", settings.workMode, settings, "all", signal);
 
-type Judging = { ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; run?: Run; system?: string; today?: string };
+// rules: judge the hits by these settings' rules (judgeByRules), with no AI; ask is then never called.
+// found, when given, is handed the jobs stored as new and kept (the live alerts, alerts.ts), once they are stored.
+type Judging = { ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; run?: Run; system?: string; today?: string; rules?: Settings; found?: (jobs: NewJob[]) => void };
+
+const RULE_WORDS = {
+  he: { senior: "כותרת בכירה מהרמה שמחפשים", far: "באזור שהוחרג בהגדרות", student: "משרת סטודנט, וההגדרות לא רוצות כאלה", field: "לא בתחום התפקידים" },
+  en: { senior: "a senior title, above the level searched for", far: "in an area the settings exclude", student: "a student position, which the settings don't want", field: "not in the roles' field" },
+};
+const STUDENT = /\b(?:students?|interns?|internship)\b|סטודנט|מתמחה|התמחות/i;
+
+// The quick fit with no AI, from a hit's title and area alone: the words the automatic score matches roles by
+// (match.ts roleFit), the level its title names (experience.ts), and the settings. A hit is left out for a senior
+// title on a junior search, an excluded area, a student position when the settings exclude them, or a title outside
+// the roles' field (roles.ts fieldWords, so that "junior" alone doesn't count); its fit is how well its title fits a
+// role. The posting is read later, with no AI either (postings.ts crawl), for its years and its automatic score.
+export function judgeByRules(hits: { title: string; tier: string }[], settings: Settings, lang: "he" | "en" = "he") {
+  const w = RULE_WORDS[lang];
+  const roles = roleWords(settings.roles);
+  const field = settings.roles.length ? fieldWords(settings.roles) : [];
+  const judged = new Map<number, Judged>();
+  hits.forEach((h, i) => {
+    const { fit } = roleFit(h.title, roles, field);
+    const inField = !field.length || fit >= 0.4 || titleMatches(h.title, field);
+    const reason = settings.seniority === "junior" && seniorTitle(h.title) ? w.senior
+      : h.tier === "far" ? w.far
+      : settings.studentJobs === "exclude" && STUDENT.test(h.title) ? w.student
+      : !inField ? w.field : "";
+    judged.set(i, { fit: fit >= 0.75 ? "high" : fit >= 0.4 ? "medium" : "low", keep: !reason, reason });
+  });
+  return judged;
+}
 
 // The hits found, through the list's own tool, judged by the AI a batch at a time and stored, kept and skipped alike.
 async function judgeAndStore(found: Hit[], o: Judging & { run: Run }) {
@@ -116,10 +153,14 @@ async function judgeAndStore(found: Hit[], o: Judging & { run: Run }) {
     }
   }
 
-  // The quick fit, a batch at a time, by the first AI in the order that answers.
+  // The quick fit, a batch at a time, by the first AI in the order that answers; or by the rules, with no AI at all.
   const judged = new Map<number, Judged>();
   const engines = new Set<string>();
-  if (fresh.length && !signal.aborted) {
+  if (fresh.length && !signal.aborted && o.rules) {
+    steps.start("fit", String(fresh.length), "FitCheck");
+    for (const [i, j] of judgeByRules(fresh, o.rules, lang)) judged.set(i, j);
+    steps.done("fit", true, "");
+  } else if (fresh.length && !signal.aborted) {
     const system = o.system ?? fitSystem(lang);
     for (let from = 0; from < fresh.length && !signal.aborted; from += BATCH) {
       const batch = fresh.slice(from, from + BATCH);
@@ -161,6 +202,12 @@ async function judgeAndStore(found: Hit[], o: Judging & { run: Run }) {
   }
   const kept = fresh.map((h, i) => ({ h, j: judged.get(i) })).filter((x) => x.j?.keep).sort((a, b) => FITS.indexOf(a.j!.fit) - FITS.indexOf(b.j!.fit));
   const skipped = fresh.map((h, i) => ({ h, j: judged.get(i) })).filter((x) => x.j && !x.j.keep);
+  if (kept.length && o.found) {
+    o.found(kept.map(({ h, j }) => ({
+      title: String(h.title ?? ""), company: String(h.company ?? ""), url: String(h.url ?? ""), location: String(h.location ?? ""),
+      ...(h.portal_id ? { portalId: String(h.portal_id) } : {}), ...(h.posted_date ? { posted: h.posted_date } : {}), fit: j!.fit,
+    })));
+  }
   return { kept, skipped, unjudged: fresh.length - judged.size, already, engines };
 }
 
@@ -219,6 +266,46 @@ export async function scrapeJobs(o: { ask: Ask; steps: Steps; signal: AbortSigna
   return [head, [w.searched(roles.length, settings.markets.length), line].join(" "), ...rest].join("\n\n");
 }
 
+// ---------- the daily run's search ----------
+
+const toolsOnly: Search = (role, settings, signal) => searchJobs(role, "14", "all", settings.workMode, settings, "tools", signal);
+
+// The daily run's search, with no AI at all, where an agent used to run /job-scraper: every role on LinkedIn and
+// freehire in every market (the Israeli boards are the portals check's, which comes next), and the Telegram channels
+// the portals page has on (telegram.ts), each hit judged by the rules (judgeByRules) and stored. The recruiting
+// platforms and the other sites the agent searched with WebSearch need a search engine, so they are left to the
+// smart search and to the employers found on them (discover.ts).
+export async function searchDaily(o: Omit<Judging, "ask" | "rules"> & { settings?: Settings; fetch?: Fetch; search?: Search; now?: number }) {
+  const { steps, signal, lang, run = runTool } = o;
+  const settings = o.settings ?? loadSettings();
+  const fetch = o.fetch ?? pageFetcher(run);
+  const w = WORDS[lang];
+  const roles = [...new Set(settings.roles.map((r) => r.query).filter(Boolean))];
+  if (!settings.markets.length) throw new ChatbotError("scrape_no_market");
+  if (!roles.length) throw new ChatbotError("scrape_no_roles");
+  const { hits, failed } = await searchRoles(roles, settings, o.search ?? toolsOnly, steps, signal);
+  const field = fieldWords(settings.roles);
+  const places = settings.areas.flatMap((a) => a.places);
+  const channels = webPortals(settings).filter((p) => p.channel).map((p) => ({ name: channelName(p.url), label: employerName(p, lang) })).filter((c) => c.name);
+  for (const c of channels) {
+    if (signal.aborted) break;
+    steps.start(`channel-${c.name}`, c.label, "ReadChannel");
+    try {
+      const html = await fetch(`https://t.me/s/${c.name}`, signal);
+      if (!html) throw new Error("no answer");
+      const jobs = channelJobs(html, field, places, o.now);
+      for (const j of jobs) if (!hits.has(j.url)) hits.set(j.url, { ...j, tier: classifyLocation(j.location, settings.areas), source: "telegram" });
+      steps.done(`channel-${c.name}`, true, `${jobs.length}`);
+    } catch (err) {
+      failed.add(c.label);
+      steps.done(`channel-${c.name}`, false, signal.aborted ? "" : oneLine((err as Error)?.message ?? err));
+    }
+  }
+  const done = await judgeAndStore([...hits.values()], { ...o, run, rules: settings, ask: async () => "" });
+  const [head, line, ...rest] = report(lang, `## ${w.daily}`, done, failed, signal.aborted);
+  return [head, [w.searchedDaily(roles.length, channels.length), line].join(" "), ...rest].join("\n\n");
+}
+
 // ---------- the portals check ----------
 
 // Each portal's last check, for the portals page: when, how many postings for the roles it had, how many were new
@@ -237,10 +324,13 @@ const boardsOnly: Search = (role, settings, signal) => searchJobs(role, "14", "a
 // didn't fail, is left alone: most of those have no jobs open at all, and each is one more page from a site that is
 // read a page at a time. With discover, the companies found on the recruiting platforms are read too, and the job
 // list's new boards looked into once the rest is done (discover.ts).
-export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; boards?: boolean; search?: Search; checks?: string; rest?: number; discover?: boolean }) {
+// fresh, for the live alerts, is the minutes a portal checked well is left alone after its check.
+export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; post?: Post; boards?: boolean; search?: Search; checks?: string; rest?: number; fresh?: number; discover?: boolean }) {
   const { steps, signal, lang, run = runTool } = o;
   const settings = o.settings ?? loadSettings();
   const fetch = o.fetch ?? pageFetcher(run);
+  // For the employers whose own list answers only a POST (Redmatch's, boards.ts jsonPoster).
+  const post = o.post ?? jsonPoster(run);
   const w = WORDS[lang];
   const today = o.today ?? new Date().toLocaleDateString("en-CA");
   if (!settings.roles.length) throw new ChatbotError("scrape_no_roles");
@@ -255,10 +345,12 @@ export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fe
   const checkedAt = new Date().toISOString();
   const resting = (id: string) => {
     const c = checks[id];
-    return Boolean(o.rest && c && !c.error && !c.found && Date.now() - Date.parse(c.checked) < o.rest * 86_400_000);
+    if (!c || c.error) return false;
+    const age = Date.now() - Date.parse(c.checked);
+    return Boolean((o.rest && !c.found && age < o.rest * 86_400_000) || (o.fresh && age < o.fresh * 60_000));
   };
   const lists = [
-    ...employers.filter((p) => !resting(p.id)).map((p) => ({ id: p.id, name: lang === "he" ? p.he : p.en, read: () => readEmployer(p, settings.roles, { fetch, today, signal }) })),
+    ...employers.filter((p) => !resting(p.id)).map((p) => ({ id: p.id, name: employerName(p, lang), read: () => readEmployer(p, settings.roles, { fetch, post, today, signal, seniority: settings.seniority }) })),
     ...own.map((p) => ({ id: p.id, name: p.name, read: () => readOwnPage(p.id, p.name, p.url, settings.roles, { fetch, today, signal }) })),
   ];
   const perPortal = new Map<string, Found[]>();
@@ -289,7 +381,9 @@ export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fe
     searched.failed.forEach((f) => failed.add(f));
   }
 
-  const done = await judgeAndStore(found, { ...o, run, today: o.today });
+  // Judged by the rules, with no AI: the employers' lists are kept to the roles' fields already, and a scraper needs
+  // no model (Sean 2026-11-14: "מה הפואנטה ל AI בשביל SCRAPER רגיל").
+  const done = await judgeAndStore(found, { ...o, run, today: o.today, rules: settings });
   for (const { h } of done.kept) if (h.portal_id && checks[h.portal_id]) checks[h.portal_id].kept++;
   mkdirSync(path.dirname(o.checks ?? CHECKS_FILE), { recursive: true });
   writeFileSync(o.checks ?? CHECKS_FILE, JSON.stringify(checks, null, 2));

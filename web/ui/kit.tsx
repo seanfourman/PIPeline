@@ -1,8 +1,8 @@
 // Shared building blocks. Text from postings and from the agent always goes in as text, never as HTML.
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  Archive, ArchiveRestore, ArrowUp, Award, Bookmark, BookOpenText, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, FolderInput, FolderOpen, FolderPlus, Gauge,
-  Gem, Globe, GraduationCap, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, Mic, Minus, Moon, PanelLeft, PanelRight, Pause, Pencil, Phone, Pin, PinOff, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
+  Archive, ArchiveRestore, ArrowLeftRight, ArrowUp, Award, Bookmark, BookOpenText, BriefcaseBusiness, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, FolderInput, FolderOpen, FolderPlus, Gauge,
+  Gem, Globe, GraduationCap, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, MessageCircleDashed, Mic, Minus, Moon, PanelLeft, PanelRight, Pause, Pencil, Phone, Pin, PinOff, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
   Sparkles, Square, Sun, Trash2, TriangleAlert, User, UserPlus, X, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -165,12 +165,21 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
     }
     if (isList(line)) {
       const ordered = /^\s*\d+\./.test(line);
-      const items: React.ReactNode[] = [];
-      while (i < lines.length && isList(lines[i])) {
-        items.push(<li key={i} dir="auto">{inline(lines[i].replace(/^\s*([-*]|\d+\.)\s+/, ""), String(i))}</li>);
-        i++;
-      }
-      blocks.push(ordered ? <ol key={k}>{items}</ol> : <ul key={k}>{items}</ul>);
+      const texts: string[] = [];
+      while (i < lines.length && isList(lines[i])) texts.push(lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, ""));
+      // A list keeps one direction, that of most of its items (the page's on a tie), so its bullets stay on one side; an
+      // item in the other language is set apart in its own (Sean 2026-11-12: "שהכל יהיה פה בצד ימין גם הזה של הטקסט
+      // האנגלית").
+      const dirs = texts.map(langDir);
+      const rtl = dirs.filter((d) => d === "rtl").length;
+      const ltr = dirs.filter((d) => d === "ltr").length;
+      const page = typeof document !== "undefined" && document.documentElement.dir === "ltr" ? "ltr" : "rtl";
+      const side = rtl > ltr ? "rtl" : ltr > rtl ? "ltr" : dir === "ltr" || dir === "rtl" ? dir : page;
+      const items = texts.map((text, n) => {
+        const body = inline(text, `${k}-${n}`);
+        return <li key={n}>{dirs[n] && dirs[n] !== side ? <bdi dir={dirs[n]}>{body}</bdi> : body}</li>;
+      });
+      blocks.push(ordered ? <ol key={k} dir={side}>{items}</ol> : <ul key={k} dir={side}>{items}</ul>);
       continue;
     }
     if (line.startsWith(">")) {
@@ -218,10 +227,10 @@ const ICONS: Record<string, LucideIcon> = {
   home: House, jobs: Search, saved: Bookmark, apps: FileText, chat: MessageCircle, profile: User, settings: Settings,
   rules: ListChecks, tools: LayoutGrid, files: Folder, more: CircleEllipsis, dots: Ellipsis, plus: Plus, sun: Sun, moon: Moon, login: LogIn, logout: LogOut, signup: UserPlus, filters: SlidersHorizontal,
   ai: Sparkles, open: ExternalLink, apply: Send, pin: MapPin, close: X, onward: ChevronLeft, back: ChevronRight, down: ChevronDown, check: Check, minus: Minus, find: Search,
-  warn: TriangleAlert, send: ArrowUp, stop: Square, download: Download, file: FileText, portals: Office, refresh: RefreshCw, gauge: Gauge,
+  warn: TriangleAlert, hidden: ArrowLeftRight, temporary: MessageCircleDashed, send: ArrowUp, stop: Square, download: Download, file: FileText, portals: Office, companies: BriefcaseBusiness, refresh: RefreshCw, gauge: Gauge,
   portfolio: Case, repo: FolderGit2, video: Clapperboard, readme: BookOpenText, site: Globe, play: Play, pause: Pause,
   mic: Mic, mail: Mail, phone: Phone, link: Link, school: GraduationCap, edit: Pencil, award: Award,
-  "thread-pin": Pin, unpin: PinOff, archive: Archive, unarchive: ArchiveRestore, trash: Trash2, folder: Folder, "folder-open": FolderOpen,
+  "thread-pin": Pin, unpin: PinOff, archive: Archive, unarchive: ArchiveRestore, runs: CalendarClock, trash: Trash2, folder: Folder, "folder-open": FolderOpen,
   "folder-plus": FolderPlus, move: FolderInput, "panel-left": PanelLeft, "panel-right": PanelRight,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,
   "model-default": Cpu, "model-opus": Gem, "model-sonnet": Feather, "model-haiku": Leaf,
@@ -247,6 +256,24 @@ export function AiSky({ orb = false }: { orb?: boolean }) {
       {Array.from({ length: orb ? 5 : 7 }, (_, i) => <i key={i} />)}
     </span>
   );
+}
+
+// Hebrew words with English names among them: each name kept whole in its own direction, so "C++" at a line's start
+// doesn't show as "++C", nor ".NET" as "NET.", and a Hebrew line that starts with a name still runs right to left.
+// English words in a row are one name, so "Full Stack" doesn't show as "Stack Full".
+export const HEBREW = /[\u0590-\u05FF]/;
+const NAME = /(\.?[A-Za-z][A-Za-z0-9]*(?:[.\-/][A-Za-z0-9]+)*[+#]*(?: \.?[A-Za-z][A-Za-z0-9]*(?:[.\-/][A-Za-z0-9]+)*[+#]*)*)/;
+// Which way a piece of text runs, by most of its letters (web addresses left out): right to left when at least half are
+// Hebrew, so "Wix Code, מהנדס פול סטאק" is a Hebrew line though it starts in English; none when it has no letters.
+export function langDir(text: string): "rtl" | "ltr" | undefined {
+  const words = text.replace(/\]\([^)]*\)|https?:\/\/\S+/g, "");
+  const hebrew = (words.match(/\p{Script=Hebrew}/gu) ?? []).length;
+  const letters = (words.match(/\p{L}/gu) ?? []).length;
+  return letters === 0 ? undefined : hebrew * 2 >= letters ? "rtl" : "ltr";
+}
+export function Words({ text }: { text: string }) {
+  if (!HEBREW.test(text)) return <>{text}</>;
+  return <>{text.split(NAME).map((part, i) => (i % 2 ? <bdi key={i}>{part}</bdi> : part))}</>;
 }
 
 // The roll of a round box's go button (the jobs search, the chat's box) in or out of its end; matches .seek-go's

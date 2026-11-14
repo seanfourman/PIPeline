@@ -3,8 +3,8 @@
 // repository, and uploaded from there: nothing else leaves the computer, but for the installers, once built (bun
 // installer/build.ts), which go along for the download on a computer: Windows' PipSetup.exe, and a Mac's install.sh
 // with the program's staged files beside it as pip-app.tar.gz, its hash written into the script. With them goes
-// version.json: the build's version (installer/version.ts) and the SHA-256 of each download, which an installed Pip
-// asks for to update itself.
+// version.json: the build's version (installer/version.ts) and the SHA-256 of each download, signed with the update
+// key that never leaves this computer (installer/signing.ts), which an installed Pip asks for to update itself.
 //
 // Run: bun site/deploy.ts, with this folder linked to the project (railway link). RAILWAY names the CLI when it isn't
 // on the PATH, and anything after the script goes to `railway up` too. --stage-only gathers the folder and prints
@@ -12,6 +12,7 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { loadPrivateKey, signVersion } from "../installer/signing";
 import { siteVersion, VERSION_FILE } from "../installer/version";
 import { buildInterface } from "../web/build";
 
@@ -47,9 +48,12 @@ if (existsSync(path.join(STAGED, "app"))) {
   console.log("with the Mac's install");
   const stamp = path.join(STAGED, "app", VERSION_FILE);
   if (existsSync(stamp)) {
-    const version = siteVersion(JSON.parse(readFileSync(stamp, "utf8")), { setup: existsSync(SETUP) ? readFileSync(SETUP) : undefined, script, tarball: readFileSync(tarball) });
+    // Signed with the key that stays on this computer (installer/signing.ts): an installed Pip takes no update without
+    // it, so a deploy from a computer without the key stops here rather than offer one nobody would take.
+    const offered = siteVersion(JSON.parse(readFileSync(stamp, "utf8")), { setup: existsSync(SETUP) ? readFileSync(SETUP) : undefined, script, tarball: readFileSync(tarball) });
+    const version = signVersion(offered, loadPrivateKey());
     writeFileSync(path.join(STAGE, "app", "version.json"), JSON.stringify(version));
-    console.log(`with version.json: ${version.windows.slice(0, 12)} (Windows), ${version.mac.slice(0, 12)} (Mac)`);
+    console.log(`with version.json, signed: ${version.windows.slice(0, 12)} (Windows), ${version.mac.slice(0, 12)} (Mac)`);
   } else console.log("no version in the staged program: installed copies won't update to this one");
 } else console.log("no staged program: no Mac install");
 

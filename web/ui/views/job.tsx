@@ -3,9 +3,10 @@
 // posting in its own words, divided as it divides (postings.ts reads it and keeps it). A job's row opens it.
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import { useApp } from "../app";
-import { AiSky, api, goTo, Icon, safeUrl, Spaced } from "../kit";
+import { AiSky, api, goTo, Icon, safeUrl, Spaced, Words } from "../kit";
 import { Pip } from "../pip";
 import { JOB_ID, jobId } from "../jobid";
+import { roleLabel } from "../../roles";
 import { AiAction, bandOf, daysTo, Initial, JobActions, postedAgo, Sky } from "./jobs";
 
 export type Basics = { url: string; title: string; company: string; location: string; date?: string };
@@ -13,6 +14,11 @@ type Section = { title: string; from: number; to: number; list: boolean };
 type Skill = { name: string; must: boolean; have: boolean };
 type Salary = { text?: string; min?: number; max?: number; currency?: string; unit?: string };
 type Facts = { employment?: string; workMode?: string; officeDays?: number; experience?: [number | null, number | null]; level?: string; posted?: string; deadline?: string; salary?: Salary; jobNumber?: string };
+// The automatic score (match.ts): from 0 to 100, and its four parts, each from 0 to 1.
+type Auto = {
+  score: number; basis: "posting" | "title"; parts: { skills: number; years: number; role: number; place: number };
+  skills: { have: number; of: number; mustHave: number; mustOf: number } | null; years: number | null; role: { id?: string; label: string } | null; tier: string;
+};
 export type View = {
   id: string; reading: "page" | "ai" | null; aiError: string;
   job: { url: string; title: string; company: string; location: string; key: string; portal: string; status: string };
@@ -21,6 +27,8 @@ export type View = {
   level?: { verdict: "PASS" | "FAIL"; why?: "senior" | "years"; years?: number };
   posting: { status: "read" | "unreachable" | "expired" | null; error: string; source: string; guard: string; at: string; lines: string[]; sections: Section[]; skills: Skill[]; facts: Facts };
   applied: { status: string; date: string } | null;
+  // Its automatic score, from its words with no AI (a Pip from before has none).
+  auto?: Auto | null;
 };
 type T = (key: string, params?: Record<string, string | number>) => string;
 
@@ -169,15 +177,17 @@ function Applied({ applied }: { applied: NonNullable<View["applied"]> }) {
 }
 
 // How well it fits, the AI's work and in its colours: the score on the AI's sky, its band in words, the location and
-// language checks when one didn't pass, why it fits and what's missing. Not scored yet, the AI's button has the AI read
-// the job: the page itself is read with no AI, and the AI only when asked.
+// language checks when one didn't pass, why it fits and what's missing. Not scored by the AI yet, its automatic score
+// (AutoMatch), with the AI's button under it that has the AI read the job: the page itself is read with no AI, and the
+// AI only when asked.
 function Match({ view, onAnalyze }: { view: View; onAnalyze: () => void }) {
   const { t } = useApp();
   const m = view.match;
   if (!m) {
     const said = view.aiError ? t(`job.aiErrors.${view.aiError}`) : "";
     const why = said && !said.startsWith("job.") ? said : view.aiError ? t("job.aiErrors.other") : "";
-    return <section className="job-match none"><AiAction title={t(view.aiError ? "job.match.again" : "job.match.rank")} note={why || t("job.match.rankNote")} onClick={onAnalyze} /></section>;
+    const ask = <AiAction title={t(view.aiError ? "job.match.again" : "job.match.rank")} note={why || t("job.match.rankNote")} onClick={onAnalyze} />;
+    return view.auto ? <AutoMatch auto={view.auto}>{ask}</AutoMatch> : <section className="job-match none">{ask}</section>;
   }
   const band = bandOf(m.score);
   const gate = (which: "location" | "language", verdict: string) => verdict !== "PASS" && (
@@ -206,6 +216,45 @@ function Match({ view, onAnalyze }: { view: View; onAnalyze: () => void }) {
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+// How well it fits by its words, with no AI: the automatic score on a plain round tile in its band's colours, as the
+// list's tile, its band in words, and what makes it, each with a short bar: the skills it names that the profile shows,
+// the years it asks against the level searched for, its title against the roles, and its area. Under them, children:
+// the AI's button, for the AI's own score with its reasons.
+function AutoMatch({ auto, children }: { auto: Auto; children: React.ReactNode }) {
+  const { t, s, lang } = useApp();
+  const band = bandOf(auto.score);
+  const k = auto.skills;
+  const role = auto.role ? roleLabel({ id: auto.role.id, label: auto.role.label, query: auto.role.label }, lang) : "";
+  const rows: [string, string, number][] = [
+    [t("job.auto.skills"), !k ? t("job.auto.skillsNone") : k.mustOf && k.mustOf < k.of ? t("job.auto.skillsMust", { have: k.have, of: k.of, mustHave: k.mustHave, mustOf: k.mustOf }) : t("job.auto.skillsHave", { have: k.have, of: k.of }), auto.parts.skills],
+    [t("job.auto.years"), auto.years === null ? t("job.auto.yearsNone") : experienceText([auto.years, null], t), auto.parts.years],
+    [t("job.auto.role"), role ? t(auto.parts.role >= 0.99 ? "job.auto.roleFits" : "job.auto.roleNear", { role }) : t(auto.parts.role >= 0.4 ? "job.auto.roleField" : "job.auto.roleNone"), auto.parts.role],
+    [t("job.auto.place"), t(s.settings.areas?.length ? `tiers.${auto.tier}` : "tiers.unset"), auto.parts.place],
+  ];
+  const tone = (n: number) => (n >= 0.75 ? "good" : n >= 0.45 ? "fair" : "low");
+  return (
+    <section className={`job-match auto ${band}`} aria-label={t("job.match.title")}>
+      <div className="match-top">
+        <span className={`match-orb plain score-mark ${band}`} role="img" aria-label={t("jobs.score", { n: auto.score })}><b>{auto.score}</b></span>
+        <div className="match-head">
+          <h2 className="match-verdict">{t(`job.bands.${band}`)}</h2>
+          <p className="match-note">{t("job.auto.note")}</p>
+        </div>
+      </div>
+      <dl className="auto-parts">
+        {rows.map(([name, value, part]) => (
+          <div key={name} className={`auto-part ${tone(part)}`}>
+            <dt>{name}</dt>
+            <dd><Words text={value} /></dd>
+            <span className="auto-bar" aria-hidden="true"><i style={{ inlineSize: `${Math.round(part * 100)}%` }} /></span>
+          </div>
+        ))}
+      </dl>
+      {children}
     </section>
   );
 }
@@ -252,14 +301,6 @@ function Skills({ skills }: { skills: Skill[] }) {
       {skills.some((k) => k.have) && <p className="skill-key"><Icon name="check" />{t("job.skills.key")}</p>}
     </section>
   );
-}
-
-// Hebrew words with English names among them: each name kept whole in its own direction, so "C++" at a line's start
-// doesn't show as "++C", nor ".NET" as "NET.".
-const NAME = /(\.?[A-Za-z][A-Za-z0-9]*(?:[.\-/][A-Za-z0-9]+)*[+#]*)/;
-function Words({ text }: { text: string }) {
-  if (!/[֐-׿]/.test(text)) return <>{text}</>;
-  return <>{text.split(NAME).map((part, i) => (i % 2 ? <bdi key={i}>{part}</bdi> : part))}</>;
 }
 
 // A line of the posting as it is written; a web address written out in it can be followed, in a new tab.

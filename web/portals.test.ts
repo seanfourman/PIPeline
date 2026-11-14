@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { employersToRead, INDUSTRY_IDS, portalOn, PORTALS, webPortals } from "./portals";
+import { employerName, employersToRead, INDUSTRY_IDS, ownName, portalById, portalOn, PORTALS, webPortals } from "./portals";
 import { EMPTY_SETTINGS } from "./settings";
 
 const picks = (over: Partial<{ industries: string[]; lowTech: boolean; off: string[] }> = {}) => ({
@@ -39,7 +39,8 @@ describe("the portals", () => {
     const highTech = employersToRead(picks({ lowTech: false }));
     expect(highTech.every((p) => p.industry === "defense" || p.industry === "hightech")).toBe(true);
     expect(highTech.map((p) => p.id)).toContain("matrix");
-    expect(employersToRead(picks({ industries: ["health"] })).every((p) => p.industry === "health")).toBe(true);
+    // Employers follow the industries; a job board (Gotfriends) is read whatever they are.
+    expect(employersToRead(picks({ industries: ["health"] })).filter((p) => p.kind === "employer").every((p) => p.industry === "health")).toBe(true);
     expect(webPortals(picks()).map((p) => p.site)).toContain("hiremetech.com");
     expect(webPortals(picks({ off: ["hireme"] })).map((p) => p.id)).not.toContain("hireme");
     // The recruiting platforms are searched like the job sites, and the page opens the same search for Israel.
@@ -51,5 +52,18 @@ describe("the portals", () => {
   test("new settings start with employers outside high-tech on", () => {
     expect(EMPTY_SETTINGS.lowTech).toBe(true);
     expect(employersToRead(EMPTY_SETTINGS).length).toBe(employersToRead(picks()).length);
+  });
+
+  test("names a company as it writes itself: a high-tech brand in English, a Hebrew name in Hebrew", () => {
+    const cyera = portalById("cyera")!;
+    expect(employerName(cyera, "he")).toBe("Cyera");
+    expect(employerName(portalById("drs-rada")!, "he")).toBe("DRS RADA");
+    const clalit = PORTALS.find((p) => p.en === "Clalit")!;
+    expect(employerName(clalit, "he")).toBe("כללית");
+    expect(employerName(clalit, "en")).toBe("Clalit");
+    // A job kept under the old spelled-out name shows the company's own; any other name stays as it is.
+    expect(ownName("סיירה")).toBe("Cyera");
+    expect(ownName("כללית")).toBe("כללית");
+    expect(ownName("Wix")).toBe("Wix");
   });
 });

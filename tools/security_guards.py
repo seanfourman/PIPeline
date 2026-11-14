@@ -579,14 +579,55 @@ def _gitignore_lines(path: Path) -> list[str]:
     ]
 
 
+def _git_lines(args: list, stdin: bytes = b"") -> list | None:
+    """A git command's NUL-separated answer, or None when git can't answer (not a checkout)."""
+    try:
+        proc = subprocess.run(["git", *args], cwd=ROOT, input=stdin, capture_output=True, check=False)
+    except OSError:
+        return None
+    # check-ignore answers 1 when nothing it was given is ignored.
+    if proc.returncode not in (0, 1):
+        return None
+    return [p for p in proc.stdout.decode("utf-8", errors="replace").split("\x00") if p]
+
+
+def _unread_by_git(found: list) -> set:
+    """Of these .gitignore files (paths from the root), those git never reads: untracked, inside a
+    folder git leaves out, which git never looks in.
+
+    The installer's staged copy of the program (installer/stage/app, with its own copy of the root
+    rules' negations) is one. Each folder is asked of git itself (check-ignore), as a folder whose
+    files are all ignored may still be one git enters, and then reads its .gitignore, ignored or
+    not. A tracked .gitignore is always read. Nothing is left out when git can't answer.
+    """
+    tracked = _git_lines(["ls-files", "-z", "--cached", "--", *found]) if found else []
+    if tracked is None:
+        return set()
+    untracked = [rel for rel in found if rel not in set(tracked)]
+    folders = sorted({"/".join(rel.split("/")[:i]) + "/" for rel in untracked for i in range(1, len(rel.split("/")))})
+    if not folders:
+        return set()
+    ignored = _git_lines(["check-ignore", "-z", "--stdin"], "\x00".join(folders).encode("utf-8") + b"\x00")
+    if ignored is None:
+        return set()
+    left_out = set(ignored)
+    return {rel for rel in untracked if any("/".join(rel.split("/")[:i]) + "/" in left_out for i in range(1, len(rel.split("/"))))}
+
+
 def _other_gitignores():
-    """Every .gitignore below the root, skipping .git and installed dependencies."""
+    """Every .gitignore below the root that git reads, skipping .git, installed dependencies and
+    those inside a folder git leaves out."""
     import os
 
+    found = []
     for dirpath, dirnames, filenames in os.walk(ROOT):
         dirnames[:] = sorted(d for d in dirnames if d not in (".git", "node_modules"))
         if ".gitignore" in filenames and Path(dirpath) != ROOT:
-            yield Path(dirpath) / ".gitignore"
+            found.append((Path(dirpath) / ".gitignore").relative_to(ROOT).as_posix())
+    unread = _unread_by_git(found)
+    for rel in found:
+        if rel not in unread:
+            yield ROOT / rel
 
 
 def check_gitignore() -> None:

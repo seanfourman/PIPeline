@@ -50,7 +50,7 @@ case "${1:-}" in
     launchctl bootout "$GUI/$AGENT" 2>/dev/null || true
     launchctl bootout "$GUI/$UPDATE_AGENT" 2>/dev/null || true
     pkill -f "$OPENER/Contents/MacOS/" 2>/dev/null || true
-    rm -rf "$PLIST" "$MENU_PLIST" "$UPDATE_PLIST" "$OPENER" "$RUNTIME" "$ROOT/open.sh" "$ROOT/front.js" "$ROOT/update.sh" "$ROOT/update-install.sh" "$ROOT/applet.sha256"
+    rm -rf "$PLIST" "$MENU_PLIST" "$UPDATE_PLIST" "$OPENER" "$RUNTIME" "$ROOT/open.sh" "$ROOT/front.js" "$ROOT/update.sh" "$ROOT/update-install.sh" "$ROOT/applet.sha256" "$ROOT/update-key.pem" "$ROOT/update-check"
     [ -d "$APP" ] && find "$APP" -mindepth 1 -maxdepth 1 ! -name user -exec rm -rf {} +
     say "Pip is gone. Your own files are still in $APP/user."
     exit 0
@@ -253,11 +253,28 @@ function run() {
   return "";
 }
 EOF
+# The key an update's signature is checked with (installer/signing.ts, update-key.pem). The private key that signs
+# never leaves the computer Pip is built on, so whoever took over the site couldn't hand this Mac a program of their
+# own.
+put "$ROOT/update-key.pem" <<'UPDATE_KEY'
+-----BEGIN PUBLIC KEY-----
+MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEAo+oMnqV0KlJiCQhxwbyp
+GTLm0iHx3ttF3PCKirZhv3wyWlwZIgIAMiLODfD41oriIers1UAzbDtbBdmNV7ah
+nsd9pa/WlfrSLS75VtA5glfPl/PnnGUNUdtD2l6/8EkjWeMliqVaMhErIfvn1Bt0
+GyW0ZjrJvBGFvLno0/sWtqHHVmjS9qdlRyIvBsOGhYXqraXbzSXc+zSqu7P9g2Un
+ZYuB8hoRBpyrwqcgQlQgaYJoEs0q3OrNYcUi/IS5zr1x8Pqra/u0pvDLUi/LkwVN
+pR5S27fbKf7QeAVHfw5IHAVbF52RkkNQfhw2Hsg+yd3tjzYYDDEJUAhXBuGXYGU8
+JoejG8eSZd4r7A8YvrEE3NqzHXWPA9JUAoGwWxQOYRNfJowCiXQ2HV60DY/nxuTC
+Kn1MhL6cHRnKV26xup7Q3An3QwKShP/9jWHY69i0UQrhoQ2rk63NG+xv2ZttGl6i
+SVDH1zEQ5x9yD/nXW829kO8FizclavMcjU9qzEfu1hVXAgMBAAE=
+-----END PUBLIC KEY-----
+UPDATE_KEY
 # Updates: when the site's version for a Mac (version.json, site/deploy.ts) isn't this one's (app/VERSION.json,
-# installer/build.ts) and Pip isn't in the middle of something (/update in web/server.ts), the site's copy of this
-# script, checked against the SHA-256 the site gives for it, runs with --update. Before it does, the server is told,
-# so that the page says Pip is updating. A version tried already is tried again only after six hours; a server that
-# doesn't answer isn't in the middle of anything, so an update can mend one that broke.
+# installer/build.ts), its signature holds against the key above, and Pip isn't in the middle of something (/update
+# in web/server.ts), the site's copy of this script, checked against the SHA-256 the signature vouches for, runs with
+# --update. Before it does, the server is told, so that the page says Pip is updating. A version tried already is
+# tried again only after six hours; a server that doesn't answer isn't in the middle of anything, so an update can
+# mend one that broke.
 put "$ROOT/update.sh" <<'EOF'
 #!/bin/bash
 set -u
@@ -271,6 +288,14 @@ OFFER="$(curl -fsS --max-time 20 "$SITE/version.json" 2>/dev/null)" || exit 0
 NEW="$(printf '%s' "$OFFER" | field mac)"
 SHA="$(printf '%s' "$OFFER" | field script)"
 { [ -n "$NEW" ] && [ -n "$SHA" ] && [ "$NEW" != "$MINE" ]; } || exit 0
+# The version and the script's hash, signed with the update key (installer/signing.ts): no signature, or one that
+# doesn't hold, is no update.
+CHECK="$ROOT/update-check"
+mkdir -p "$CHECK"
+printf 'pip-update mac %s %s' "$NEW" "$SHA" >"$CHECK/signed.txt"
+printf '%s' "$OFFER" | field macSig | /usr/bin/openssl base64 -d -A >"$CHECK/signature.bin" 2>/dev/null || exit 0
+[ -s "$CHECK/signature.bin" ] || exit 0
+/usr/bin/openssl dgst -sha256 -verify "$ROOT/update-key.pem" -signature "$CHECK/signature.bin" "$CHECK/signed.txt" >/dev/null 2>&1 || exit 0
 TRIED="$ROOT/app/user/app/update.json"
 NOW="$(date +%s)"
 LAST="$(cat "$TRIED" 2>/dev/null || true)"

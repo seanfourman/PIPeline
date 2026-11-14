@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
-  allJobsCategories, CHECKPOINT, day, MATRIX, matrixCategories, MOBILEYE, PALOALTO, parseAllJobs, parseAmazon, parseApple, parseAshby, parseCheckPoint, parseComeet,
+  allJobsCategories, AMAN, CHECKPOINT, day, dayMonthYear, DIALOG, dialogFields, ELAD, MATRIX, parseAman, parseDialog, matrixCategories, MIMUN_YASHIR, MOBILEYE, NESS, PALOALTO, parseAllJobs, parseElad, parseNess, parseAmazon, parseApple, parseAshby, parseCheckPoint, parseComeet,
   parseDrushim, parseEightfold, parseGoogle, parseGreenhouse, parseJobMaster, parseJobPostings, parseJobvite, parseLever, parseMatrix, parseMobileye, parseRadancy,
-  parseUnity, parseWorkable, postedOn, readEmployer, readOwnPage, searchBoard, searchTerms, text, type Fetch,
+  embeddedBoard, forgetGovList, jsonPoster, nuxtState, parseGotfriends, textBlocks, parseJobFeed, parseJobnet, parseNisha, parseRedmatch, parseWorkday, parseUnity, parseWorkable, postedOn, readEmployer, readLinks, readOwnPage, searchBoard, searchTerms, text, type Fetch, type Post,
 } from "./boards";
 import { portalById } from "./portals";
 import { boardQueries, fieldsOf, titleMatches, titleWords } from "./roles";
@@ -249,6 +249,213 @@ describe("reading the boards' pages", () => {
 describe("an employer's own jobs", () => {
   const roles = [{ id: "analyst", label: "Data Analyst", query: "Junior Data Analyst" }];
 
+  test("reads Elbit's own list from the file its site reads: each open job's title, city or area, day and page", async () => {
+    const file = JSON.stringify([
+      { jobId: 21218, jobTitle: "Junior Data Analyst", openDate: "2026-11-11T11:46:00", status: 1, area: "North", extendedProperties: [{ PropertyName: "Area", Value: "North" }, { PropertyName: "Cities", Value: "1227" }] },
+      { jobId: 21219, jobTitle: "Data Analyst", openDate: "2026-11-10T09:00:00", status: 1, area: "Sharon", extendedProperties: [{ PropertyName: "Cities", Value: "799" }] },
+      { jobId: 21220, jobTitle: "Data Analyst", openDate: "2026-11-10T09:00:00", status: 0, area: "Sharon" },
+    ]);
+    const asked: string[] = [];
+    const found = await readEmployer(portalById("elbit")!, roles, { fetch: async (url) => (asked.push(url), url === "https://elbitsystemscareer.com/cron/jobs.json" ? file : null), today });
+    expect(found.map((j) => [j.title, j.location, j.date, j.url, j.company])).toEqual([
+      ["Junior Data Analyst", "יקנעם", "2026-11-11", "https://elbitsystemscareer.com/job?jid=21218", "אלביט מערכות"],
+      ["Data Analyst", "שרון", "2026-11-10", "https://elbitsystemscareer.com/job?jid=21219", "אלביט מערכות"],
+    ]);
+    expect(asked).toEqual(["https://elbitsystemscareer.com/cron/jobs.json"]);
+    expect(portalById("elbit")!.url).toBe("https://elbitsystemscareer.com/jobs");
+  });
+
+  test("reads the Ministry of Defense's tenders, a Jibe site's list, HOT's service and a Topmatch board", async () => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      if (url === "https://jobs.mod.gov.il/api/TenderPublish/GetAllPublished") return JSON.stringify({ HasError: false, Data: [
+        { Id: 35071, TenderPublish: { StartDate: "2026-11-08T00:00:00" }, BankJob: { JobName: "Junior Data Analyst", HrJob: { JobAreaDescription: "תל אביב-יפו" } } },
+      ] });
+      if (url === "https://careers.se.com/api/jobs?location=Israel&page=1") return JSON.stringify({ totalCount: 1, jobs: [
+        { data: { title: "Junior Data Analyst", full_location: "Central, Israel", posted_date: "24 March 2026", meta_data: { canonical_url: "https://careers.se.com/jobs/134243?lang=en-us" } } },
+      ] });
+      return null;
+    };
+    const posted: [string, unknown][] = [];
+    const post: Post = async (url, body) => {
+      posted.push([url, body]);
+      if (url === "https://www.hot.net.il/HotCmsApiFront/api/MarketingJob/GetJobs") return JSON.stringify(JSON.stringify({ isError: false, data: { vacanciesDetails: [{ vacancyName: "JB-187", jobTitle: "Junior Data Analyst", location: "יקום" }] } }));
+      if (url.startsWith("https://careers.topmatch.co.il/CandidateAPI/api/position/Search/")) return JSON.stringify({ positions: [{ compPositionID: "199649", jobTitleText: "Junior Data Analyst", displayLocation: "רמת גן", activationDate: "2026-11-11T09:00:00" }] });
+      return null;
+    };
+    expect((await readEmployer(portalById("mod")!, roles, { fetch, today })).map((j) => [j.title, j.location, j.date, j.url]))
+      .toEqual([["Junior Data Analyst", "תל אביב-יפו", "2026-11-08", "https://jobs.mod.gov.il/?tender=35071#/Tenders/35071"]]);
+    expect((await readEmployer(portalById("schneider-electric")!, roles, { fetch, today })).map((j) => [j.title, j.date, j.url]))
+      .toEqual([["Junior Data Analyst", "2026-03-24", "https://careers.se.com/jobs/134243?lang=en-us"]]);
+    expect((await readEmployer(portalById("hot")!, roles, { fetch, post, today })).map((j) => [j.title, j.url]))
+      .toEqual([["Junior Data Analyst", "https://www.hot.net.il/heb/careersearch/?pip-job=JB-187"]]);
+    expect((await readEmployer(portalById("bar-ilan")!, roles, { fetch, post, today })).map((j) => j.url))
+      .toEqual(["https://careers.topmatch.co.il/biu/redmatch-apply/redmatch.apply.html?compPositionID=199649"]);
+    expect(posted.map(([url]) => url)).toEqual(["https://www.hot.net.il/HotCmsApiFront/api/MarketingJob/GetJobs", "https://careers.topmatch.co.il/CandidateAPI/api/position/Search/D8D6FFC7-31E2-46C1-94B4-985C99B9A913"]);
+    expect(asked.some((u) => /alljobs|drushim/.test(u))).toBe(false);
+  });
+
+  test("a list written out in full whose jobs have pages of their own their ids make is read with those pages", async () => {
+    const row = (id: number, title: string) => `<div class="table-row"><input type="checkbox" name="job_checkbox" value="${id}"><div class="role"><button aria-expanded="false">${title}</button></div>
+      <div class="area"><div class="area-title">אזור</div><span>\n${" ".repeat(200)}המרכז והשפלה\n</span></div></div>`;
+    const found = await readEmployer(portalById("leumi")!, roles, { fetch: async () => row(2670, "Junior Data Analyst 2920") + row(793, "יועץ/ת השקעות"), today });
+    expect(found.map((j) => [j.title, j.location, j.url])).toEqual([["Junior Data Analyst 2920", "המרכז והשפלה", "https://www.leumi.co.il/he/node/2670"]]);
+  });
+
+  test("reads a government body's tenders from the civil service's list, read once for all of them", async () => {
+    forgetGovList();
+    const feed = JSON.stringify({ d: { results: [
+      { RequestId: "07933531", OfficeNumber: "0510", OfficeName: "שירות עיבודים ממוחשבים", TenderName: "Junior Data Analyst", LocationName: "ירושלים", TenderPublicationDate: "/Date(1794268800000)/" },
+      { RequestId: "07933532", OfficeNumber: "0560", TenderName: "מפקח/ת מס", LocationName: "חיפה" },
+      { RequestId: "07933533", OfficeNumber: "1870", TenderName: "Data Analyst", LocationName: "תל אביב - יפו" },
+    ] } });
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => (asked.push(url), url.includes("GIUS_PUBLIC_AREA_SRV") ? feed : null);
+    const tax = await readEmployer(portalById("tax")!, roles, { fetch, today });
+    expect(tax.map((j) => [j.title, j.location, j.date, j.url])).toEqual([["Junior Data Analyst", "ירושלים", "2026-11-10", "https://merkava.mrp.gov.il/giusp/index.html?position=07933531#/position/07933531"]]);
+    const welfare = await readEmployer(portalById("welfare")!, roles, { fetch, today });
+    expect(welfare.map((j) => j.title)).toEqual(["Data Analyst"]);
+    expect(asked.filter((u) => u.includes("GIUS_PUBLIC_AREA_SRV"))).toHaveLength(1);
+    expect(portalById("tax")!.url).toBe("https://merkava.mrp.gov.il/giusp/index.html");
+    forgetGovList();
+  });
+
+  test("reads a WordPress site's own list of its jobs, page by page, and a WordPress feed of them", async () => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      if (url.includes("/wp-json/wp/v2/career?")) return JSON.stringify([
+        { id: 1, date: "2026-11-02T10:00:00", link: "https://amit.org.il/career/junior-data-analyst/", title: { rendered: "Junior Data Analyst &#8211; R&amp;D" } },
+        { id: 2, date: "2026-11-02T10:00:00", link: [], title: { rendered: "Data Analyst" } },
+      ]);
+      if (url === "https://www.histadrut.org.il/jobs/feed/") return `<rss><channel><item><title>Data Analyst</title><link>https://www.histadrut.org.il/jobs/data-analyst/</link><pubDate>Mon, 09 Nov 2026 08:00:00 +0000</pubDate></item></channel></rss>`;
+      return null;
+    };
+    const amit = await readEmployer(portalById("amit")!, roles, { fetch, today });
+    expect(amit.map((j) => [j.title, j.date, j.url])).toEqual([["Junior Data Analyst – R&D", "2026-11-02", "https://amit.org.il/career/junior-data-analyst/"]]);
+    expect(asked[0]).toBe("https://amit.org.il/wp-json/wp/v2/career?per_page=100&page=1&_fields=id,date,link,title");
+    const histadrut = await readEmployer(portalById("histadrut")!, roles, { fetch, today });
+    expect(histadrut.map((j) => [j.title, j.url])).toEqual([["Data Analyst", "https://www.histadrut.org.il/jobs/data-analyst/"]]);
+  });
+
+  test("reads a job's link from its share buttons, one page however its escapes are written, a title inside a card's link", () => {
+    // One1's jobs: no link of their own but the ones its share buttons pass on; their words are the network's.
+    const shared = `<span class="job_title">Junior Python Developer</span><p>${"תיאור ".repeat(800)}</p><h3 class="social-share-title">שיתוף עם</h3>
+      <a href="https://api.whatsapp.com/send?text=https%3A%2F%2Fwww.one1.co.il%2F%3Fshare_job_id%3D3598">send</a>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fwww.one1.co.il%2F%3Fshare_job_id%3D3598">sharer</a>
+      <a href="https://www.facebook.com/sharer/sharer.php?u=https%3A%2F%2Fevil.example%2F%3Fshare_job_id%3D1">sharer</a>`;
+    expect(readLinks(shared, "https://www.one1.co.il/careers/", "share_job_id=[0-9]+", 'class="job_title">([^<]{3,140})</span>'))
+      .toEqual([{ title: "Junior Python Developer", company: "", location: "", date: "", url: "https://www.one1.co.il/?share_job_id=3598", source: "page" }]);
+    // Shapir writes the same page's address with %D7 and with %d7.
+    const cased = `<a href="https://www.shapir.co.il/%D7%9E%D7%A9%D7%A8%D7%95%D7%AA/qa/">QA Engineer</a><a href="https://www.shapir.co.il/%d7%9e%d7%a9%d7%a8%d7%95%d7%aa/qa/">QA Engineer</a>`;
+    expect(readLinks(cased, "https://www.shapir.co.il/en/careers/", "^/משרות/[^/]+/?$").map((j) => j.url)).toEqual(["https://www.shapir.co.il/%D7%9E%D7%A9%D7%A8%D7%95%D7%AA/qa/"]);
+    // A card that is all one link: its category and title inside it, the title by the site's pattern.
+    const card = `<a href="https://www.mymc.co.il/jobs/plumber-wanted/"><div><span>כוח עזר</span></div><h2 class="elementor-heading-title elementor-size-default">דרוש אינסטלטור</h2><p>לעבודה במשמרות</p></a>`;
+    expect(readLinks(card, "https://www.mymc.co.il/jobs/", "^/jobs/[^/]+/$", '<h2 class="elementor-heading-title[^"]*">([^<]{3,140})</h2>').map((j) => j.title)).toEqual(["דרוש אינסטלטור"]);
+  });
+
+  test("reads a list written out in full: each job its block, known by the list's address and its id or its title's hash", async () => {
+    const section = (id: string, title: string) => `<section   id="section_${id}" style="border-bottom: 1px solid #adc0c4;">\n  <h2>${title}</h2>\n<p>תיאור התפקיד</p></section>`;
+    const page = `<h1>משרות פנויות</h1>${section("28a349fc-9b28", "מדיניות הפרטיות למועמדים לעבודה")}${section("1021d133-9f07", "Junior Data Analyst&#xA0;")}${section("b5d37895-4f15", "מנהל/ת השקעות")}`;
+    const asked: string[] = [];
+    const found = await readEmployer(portalById("fibi")!, roles, { fetch: async (url) => (asked.push(url), page), today });
+    expect(found.map((j) => [j.title, j.url])).toEqual([["Junior Data Analyst", "https://www.fibi.co.il/private/general/about/jobs/jobsfibi/?pip-job=section_1021d133-9f07"]]);
+    expect(asked).toEqual(["https://www.fibi.co.il/private/general/about/jobs/jobsfibi/"]);
+    const blocks = textBlocks(page, { url: "https://x.example/jobs", item: "<h2>(?<title>[^<]+)</h2>" });
+    expect(blocks.map((b) => b.id)).toEqual([expect.stringMatching(/^[0-9a-f]{8}$/), expect.stringMatching(/^[0-9a-f]{8}$/), expect.stringMatching(/^[0-9a-f]{8}$/)]);
+    expect(blocks[1].html).toStartWith("<h2>Junior Data Analyst");
+    expect(blocks[1].html).not.toContain("מנהל/ת השקעות");
+    // The same title twice is two jobs.
+    const twice = textBlocks("<h2>Data Analyst</h2>a<h2>Data Analyst</h2>b", { url: "https://x.example/jobs", item: "<h2>(?<title>[^<]+)</h2>" });
+    expect(twice[1].id).toBe(`${twice[0].id}-2`);
+  });
+
+  test("reads a Nuxt page's state as data: the values its short names stand for, a number without its 0 too", () => {
+    const html = `<script>window.__NUXT__=(function(a,b,c,d,e){return {x:a,y:{z:"}{"},w:[b,c]}}(false,.5,"Y",-12,"ראשון לציון\\u002Fב"));</script>`;
+    const state = nuxtState(html)!;
+    expect([...state.values]).toEqual([["a", false], ["b", 0.5], ["c", "Y"], ["d", -12], ["e", "ראשון לציון/ב"]]);
+    expect(state.body).toBe('{return {x:a,y:{z:"}{"},w:[b,c]}}');
+    expect(nuxtState("<html></html>")).toBeNull();
+  });
+
+  test("reads the Phoenix's own list from its careers page's state: only what it shows on its site", async () => {
+    const page = `<script>window.__NUXT__=(function(a,b,c,d){return {state:{career:{positions:[`
+      + `{positionCode:"50400118",positionDesc:"Junior Data Analyst",displayOrgUnit:d,marketingSite:a,positionLocation:"07",positionLocationText:b,lastModifiedOn:c,positionText:[{line:"SQL"}]},`
+      + `{positionCode:"50400119",positionDesc:"Data Analyst",marketingSite:"N",positionLocationText:b,lastModifiedOn:c}`
+      + `]}}}}("Y","ראשון לציון",1794276000000,""));</script>`;
+    const asked: string[] = [];
+    const found = await readEmployer(portalById("phoenix")!, roles, { fetch: async (url) => (asked.push(url), page), today });
+    expect(found.map((j) => [j.title, j.location, j.date, j.url])).toEqual([["Junior Data Analyst", "ראשון לציון", "2026-11-10", "https://www.fnx.co.il/career/open-positions/50400118/"]]);
+    expect(asked).toEqual(["https://www.fnx.co.il/career/open-positions/"]);
+  });
+
+  test("reads Bezeq's own list from its service, each job linked to its page", async () => {
+    const list = JSON.stringify({ isSuccessfull: true, data: [
+      { order_id: 2995, description: "Junior Data Analyst", tat_profession_name: "Junior Data Analyst", work_area: "גוש דן", orderDate: "2026-10-21T00:00:00", email_rakaz: "someone@bezeq.co.il", rakaz: "Someone" },
+      { order_id: "x", description: "Data Analyst" },
+    ] });
+    const asked: string[] = [];
+    const found = await readEmployer(portalById("bezeq")!, roles, { fetch: async (url) => (asked.push(url), list), today });
+    expect(found).toEqual([{ title: "Junior Data Analyst", company: "בזק", location: "גוש דן", date: "2026-10-21", url: "https://www.bezeq.co.il/career/jobs/form/?jobs=2995", source: "page", portal: "bezeq" }]);
+    expect(asked).toEqual(["https://d-api.bezeq.co.il/api/Adam/GetActiveJobs"]);
+  });
+
+  test("reads Menora's own list from its careers page's data, for its pension company too", async () => {
+    const data = { props: { initialReduxState: { metadata: { positions: [
+      { positionId: "c1798b004c4a9df6794cf4bb956baa80", positionName: "Junior Data Analyst | אגף מערכות מידע", positionDisplayName: "Junior Data Analyst | אגף מערכות מידע", fromDate: "09/06/2026", localityLongName: "גוש דן" },
+      { positionId: "../evil", positionName: "Data Analyst" },
+    ] } } } };
+    const page = `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script></html>`;
+    for (const id of ["menora", "menora-pension"]) {
+      const asked: string[] = [];
+      const found = await readEmployer(portalById(id)!, roles, { fetch: async (url) => (asked.push(url), page), today });
+      expect(found.map((j) => [j.title, j.location, j.date, j.url])).toEqual([["Junior Data Analyst | אגף מערכות מידע", "גוש דן", "2026-06-09", "https://www.menoramivt.co.il/job-posting/details?entityId=c1798b004c4a9df6794cf4bb956baa80"]]);
+      expect(asked).toEqual(["https://www.menoramivt.co.il/job-posting/jobs"]);
+    }
+  });
+
+  test("reads IAI's own list from the file its site names, each job linked to its page", async () => {
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      if (url === "https://jobs.iai.co.il/jobs/") return `<script>const _jobsFile = "\\/wp-content\\/themes\\/tyco-wp\\/assets\\/json\\/jobs.json?v=1794492619";</script>`;
+      if (url.startsWith("https://jobs.iai.co.il/wp-content/")) return JSON.stringify([
+        { id: 76050663, tl: "Junior Data Analyst ", ct: 'נתב"ג', cd: "147769", dc: "קצת על התפקיד" },
+        { id: 76050689, tl: "מנהל/ת M&A", ct: 'נתב"ג' },
+        { id: "x", tl: "No number" },
+      ]);
+      return null;
+    };
+    const found = await readEmployer(portalById("iai")!, roles, { fetch, today });
+    expect(found.map((j) => [j.title, j.location, j.url, j.company])).toEqual([["Junior Data Analyst", 'נתב"ג', "https://jobs.iai.co.il/job/76050663", "התעשייה האווירית"]]);
+    expect(asked).toEqual(["https://jobs.iai.co.il/jobs/", "https://jobs.iai.co.il/wp-content/themes/tyco-wp/assets/json/jobs.json?v=1794492619"]);
+    expect(portalById("iai")!.url).toBe("https://jobs.iai.co.il/jobs/");
+  });
+
+  test("reads Ethosia's jobs through its WordPress list: a junior search asks only for the starting levels, the areas by name", async () => {
+    const recent = new Date(Date.now() - 3 * 86_400_000).toISOString().slice(0, 19);
+    const old = new Date(Date.now() - 200 * 86_400_000).toISOString().slice(0, 19);
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      asked.push(url);
+      if (url.includes("/job?")) return JSON.stringify([
+        { id: 1, date: recent, link: "https://ethosia.co.il/content/junior-data-analyst/", title: { rendered: "Junior Data Analyst %28BI%29" }, "closed-jobs": [], "area-in-the-country": [83, 85] },
+        { id: 2, date: recent, link: "https://ethosia.co.il/content/data-analyst-closed/", title: { rendered: "Data Analyst" }, "closed-jobs": [4787], "area-in-the-country": [83] },
+        { id: 3, date: old, link: "https://ethosia.co.il/content/data-analyst-old/", title: { rendered: "Data Analyst" }, "closed-jobs": [], "area-in-the-country": [83] },
+      ]);
+      if (url.includes("/area-in-the-country?")) return JSON.stringify([{ id: 83, name: "מרכז" }, { id: 85, name: "שפלה" }]);
+      return null;
+    };
+    const found = await readEmployer(portalById("ethosia")!, roles, { fetch, today, seniority: "junior" });
+    expect(found.map((j) => [j.title, j.location, j.url, j.company])).toEqual([["Junior Data Analyst (BI)", "מרכז, שפלה", "https://ethosia.co.il/content/junior-data-analyst/", "אתוסיה"]]);
+    expect(asked[0]).toContain("&job-type=88,78,486&");
+    expect(asked[1]).toContain("include=83,85&");
+    asked.length = 0;
+    await readEmployer(portalById("ethosia")!, roles, { fetch, today });
+    expect(asked[0]).not.toContain("job-type");
+  });
+
   test("on AllJobs: its page, full, then only the categories the roles' fields are filed under, and only titles for the roles", async () => {
     const asked: string[] = [];
     const fetch: Fetch = async (url) => {
@@ -302,6 +509,113 @@ describe("an employer's own jobs", () => {
 
   test("on its own site (Matrix): a jobs page with no categories fails, rather than say there are no jobs", async () => {
     await expect(readEmployer(portalById("matrix")!, roles, { fetch: async () => "<html></html>", today })).rejects.toThrow();
+  });
+
+  test("on its own site (Ness): its whole list from the site's job service, each job linked to its page there", async () => {
+    const list = { getTotalCount: 3, allOrderDetailsList: [
+      { index: "43535", title: "בודק/ת תוכנה ג'וניור", posLocation: "אזור המרכז", lastUpdated: "05/11/2026", rakazEmail: "someone@example.com", posDescription: "..." },
+      { index: "42814", title: "מיישמ/ת SAP SD", posLocation: "אזור המרכז", lastUpdated: "28/07/2026" },
+      { index: "x", title: "No number", posLocation: "צפון", lastUpdated: "" },
+    ] };
+    expect(dayMonthYear("5/1/2026")).toBe("2026-01-05");
+    expect(parseNess(JSON.stringify(list))).toEqual([
+      { title: "בודק/ת תוכנה ג'וניור", company: "", location: "אזור המרכז", date: "2026-11-05", url: "https://www.ness-tech.co.il/careers/job/43535", source: "page" },
+      { title: "מיישמ/ת SAP SD", company: "", location: "אזור המרכז", date: "2026-07-28", url: "https://www.ness-tech.co.il/careers/job/42814", source: "page" },
+    ]);
+    expect(() => parseNess("<html>maintenance</html>")).toThrow();
+    const asked: string[] = [];
+    const found = await readEmployer(portalById("ness")!, [{ id: "qa", label: "QA", query: "Junior QA Engineer" }], { fetch: async (url) => { asked.push(url); return JSON.stringify(list); }, today });
+    // One read; only the titles for the roles; the regions, all in Israel, kept though the place check doesn't know them.
+    expect(asked).toEqual([NESS]);
+    expect(found).toEqual([expect.objectContaining({ title: "בודק/ת תוכנה ג'וניור", company: "נס טכנולוגיות", location: "אזור המרכז", portal: "ness" })]);
+  });
+
+  test("on its own site (Elad): its list's pages in turn, each card's title and regions, the jobs abroad left out", async () => {
+    const card = (id: number, title: string, areas: [number, string][]) => `<article class="job-card flex-column">
+      <h3 class="job-title">
+        <a href="https://elad.a-2-z.co.il/jobs/${id}/" aria-label="קישור לעמוד המשרה: ${title}">
+        ${title}                            </a>
+      </h3><span class="job-id">משרה מס׳: ${id}</span>
+      ${areas.map(([n, name]) => `<a href="https://elad.a-2-z.co.il/jobs/?area=${n}" class="tag"><img src="/location.svg" alt="מיקום המשרה"> ${name}</a>`).join("")}
+    </article>`;
+    const pages: Record<string, string> = {
+      [ELAD]: `<form method="GET" id="jobs-filter"></form>${card(1007770, "AI-Driven QA Automation Lead", [[40, "גוש דן"]])}${card(1007771, "QA Engineer", [[71, 'חו"ל']])}
+        <a href="https://elad.a-2-z.co.il/jobs/?pg=2">2</a>`,
+      [`${ELAD}?pg=2`]: `<form id="jobs-filter"></form>${card(1006726, "בודק/ת תוכנה", [[60, 'ירושלים יו"ש'], [50, "השפלה"]])}`,
+    };
+    expect(parseElad(pages[ELAD]).pages).toBe(2);
+    const asked: string[] = [];
+    const found = await readEmployer(portalById("elad-systems")!, [{ id: "qa", label: "QA", query: "Junior QA Engineer" }], { fetch: async (url) => { asked.push(url); return pages[url] ?? null; }, today });
+    expect(asked).toEqual([ELAD, `${ELAD}?pg=2`]);
+    expect(found).toEqual([
+      expect.objectContaining({ title: "AI-Driven QA Automation Lead", location: "גוש דן", url: "https://elad.a-2-z.co.il/jobs/1007770/", company: "אלעד מערכות", portal: "elad-systems" }),
+      expect.objectContaining({ title: "בודק/ת תוכנה", location: 'ירושלים יו"ש, השפלה', url: "https://elad.a-2-z.co.il/jobs/1006726/" }),
+    ]);
+    expect(() => parseElad("<html>other</html>")).toThrow();
+  });
+
+  test("on its own site (Aman): its list's pages in turn, each card's title linked to its page there", async () => {
+    const card = (slug: string, title: string) => `<div class="positions_page__application" data-position-id="1" data-location="" data-job-title="${title}">
+      <article class="aman-job-card" dir="rtl"><h3 class="aman-job-card__title"><a class="aman-job-card__title-link" href="https://www.aman.co.il/careers/qa/${slug}/">${title}</a></h3></article></div>`;
+    const pages: Record<string, string> = {
+      [AMAN]: `${card("qa-engineer", "QA Engineer")}<a href="https://www.aman.co.il/careers/%D7%A4%D7%99%D7%AA%D7%95%D7%97/page/7/">7</a><a href="https://www.aman.co.il/careers/page/2/">2</a>`,
+      [`${AMAN}page/2/`]: card("abap", "מפתח/ת ABAP"),
+    };
+    // Its own pages (2), not a field's (7).
+    expect(parseAman(pages[AMAN]).pages).toBe(2);
+    const asked: string[] = [];
+    const found = await readEmployer(portalById("aman")!, [{ id: "qa", label: "QA", query: "Junior QA Engineer" }], { fetch: async (url) => { asked.push(url); return pages[url] ?? null; }, today });
+    expect(asked).toEqual([AMAN, `${AMAN}page/2/`]);
+    expect(found).toEqual([expect.objectContaining({ title: "QA Engineer", url: "https://www.aman.co.il/careers/qa/qa-engineer/", company: "קבוצת Aman", portal: "aman" })]);
+    expect(() => parseAman("<html>other</html>")).toThrow();
+  });
+
+  test("on its own site (Dialog): only the fields the roles are in, their pages in turn, each card's title, region and page", async () => {
+    const card = (id: number, title: string, region: string) => `<div class="item_job"><div class="inner font_s"><div class="right"><div class="top">
+      <h3 class="title_job"> <a href="/high-tech/jobs/jobpage?positionId=${id}" class=""> ${title}<span class="icon "></span> </a> </h3></div></div>
+      <ul class="job_info"><li><a href="/high-tech/jobs/qa?regions=1"><span class="icon icon-location"></span>${region} </a></li></ul></div></div>`;
+    const qa = [{ id: "qa", label: "QA", query: "Junior QA Engineer" }];
+    expect(dialogFields(qa)).toEqual(["qa"]);
+    expect(dialogFields([{ id: "analyst", label: "Data Analyst", query: "Data Analyst" }])).toEqual(["data", "research"]);
+    const pages: Record<string, string> = {
+      [`${DIALOG}qa`]: `${card(95370, "QA Automation Engineer", 'ת"א והמרכז')}<a href="?page=2">2</a>`,
+      [`${DIALOG}qa?page=2`]: card(95371, "בודק/ת תוכנה", "חיפה והצפון"),
+    };
+    const asked: string[] = [];
+    const found = await readEmployer(portalById("dialog")!, qa, { fetch: async (url) => { asked.push(url); return pages[url] ?? null; }, today });
+    expect(asked).toEqual([`${DIALOG}qa`, `${DIALOG}qa?page=2`]);
+    expect(found).toEqual([
+      expect.objectContaining({ title: "QA Automation Engineer", location: 'ת"א והמרכז', url: "https://www.dialog.co.il/high-tech/jobs/jobpage?positionId=95370", company: "דיאלוג", portal: "dialog" }),
+      expect.objectContaining({ title: "בודק/ת תוכנה", location: "חיפה והצפון", url: "https://www.dialog.co.il/high-tech/jobs/jobpage?positionId=95371" }),
+    ]);
+  });
+
+  test("on its own site (Mimun Yashir): the sitemap's recent job pages for the roles, each opened for its name, the closed left out", async () => {
+    const site = "https://www.5555.co.il";
+    const entry = (path: string, date: string) => `<url><loc>${site}${path}</loc><lastmod>${date}</lastmod><priority>0.8</priority></url>`;
+    const sitemap = `<urlset>${[
+      entry("/", "2026-06-29"), entry("/קצת-עלינו/", "2026-03-23"), entry("/דרושים/", "2026-11-01"), entry("/דרושים/כל-המשרות/", "2026-11-01"),
+      entry("/דרושים/אנליסטית-מטה-וחווית-לקוח/", "2026-11-04"), entry("/דרושים/data-analyst/", "2026-10-20"),
+      entry("/דרושים/נציגת-שירות-לקוחות/", "2026-11-02"), entry("/דרושים/data-scientist/", "2025-05-28"),
+    ].join("\n")}</urlset>`;
+    const page = (name: string, closed = false) => `<main><h1 class="tw-text-40"> ${name} </h1>${closed ? "<p>משרה זו אינה זמינה</p>" : ""}<p>מה כולל התפקיד?</p></main>`;
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => {
+      const plain = decodeURIComponent(url);
+      asked.push(plain);
+      if (url === MIMUN_YASHIR) return sitemap;
+      if (plain.includes("אנליסטית")) return page("אנליסט.ית מטה וחווית לקוח");
+      if (plain.includes("data-analyst")) return page("Data Analyst", true);
+      return null;
+    };
+    const found = await readEmployer(portalById("mimun-yashir")!, roles, { fetch, today });
+    // The sitemap, then only the recent pages for the roles, the newest first: not the service representative's, nor last
+    // year's data scientist.
+    expect(asked).toEqual([MIMUN_YASHIR, `${site}/דרושים/אנליסטית-מטה-וחווית-לקוח/`, `${site}/דרושים/data-analyst/`]);
+    expect(found).toEqual([{
+      title: "אנליסט.ית מטה וחווית לקוח", company: "מימון ישיר", location: "", date: "2026-11-04", source: "page", portal: "mimun-yashir",
+      url: new URL(`${site}/דרושים/אנליסטית-מטה-וחווית-לקוח/`).href,
+    }]);
   });
 
   test("on Greenhouse (Wiz): its board's list, only the jobs in Israel and for the roles, each linked on the board", async () => {
@@ -382,5 +696,151 @@ describe("the roles' words", () => {
   test("a role is searched on the boards by its title and its Hebrew name", () => {
     expect(boardQueries({ id: "analyst", label: "", query: "Junior Data Analyst" })).toEqual(["Junior Data Analyst", "אנליסט נתונים"]);
     expect(boardQueries({ label: "x", query: "Actuary" })).toEqual(["Actuary"]);
+  });
+
+  test("reads a careers page's own list by its job links, and finds a title where the link only says 'read more'", () => {
+    const html = `<nav><a href="/about/">אודות</a></nav>
+      <h2>משרות פנויות</h2>
+      <div class="card"><h3>מפתח/ת Full Stack</h3><a href="/jobs/full-stack/">קרא עוד</a></div>
+      <div class="card"><a href="/jobs/qa-engineer/">בודק/ת תוכנה</a><a href="/jobs/qa-engineer/">לעמוד המשרה</a></div>
+      <div><a href="/jobs/data/">לפרטים</a><a href="mailto:?subject=אנליסט/ית נתונים&amp;body=https://x.co.il/jobs/data/">מייל</a></div>`;
+    expect(readLinks(html, "https://x.co.il/careers/", "^/jobs/[^/]+/$").map((p) => [p.title, p.url])).toEqual([
+      ["מפתח/ת Full Stack", "https://x.co.il/jobs/full-stack/"],
+      ["בודק/ת תוכנה", "https://x.co.il/jobs/qa-engineer/"],
+      ["אנליסט/ית נתונים", "https://x.co.il/jobs/data/"],
+    ]);
+  });
+
+  test("takes a heading three jobs share for the section's, and reads their titles from their links then", () => {
+    const html = `<h2>משרות פנויות</h2>` + ["מפתח-ת-full-stack-1202", "נציג-ת-מכירות-1116", "כלכלן-ית-1104"]
+      .map((slug) => `<div class="item"><div>${slug}</div><a href="/career/${encodeURIComponent(slug)}/">צפיה במשרה</a></div>`).join("");
+    expect(readLinks(html, "https://w.co.il/", "^/career/").map((p) => p.title)).toEqual(["מפתח ת full stack 1202", "נציג ת מכירות 1116", "כלכלן ית 1104"]);
+  });
+
+  test("finds a title by the site's own pattern, and a job link in a share button's data-href", () => {
+    const html = `<div class="job"><div>שם המשרה: <strong>מנתח/ת מערכות</strong></div><div class="fb-share-button" data-href="https://c.co.il/jobs/?job=6798"></div></div>`;
+    expect(readLinks(html, "https://c.co.il/jobs/", "[?&]job=[0-9]+", "שם המשרה:[^<]*<strong>([^<]{3,140})</strong>").map((p) => [p.title, p.url]))
+      .toEqual([["מנתח/ת מערכות", "https://c.co.il/jobs/?job=6798"]]);
+  });
+
+  test("reads an employer's own site first, its pages too, and its job board only when the site gives nothing", async () => {
+    const page = (n: number, jobs: string[]) => jobs.map((j) => `<a href="/Jobs/JobDetails?token=t&eid=${j}">מפתח/ת ${j}</a>`).join("") + (n < 2 ? `<a href="/Home/Index?page=${n + 1}&amp;token=t">עמוד הבא</a>` : "");
+    const asked: string[] = [];
+    const site: Fetch = async (url) => {
+      asked.push(url);
+      if (url.includes("alljobs")) return null;
+      return url.includes("page=2") ? page(2, ["b"]) : page(1, ["a"]);
+    };
+    const employer = { id: "x", kind: "employer" as const, how: "read" as const, he: "איקס", en: "X", industry: "insurance" as const, url: "", read: { alljobs: 1 },
+      direct: { links: { url: "https://career.example/?token=t", path: "/Jobs/JobDetails", pages: "/Home/Index[?]page=[0-9]+" } } };
+    const roles = [{ label: "Dev", query: "Junior Software Engineer" }];
+    const jobs = await readEmployer(employer, roles, { fetch: site, today: "2026-11-14" });
+    expect(jobs.map((j) => j.title)).toEqual(["מפתח/ת a", "מפתח/ת b"]);
+    expect(asked.some((u) => u.includes("alljobs"))).toBe(false);
+    // The site down: the board, as before.
+    const down: Fetch = async (url) => { asked.push(url); return url.includes("alljobs") ? `<div class="job-content-top-date">היום</div>` : null; };
+    asked.length = 0;
+    await readEmployer(employer, roles, { fetch: down, today: "2026-11-14" });
+    expect(asked.some((u) => u.includes("alljobs"))).toBe(true);
+  });
+
+  test("reads Gotfriends' list: each job's title, place and page", () => {
+    const html = `<div class="item"> <a href="/jobslobby/software/data-engineer/155487/" class="position p-1108"> <h2 class="title">Data Engineer בחברה מובילה</h2> </a>
+      <div class="item_content"><section class="info meta"><dl><dd> <span class="info-label">מיקום:</span> <span class="info-data"> ת&quot;א והמרכז </span> </dd></dl></section></div></div>
+      <a class="" href="/jobslobby/software/full-stack-developer/">מפתח Full Stack</a>`;
+    expect(parseGotfriends(html)).toEqual([
+      { title: "Data Engineer בחברה מובילה", company: "", location: 'ת"א והמרכז', date: "", url: "https://www.gotfriends.co.il/jobslobby/software/data-engineer/155487/", source: "page" },
+    ]);
+  });
+
+  test("reads Nisha's list: each job's title and page", () => {
+    const html = `<div class="item-job job-main"> <div class="title-bar"> <h3 class="job-title"><a href="https://www.nisha.co.il/job/12917/">מפתח/ת Full stack</a></h3></div></div>
+      <a href="https://www.nisha.co.il/positions/devops/">DevOps</a>`;
+    expect(parseNisha(html)).toEqual([{ title: "מפתח/ת Full stack", company: "", location: "", date: "", url: "https://www.nisha.co.il/job/12917/", source: "page" }]);
+  });
+
+  test("reads a WordPress job board's feed: each job's title, employer, place and day, only its links on the board", () => {
+    const item = (title: string, link: string, extra = "") => `<item><title>${title}</title><link>${link}</link>
+      <pubDate>Mon, 09 Nov 2026 12:00:00 +0000</pubDate><description><![CDATA[<p>About it</p>]]></description>${extra}</item>`;
+    const xml = `<?xml version="1.0"?><rss><channel><title>Jobs</title>
+      ${item("AI Software Engineer", "https://www.nbn.org.il/jobboard/job/ai-software-engineer/", "<job_listing:location><![CDATA[North, Haifa]]></job_listing:location><job_listing:company><![CDATA[NBN Recruitment]]></job_listing:company>")}
+      ${item("Data &#038; Research Analyst", "https://www.nbn.org.il/jobboard/job/data-research-analyst/")}
+      ${item("Elsewhere", "https://elsewhere.example/job/1")}
+      </channel></rss>`;
+    expect(parseJobFeed(xml, "https://www.nbn.org.il")).toEqual([
+      { title: "AI Software Engineer", company: "NBN Recruitment", location: "North, Haifa", date: "2026-11-09", url: "https://www.nbn.org.il/jobboard/job/ai-software-engineer/", source: "page" },
+      { title: "Data & Research Analyst", company: "", location: "", date: "2026-11-09", url: "https://www.nbn.org.il/jobboard/job/data-research-analyst/", source: "page" },
+    ]);
+  });
+
+  test("reads Jobnet's list: each job's title, employer, day and regions, without the regions' lists of towns", () => {
+    const card = (id: number, title: string, regions: string[]) => `<td><div itemscope itemtype="https://schema.org/JobPosting" class='whitebox'>
+      <a data-sharer="email" data-url='https://www.jobnet.co.il/newstyle/internalpages/searchresults.aspx?returned=true&positionid=${id}' data-title='${title}'></a>
+      <a style='display:block' href='/jobs?positionid=${id}' target="_blank"><h2 itemprop="title" >${title}</h2></a>
+      <p itemprop="hiringOrganization"><a target="_blank" href='/Company?companyID=4136'> SQLink</a></p>
+      <p class="boxDateCls" itemprop="datePosted">14/11/2026</p>
+      ${regions.map((r) => `<span itemprop="address"><span itemprop='addressLocality'></span><span itemprop='addressRegion'><a href='/jobs?searchtype=byareas&checkarea=2'>${r}</a></span><span class="reg"> - תל אביב, מודיעין, שוהם</span></span>`).join("")}
+      </div></td>`;
+    const html = card(13591440, "Backend Developer", ["מרכז", "שרון"]) + card(13594647, "בודק/ת תוכנה &amp; QA", ["צפון"]) + `<a href='/jobs?subprofid=1252'>ללא נסיון</a>`;
+    expect(parseJobnet(html)).toEqual([
+      { title: "Backend Developer", company: "SQLink", location: "מרכז, שרון", date: "2026-11-14", url: "https://www.jobnet.co.il/jobs?positionid=13591440", source: "page" },
+      { title: "בודק/ת תוכנה & QA", company: "SQLink", location: "צפון", date: "2026-11-14", url: "https://www.jobnet.co.il/jobs?positionid=13594647", source: "page" },
+    ]);
+  });
+
+  test("reads a Redmatch careers app's list, each position linked to its page in the app", () => {
+    const json = "﻿" + JSON.stringify({ responseStatus: 0, positions: [
+      { compPositionID: "50468", jobTitleText: "מפתח/ת Full Stack", displayLocation: "פתח תקווה", activationDate: "2026-11-12T14:29:39.103" },
+      { compPositionID: "50469", jobTitleText: "סגורה", isActivePosition: "False" },
+    ] });
+    expect(parseRedmatch(json, "https://jobs.example/clalit/")).toEqual([
+      { title: "מפתח/ת Full Stack", company: "", location: "פתח תקווה", date: "2026-11-12", url: "https://jobs.example/clalit/redmatch-apply/redmatch.apply.html?compPositionID=50468", source: "page" },
+    ]);
+    expect(() => parseRedmatch("{}", "https://jobs.example/clalit/")).toThrow();
+  });
+
+  test("reads a Workday career site's jobs searched for Israel, over its pages, kept to places in Israel", async () => {
+    const page = (offset: number) => JSON.stringify({ total: 23, jobPostings: offset === 0
+      ? [{ title: "Software Engineer", externalPath: "/job/Haifa/Software-Engineer_R1", locationsText: "Haifa, Israel" }, { title: "Buyer", externalPath: "/job/Austin/Buyer_R2", locationsText: "Austin, TX" }]
+      : [{ title: "Data Analyst", externalPath: "/job/Migdal-HaEmek/Data-Analyst_R3", locationsText: "Migdal HaEmek, Israel" }] });
+    expect(parseWorkday(page(0), "https://t.wd1.myworkdayjobs.com/en-US/Careers").found[0]).toMatchObject({ title: "Software Engineer", url: "https://t.wd1.myworkdayjobs.com/en-US/Careers/job/Haifa/Software-Engineer_R1" });
+    const asked: unknown[] = [];
+    const post = async (url: string, body: any) => { asked.push(body); return url.includes("/wday/cxs/t/Careers/jobs") ? page(body.offset) : null; };
+    const employer = { id: "t", kind: "employer" as const, how: "read" as const, he: "T", en: "T", industry: "hightech" as const, url: "", read: { workday: { host: "t.wd1.myworkdayjobs.com", tenant: "t", site: "Careers" } } };
+    const jobs = await readEmployer(employer, [{ label: "x", query: "Junior Software Engineer" }, { label: "y", query: "Junior Data Engineer" }], { fetch: async () => null, post, today: "2026-11-14" });
+    expect(jobs.map((j) => j.title)).toEqual(["Software Engineer", "Data Analyst"]);
+    expect(asked).toEqual([{ appliedFacets: {}, limit: 20, offset: 0, searchText: "Israel" }, { appliedFacets: {}, limit: 20, offset: 20, searchText: "Israel" }]);
+  });
+
+  test("asks a service that answers only a POST after robots.txt allows it, over https only, and never follows a redirect", async () => {
+    const sent: { url: string; init: RequestInit }[] = [];
+    const send = (async (url: string, init: RequestInit) => { sent.push({ url, init }); return new Response('{"ok":1}'); }) as unknown as typeof fetch;
+    const allowed = async () => ({ code: 0, out: "ALLOWED", err: "" });
+    const post = jsonPoster(allowed, send);
+    expect(await post("https://jobs.example/api/search-a", { q: "" })).toBe('{"ok":1}');
+    expect(sent[0].init).toMatchObject({ method: "POST", body: '{"q":""}', redirect: "error" });
+    expect(await post("http://jobs.example/api/search-b", {})).toBeNull();
+    const refused = jsonPoster(async () => ({ code: 1, out: "DISALLOWED", err: "" }), send);
+    expect(await refused("https://other.example/api/search-c", {})).toBeNull();
+    expect(sent).toHaveLength(1);
+  });
+
+  test("knows the recruiting platform a careers page embeds, whose jobs a script fills in", () => {
+    expect(embeddedBoard(`<script>COMEET.init({\n "token": "2F4E", "company-uid": "F2.004", "company-name": "claroty" });</script>`)).toEqual({ comeet: "claroty/f2.004" });
+    expect(embeddedBoard(`<script src="https://boards.greenhouse.io/embed/job_board/js?for=acme"></script>`)).toEqual({ greenhouse: "acme" });
+    expect(embeddedBoard(`<a href="https://job-boards.greenhouse.io/beta/jobs/1">x</a>`)).toEqual({ greenhouse: "beta" });
+    expect(embeddedBoard(`<iframe src="https://jobs.lever.co/gamma"></iframe>`)).toEqual({ lever: "gamma" });
+    expect(embeddedBoard(`<a href="https://jobs.ashbyhq.com/Delta%20Inc">jobs</a>`)).toEqual({ ashby: "Delta Inc" });
+    expect(embeddedBoard(`<a href="https://apply.workable.com/epsilon/">jobs</a>`)).toEqual({ workable: "epsilon" });
+    expect(embeddedBoard(`<a href="/careers/backend">Backend Developer</a>`)).toBeNull();
+  });
+
+  test("reads a careers page that embeds a platform there, by the employer's name", async () => {
+    const page = `<script>COMEET.init({"company-uid": "F2.004", "company-name": "claroty"});</script>`;
+    const positions = [{ name: "Backend Developer", location: { name: "Tel Aviv", country: "IL", city: "Tel Aviv" }, time_updated: "2026-11-10T08:00:00Z", url_comeet_hosted_page: "https://www.comeet.com/jobs/claroty/F2.004/backend-developer/0A.374" }];
+    const board = `<script>COMPANY_POSITIONS_DATA = ${JSON.stringify(positions)};</script>`;
+    const fetch: Fetch = async (url) => (url.startsWith("https://claroty.example") ? page : url.includes("comeet.com") ? board : null);
+    const jobs = await readOwnPage("mine-claroty", "Claroty", "https://claroty.example/open-positions/", [{ label: "Backend", query: "Junior Backend Developer" }], { fetch, today: "2026-11-14" });
+    expect(jobs.map((j) => [j.title, j.company])).toEqual([["Backend Developer", "Claroty"]]);
   });
 });
