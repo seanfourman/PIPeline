@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setSystemTime, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -143,6 +143,50 @@ describe("scraper", () => {
     await scan(3);
     // Its own careers page first, then AllJobs, as its page gave nothing.
     expect(asked).toEqual(["https://www.fnx.co.il/career/open-positions/", "https://www.alljobs.co.il/Employer/HP/Default.aspx?cid=173831"]);
+  });
+
+  // An insurer's AllJobs page with one analyst job, as the Phoenix's above.
+  const insurerPage = (cid: number, job: number, title: string) => (url: string) => (url.endsWith(`cid=${cid}`)
+    ? `<a href="/x?cid=${cid}&amp;JobCategoriesFilter=1806">דאטה (1)</a><div class="job-content-top-date">לפני שעה</div><a href="/Search/UploadSingle.aspx?JobID=${job}"><h2>${title}</h2></a>`
+    : url.includes(`cid=${cid}&JobCategoriesFilter=1806`) ? `<a href="/Search/UploadSingle.aspx?JobID=${job}"><h2>${title}</h2></a>` : null);
+  const phoenixAndHarel = () => validateSettings({
+    ...settings, roles: [{ id: "analyst" }], industries: ["insurance"],
+    portals: { off: [...PORTALS.filter((p) => p.industry === "insurance" && !["phoenix", "harel"].includes(p.id)).map((p) => p.id), "gotfriends", "nisha", "jobnet", "nbn-jobs", "ethosia"] },
+  });
+
+  test("for the live alerts, what is read is stored and handed on a minute's worth at a time, not once all is read", async () => {
+    const checks = path.join(mkdtempSync(path.join(os.tmpdir(), "job-portals-")), "portals.json");
+    const phoenix = insurerPage(173831, 5, "אנליסט/ית נתונים");
+    const harel = insurerPage(70365, 6, "אנליסט/ית BI");
+    // The Phoenix's page takes over a minute; Harel's answers only once the Phoenix's job was handed on, as a site
+    // still being read, far down a long sweep.
+    let handed!: () => void;
+    const firstHanded = new Promise<void>((r) => (handed = r));
+    const fetch: Fetch = async (url) => {
+      if (url.includes("cid=173831")) { setSystemTime(new Date(Date.now() + 61_000)); return phoenix(url); }
+      if (url.includes("cid=70365")) { await firstHanded; return harel(url); }
+      return null;
+    };
+    const told: string[][] = [];
+    const { run, stored } = fakeTools();
+    try {
+      await scanPortals({ ask: async () => "[]", steps: steps().steps, signal: never, lang: "en", settings: phoenixAndHarel(), run, fetch, today: "2026-11-15", checks, found: (jobs) => { told.push(jobs.map((j) => j.title)); handed(); } });
+    } finally {
+      setSystemTime();
+    }
+    expect(told).toEqual([["אנליסט/ית נתונים"], ["אנליסט/ית BI"]]);
+    expect(stored).toHaveLength(2);
+    expect(JSON.parse(readFileSync(checks, "utf8"))).toMatchObject({ phoenix: { found: 1, kept: 1 }, harel: { found: 1, kept: 1 } });
+  });
+
+  test("a store that fails still keeps each portal's check, then the check fails", async () => {
+    const checks = path.join(mkdtempSync(path.join(os.tmpdir(), "job-portals-")), "portals.json");
+    const fetch: Fetch = async (url) => insurerPage(173831, 5, "אנליסט/ית נתונים")(url);
+    const { run: tools } = fakeTools();
+    const run: Run = async (argv, o) => (argv.includes("store") ? { code: 1, out: "", err: "scrape_state: canonical key already exists for another posting: ey_3309502" } : tools(argv, o));
+    const scan = scanPortals({ ask: async () => "[]", steps: steps().steps, signal: never, lang: "en", settings: onlyPhoenix(), run, fetch, system: "rules", today: "2026-11-15", checks });
+    await expect(scan).rejects.toMatchObject({ code: "rank_tool" });
+    expect(JSON.parse(readFileSync(checks, "utf8")).phoenix).toMatchObject({ found: 1, kept: 0 });
   });
 
   test("the portals check with nothing to read says so", async () => {

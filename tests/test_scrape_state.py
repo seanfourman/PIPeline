@@ -85,6 +85,24 @@ class ScrapeStateTests(unittest.TestCase):
         self.assertEqual(sorted(stored[k]["url"] for k in keys), [f"https://jobs.test/{i}" for i in (1, 2, 3)])
         self.assertTrue(all(job_key.is_canonical(k) for k in keys))
 
+    def test_store_tells_apart_named_postings_whose_keys_come_out_alike(self):
+        # EY's careers site: two Hebrew titles in Haifa, each URL with the city's code before the posting's number.
+        base = {
+            "company": "EY", "first_seen": "2026-11-15", "posted_date": None, "deadline": None,
+            "fit": "low", "status": "skipped", "portal": "careers-page", "source": "cli",
+        }
+        jobs = [
+            {**base, "title": "מתמחה למחלקה כלכלית", "url": "https://careers.ey.com/ey/job/Haifa-3309502/1091393801/"},
+            {**base, "title": "התמחות בחיפה", "url": "https://careers.ey.com/ey/job/Haifa-3309502/1416792033/"},
+        ]
+        first = self.run_tool("store", jobs[:1])
+        later = self.run_tool("store", jobs[1:] + [{**base, "title": "מתמחה לביקורת", "url": "https://careers.ey.com/ey/job/Haifa-3309502/1500000000/"}])
+        keys = first["added"] + later["added"]
+        self.assertEqual(len(set(keys)), 3)
+        self.assertTrue(all(job_key.is_canonical(k) for k in keys))
+        stored = json.loads(self.state.read_text(encoding="utf-8"))["seen"]
+        self.assertEqual(sorted(stored[k]["title"] for k in keys), sorted([jobs[0]["title"], jobs[1]["title"], "מתמחה לביקורת"]))
+
     def test_store_never_writes_while_another_run_holds_the_history(self):
         good = {
             "title": "Builder", "company": "Fresh", "url": "https://jobs.test/fresh",

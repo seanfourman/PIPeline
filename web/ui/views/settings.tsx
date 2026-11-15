@@ -201,7 +201,7 @@ function Alerts({ draft, update }: { draft: any; update: Update }) {
       <label className="check"><input type="checkbox" checked={alerts.enabled} onChange={(e) => set("enabled", e.target.checked)} />{t("settings.alertsOn")}</label>
       <label className="check"><input type="checkbox" checked={alerts.desktop} onChange={(e) => set("desktop", e.target.checked)} />{t("settings.alertsDesktop")}</label>
       <label className="check"><input type="checkbox" checked={alerts.email} onChange={(e) => set("email", e.target.checked)} />{t("settings.alertsEmail")}</label>      <Field label={t("settings.alertsEvery")} hint={t("settings.alertsEveryNote")}>
-        <Select value={String(alerts.every)} onChange={(v) => set("every", Number(v))} options={[15, 30, 60].map((n) => ({ value: String(n), label: t("settings.alertsMinutes", { n }) }))} />
+        <Select value={String(alerts.every)} onChange={(v) => set("every", Number(v))} options={[5, 10, 15, 30, 60].map((n) => ({ value: String(n), label: t("settings.alertsMinutes", { n }) }))} />
       </Field>
       <div className="row"><Btn onClick={test}>{t("settings.alertTest")}</Btn></div>
       {status[0] && <p className={status[1] ? "error-line" : "note"} role="status" dir="auto">{status[0]}</p>}

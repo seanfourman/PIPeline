@@ -29,8 +29,8 @@ export type Settings = {
   // computer: the one of the account's computers that runs it (accounts.ts's computerId), "" for whichever has it on.
   automation: { enabled: boolean; email: string; maxPerDay: number; runTimes: string[]; minScore: number; computer: string };
   // Live alerts (alerts.ts): the search watched with no AI, each new job told by email (to automation's address) and on
-  // the computer as it is found, every few minutes (every); the employers' own sites each at most once an hour.
-  alerts: { enabled: boolean; email: boolean; desktop: boolean; every: 15 | 30 | 60 };
+  // the computer as it is found: the quick search every few minutes (every), the sites' sweep every half hour.
+  alerts: { enabled: boolean; email: boolean; desktop: boolean; every: 5 | 10 | 15 | 30 | 60 };
   // The quick search's own choices on the jobs page, kept from one visit to the next: how recent, which market
   // ("all" or a code), the work type ("" follows workMode), and which areas show. Only the page uses these.
   quickSearch: { days: "1" | "7" | "14" | "30"; market: string; mode: "" | "any" | "remote" | "hybrid" | "onsite"; areas: "relevant" | "listed" | "all" };
@@ -193,7 +193,7 @@ export function validateSettings(input: any): Settings {
       enabled: input?.alerts?.enabled === true,
       email: input?.alerts?.email !== false,
       desktop: input?.alerts?.desktop !== false,
-      every: ([15, 30, 60] as const).find((n) => n === Number(input?.alerts?.every)) ?? 15,
+      every: ([5, 10, 15, 30, 60] as const).find((n) => n === Number(input?.alerts?.every)) ?? 15,
     },
     // pick's first option is the one a missing or strange value gets; a market no longer chosen falls back to all.
     quickSearch: {

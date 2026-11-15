@@ -50,6 +50,7 @@ SEARCH FLAGS
   --jobage <days>         Posted within N days: 1, 7, 14, 30. Default: all.
   --jobage-minutes <n>    Posted within N minutes (sub-day precision). Conflicts with --jobage.
   --remote <mode>         remote | hybrid | onsite. Filter by workplace type.
+  --sort <order>          recent (newest first) | relevant. Default: LinkedIn's relevance order.
   --page <n>              1-indexed page (10 results/page). Default 1.
   --limit, -n <n>         Cap results emitted (client-side).
   --format <fmt>          json (default) | table | plain.
@@ -69,7 +70,7 @@ Personal use only — uses LinkedIn's public pages; keep volume low (LinkedIn To
 // still prints usage.
 const KNOWN_FLAGS: Record<string, Set<string>> = {
   search: new Set([
-    "location", "query", "jobage", "jobage-minutes", "remote", "page", "limit", "format", "help", "h",
+    "location", "query", "jobage", "jobage-minutes", "remote", "sort", "page", "limit", "format", "help", "h",
   ]),
   detail: new Set(["format", "help", "h"]),
 }

@@ -139,10 +139,15 @@ def _run(args) -> int:
         if job["source"] not in ("cli", "websearch") or not isinstance(job["portal"], str):
             raise ValueError("job has an invalid portal or source")
         key = make_key(job["company"], job["title"], job["url"])
-        if key in seen and not job["company"].strip():
-            # With no employer named, the key is "unknown-company_<title>", and
-            # another unnamed posting can have the same title: its URL, the
-            # posting's identity, tells this one apart.
+        if key in seen:
+            # Two postings select() told apart can still make one key. With no
+            # employer named, the key is "unknown-company_<title>", and another
+            # unnamed posting can have the same title. A title with no Latin
+            # letters is keyed by a number from its URL, and that number can be
+            # shared: EY's careers site puts a city's code before the posting's
+            # own number, so two Haifa jobs both made "ey_3309502", and the
+            # refusal lost the whole batch, every check (2026-11-15). The URL,
+            # the posting's identity, tells this one apart.
             url = job["url"].strip().rstrip("/")
             key = f"{key}-{hashlib.sha1(url.encode('utf-8')).hexdigest()[:6]}"
         if key in seen:

@@ -732,7 +732,14 @@ export async function readBoard(read: Read, o: { fetch: Fetch; signal?: AbortSig
     const data = at < 0 ? null : JSON.parse(jsonAt(body, body.indexOf("{", at)) || "null");
     return { name: String(data?.organization?.name ?? ""), postings: parseAshby(body, read.ashby) };
   }
-  const title = body.match(/<title>\s*(?:Job opportunities at|Jobs at)\s+([^<]+?)(?:\s+-\s+Careers[^<]*)?\s*<\/title>/i)?.[1] ?? "";
+  // Comeet's page title once named the company; since it became Spark Hire Recruit (November 2026) the title is the
+  // platform's own, and the name is in the page's data and in its og:title.
+  const named = body.match(/"company_name"\s*:\s*("(?:[^"\\]|\\.)+")/)?.[1];
+  let fromData = "";
+  try { fromData = named ? String(JSON.parse(named)) : ""; } catch { /* not plain JSON: the og:title, then */ }
+  const title = fromData
+    || body.match(/<meta[^>]+property="og:title"[^>]+content="\s*(?:Job opportunities at|Jobs at)\s+([^"]+?)\s*"/i)?.[1]
+    || body.match(/<title>\s*(?:Job opportunities at|Jobs at)\s+([^<]+?)(?:\s+-\s+Careers[^<]*)?\s*<\/title>/i)?.[1] || "";
   return { name: text(title), postings: parseComeet(body) };
 }
 

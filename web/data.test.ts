@@ -161,6 +161,13 @@ describe("portalArgs", () => {
     expect(linkedin[linkedin.indexOf("--remote") + 1]).toBe("remote");
     expect(portalArgs("freehire", "QA", options)).not.toContain("--country");
   });
+
+  test("a search one day back asks LinkedIn for the newest first; a longer one keeps its relevance order", () => {
+    const day = portalArgs("linkedin", "QA", { ...base, days: "1" });
+    expect(day[day.indexOf("--sort") + 1]).toBe("recent");
+    expect(portalArgs("linkedin", "QA", base)).not.toContain("--sort");
+    expect(portalArgs("freehire", "QA", { ...base, days: "1" })).not.toContain("--sort");
+  });
 });
 
 describe("matchesQuery", () => {

@@ -245,11 +245,14 @@ export function conversationFiles(events: Record<string, unknown>[]): { path: st
 
 type SearchOptions = { days: string; market: Market; workMode: Settings["workMode"]; seniority: Settings["seniority"] };
 
+// LinkedIn gives one page of ten, by relevance unless asked otherwise. A search one day back (the live alerts') asks
+// for the newest first: by relevance, its ten were as often yesterday's as the last hour's (checked 2026-11-15).
 export function portalArgs(source: "linkedin" | "freehire", q: string, o: SearchOptions): string[] {
   const remote = o.market.code === REMOTE ? "remote" : o.workMode === "any" ? "" : o.workMode;
   const mode = remote ? ["--remote", remote] : [];
   if (source === "linkedin") {
-    return ["search", "--location", linkedinPlace(o.market), "-q", q, "--jobage", o.days, ...mode, "--limit", "25", "--format", "json"];
+    const sort = o.days === "1" ? ["--sort", "recent"] : [];
+    return ["search", "--location", linkedinPlace(o.market), "-q", q, "--jobage", o.days, ...mode, ...sort, "--limit", "25", "--format", "json"];
   }
   return [
     "search", "-q", q, "--jobage", o.days, "--no-description", "--limit", "25", "--format", "json", ...mode,

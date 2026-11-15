@@ -1,9 +1,12 @@
-// Live alerts: the search watched with no AI every few minutes (settings.alerts.every), each new job told by email and on
-// the computer the moment it is stored, marked by its group (groups.ts): a high-tech company's or a known employer's,
-// or another's. Each round runs the fast search first (LinkedIn, freehire and the Telegram channels, scraper.ts
-// searchDaily) and tells what it found at once, then the portals check (scanPortals), where an employer's own site is
-// read at most once an hour, one whose last check found nothing rests six hours, and the Israeli boards' searches go
-// hourly. A round waits while the daily run or a search of the user's own is going, and two never run at once.
+// Live alerts: the search watched with no AI, each new job told by email and on the computer the moment it is stored,
+// marked by its group (groups.ts): a high-tech company's or a known employer's, or another's. Two lanes, each at its
+// own pace, so the slow one never holds the quick one back. The quick search (LinkedIn and freehire for the last day,
+// newest first, and the Telegram channels, scraper.ts searchDaily), some ten seconds, runs every few minutes
+// (settings.alerts.every). The sites' sweep (scanPortals) runs every half hour: an employer's own site is read when its
+// last check is old enough (server.ts), one whose last check found nothing rests six hours, and the Israeli boards are
+// searched each time. It takes a quarter of an hour, most of it the some 400 employers read through AllJobs one page at
+// a time, so what it finds is told as it is stored, a minute's worth at a time. A lane starts only while the daily run
+// or a search of the user's own isn't going, and never twice at once.
 import type { Group } from "./groups";
 import type { Settings } from "./settings";
 
@@ -35,9 +38,10 @@ export function justPublished(jobs: NewJob[], o: { now: number; readBefore: (por
 
 export type WatchDeps = {
   loadSettings: () => Settings;
-  // The fast search and the portals check, each handing the jobs it stored as new to found.
+  // The quick search and the sites' sweep (the portals check with the boards), each handing the jobs it stored as new
+  // to found as it stores them, the sweep several times.
   search: (found: Found, signal: AbortSignal) => Promise<unknown>;
-  scan: (found: Found, signal: AbortSignal, boards: boolean) => Promise<unknown>;
+  scan: (found: Found, signal: AbortSignal) => Promise<unknown>;
   busy: () => boolean;
   tell: (jobs: AlertJob[]) => Promise<unknown>;
   group: (job: NewJob) => Group;
@@ -47,71 +51,82 @@ export type WatchDeps = {
   log?: (line: string) => void;
 };
 
-// A round that runs longer than this is stopped where it is; what it stored by then was told already.
+// A lane's run that goes longer than this is stopped where it is; what it stored by then was told already.
 const ROUND_LIMIT_MS = 50 * 60_000;
-const BOARDS_EVERY_MS = 60 * 60_000;
+const SITES_EVERY_MS = 30 * 60_000;
+
+type Lane = { running: boolean; last: number; stop: AbortController | null };
 
 export function createWatcher(deps: WatchDeps) {
   const now = deps.now ?? Date.now;
-  let running = false;
-  let last = 0;
-  let lastBoards = 0;
+  const quick: Lane = { running: false, last: 0, stop: null };
+  const sites: Lane = { running: false, last: 0, stop: null };
   let lastTold = "";
   let told = 0;
-  let stop: AbortController | null = null;
-  // Each job told once, however many rounds hand it on.
+  // Each job told once, however many runs hand it on.
   const seen = new Set<string>();
+  // One telling at a time, in the order the jobs were stored.
+  let telling: Promise<void> = Promise.resolve();
 
   // Each job looked at once: one that isn't just published isn't told later either.
-  const tellNew = async (jobs: NewJob[], readBefore: (portalId: string) => boolean) => {
-    const fresh = justPublished(jobs.filter((j) => j.url && !seen.has(j.url) && seen.add(j.url)), { now: now(), readBefore });
-    if (!fresh.length) return;
-    try {
-      await deps.tell(fresh.map((j) => ({ ...j, group: deps.group(j) })));
-      told += fresh.length;
-      lastTold = new Date(now()).toISOString();
-    } catch (err) {
-      deps.log?.(`alerts: telling ${fresh.length} jobs failed: ${(err as Error)?.message ?? err}`);
-    }
+  const tellNew = (jobs: NewJob[], readBefore: (portalId: string) => boolean) => {
+    telling = telling.then(async () => {
+      const fresh = justPublished(jobs.filter((j) => j.url && !seen.has(j.url) && seen.add(j.url)), { now: now(), readBefore });
+      if (!fresh.length) return;
+      try {
+        await deps.tell(fresh.map((j) => ({ ...j, group: deps.group(j) })));
+        told += fresh.length;
+        lastTold = new Date(now()).toISOString();
+      } catch (err) {
+        deps.log?.(`alerts: telling ${fresh.length} jobs failed: ${(err as Error)?.message ?? err}`);
+      }
+    });
+    return telling;
   };
 
-  async function round() {
-    if (running) return;
-    running = true;
-    stop = new AbortController();
-    const signal = stop.signal;
-    const timer = setTimeout(() => stop?.abort(), ROUND_LIMIT_MS);
-    const started = now();
-    last = started;
+  async function run(lane: Lane, work: (signal: AbortSignal) => Promise<unknown>) {
+    if (lane.running) return;
+    lane.running = true;
+    lane.stop = new AbortController();
+    const timer = setTimeout(() => lane.stop?.abort(), ROUND_LIMIT_MS);
+    lane.last = now();
     try {
-      const readBefore = deps.readBefore?.() ?? (() => true);
-      const fast: NewJob[] = [];
-      await deps.search((jobs) => fast.push(...jobs), signal).catch((err) => deps.log?.(`alerts: the search failed: ${(err as Error)?.message ?? err}`));
-      await tellNew(fast, readBefore);
-      if (signal.aborted) return;
-      const boards = started - lastBoards >= BOARDS_EVERY_MS;
-      if (boards) lastBoards = started;
-      const portals: NewJob[] = [];
-      await deps.scan((jobs) => portals.push(...jobs), signal, boards).catch((err) => deps.log?.(`alerts: the portals check failed: ${(err as Error)?.message ?? err}`));
-      await tellNew(portals, readBefore);
+      await work(lane.stop.signal);
+      await telling;
     } finally {
       clearTimeout(timer);
-      running = false;
-      stop = null;
+      lane.running = false;
+      lane.stop = null;
     }
   }
 
+  const failed = (what: string) => (err: unknown) => deps.log?.(`alerts: ${what} failed: ${(err as Error)?.message ?? err}`);
+  // The quick lane's jobs come from searches, with no employer's site to have been read before.
+  const search = () => run(quick, (signal) => deps.search((jobs) => void tellNew(jobs, () => true), signal).catch(failed("the search")));
+  // Which sites were read before is asked once, as the sweep starts.
+  const sweep = () => run(sites, (signal) => {
+    const readBefore = deps.readBefore?.() ?? (() => true);
+    return deps.scan((jobs) => void tellNew(jobs, readBefore), signal).catch(failed("the portals check"));
+  });
+
   return {
-    // Once a minute (server.ts): a round when the alerts are on, the last one began at least every minutes ago, and
-    // nothing else is working the list.
+    // Once a minute (server.ts): each lane when the alerts are on, nothing else is working the list, it isn't running
+    // and its time has come: the quick one every minutes, the sweep every half hour (or every minutes, when longer).
     tick() {
       const alerts = deps.loadSettings().alerts;
-      if (!alerts.enabled || running || deps.busy() || now() - last < alerts.every * 60_000) return;
-      void round();
+      if (!alerts.enabled || deps.busy()) return;
+      const t = now();
+      const every = alerts.every * 60_000;
+      if (!quick.running && t - quick.last >= every) void search();
+      if (!sites.running && t - sites.last >= Math.max(every, SITES_EVERY_MS)) void sweep();
     },
-    round,
-    stop: () => stop?.abort(),
-    status: () => ({ running, last: last ? new Date(last).toISOString() : "", lastTold, told }),
+    // Both lanes, the quick one first, waited for (the tests, and a check by hand).
+    async round() {
+      await search();
+      await sweep();
+    },
+    stop: () => { quick.stop?.abort(); sites.stop?.abort(); },
+    status: () => ({ running: quick.running || sites.running, last: quick.last ? new Date(quick.last).toISOString() : "", lastTold, told }),
   };
 }
 

@@ -46,29 +46,59 @@ describe("the live alerts", () => {
     expect(asked).toBe(2);
   });
 
-  test("a round tells the fast search's new jobs at once, then the portals check's, each job once, by its group", async () => {
+  test("a round tells the quick search's new jobs at once, then the sweep's batch by batch as it hands them on, each job once, by its group", async () => {
     const told: AlertJob[][] = [];
     const order: string[] = [];
-    let clock = 0;
-    let boardsAsked: boolean[] = [];
     const watcher = createWatcher({
       loadSettings: () => on(),
       search: async (found) => { order.push("search"); found([job("Junior Developer", { company: "Elbit Systems" }), job("Junior Developer", { company: "Elbit Systems" })]); },
-      scan: async (found, _signal, boards) => { order.push("scan"); boardsAsked.push(boards); found([job("QA Engineer"), job("Junior Developer", { company: "Elbit Systems" })]); },
+      // The sweep hands on what it stored a batch at a time: each batch is told while the sweep still reads.
+      scan: async (found) => {
+        order.push("scan");
+        found([job("QA Engineer")]);
+        await Bun.sleep(1);
+        order.push("next batch");
+        found([job("Junior Developer", { company: "Elbit Systems" }), job("Data Engineer")]);
+      },
       busy: () => false,
       tell: async (jobs) => { order.push(`tell ${jobs.length}`); told.push(jobs); },
       group: (j) => (j.company ? "known" : "other"),
+    });
+    await watcher.round();
+    expect(order).toEqual(["search", "tell 1", "scan", "tell 1", "next batch", "tell 1"]);
+    expect(told.map((t) => t.map((j) => [j.title, j.group]))).toEqual([[["Junior Developer", "known"]], [["QA Engineer", "other"]], [["Data Engineer", "other"]]]);
+    expect(watcher.status()).toMatchObject({ running: false, told: 3 });
+  });
+
+  test("the quick search keeps its own time, never held back by a sweep still reading, and each lane runs once at a time", async () => {
+    let clock = 60 * 60_000;
+    let searches = 0;
+    let scans = 0;
+    let finishScan!: () => void;
+    const watcher = createWatcher({
+      loadSettings: () => on({ every: 5 }),
+      search: async () => { searches++; },
+      scan: () => { scans++; return new Promise<void>((r) => (finishScan = r)); },
+      busy: () => false,
+      tell: async () => {},
+      group: () => "other",
       now: () => clock,
     });
-    clock = 2 * 60 * 60_000;
-    await watcher.round();
-    expect(order).toEqual(["search", "tell 1", "scan", "tell 1"]);
-    expect(told.map((t) => t.map((j) => [j.title, j.group]))).toEqual([[["Junior Developer", "known"]], [["QA Engineer", "other"]]]);
-    // The boards' searches go hourly: not again in the next round a quarter of an hour on.
-    clock += 15 * 60_000;
-    await watcher.round();
-    expect(boardsAsked).toEqual([true, false]);
-    expect(watcher.status()).toMatchObject({ running: false, told: 2 });
+    const tickAfter = async (minutes: number) => { clock += minutes * 60_000; watcher.tick(); await Bun.sleep(5); };
+    await tickAfter(0);
+    expect([searches, scans]).toEqual([1, 1]);
+    // Ten and twenty minutes on, the sweep still reads its sites: the quick search runs anyway, the sweep not again.
+    await tickAfter(10);
+    await tickAfter(10);
+    expect([searches, scans]).toEqual([3, 1]);
+    expect(watcher.status().running).toBe(true);
+    finishScan();
+    await Bun.sleep(5);
+    // The sweep runs again half an hour after it last began, whatever the quick search's minutes.
+    await tickAfter(5);
+    expect([searches, scans]).toEqual([4, 1]);
+    await tickAfter(5);
+    expect([searches, scans]).toEqual([5, 2]);
   });
 
   test("a tick starts a round only when the alerts are on, the time has come and nothing else works the list", async () => {

@@ -7,7 +7,7 @@ import { AiSky, api, goTo, Icon, safeUrl, Spaced, Words } from "../kit";
 import { Pip } from "../pip";
 import { JOB_ID, jobId } from "../jobid";
 import { roleLabel } from "../../roles";
-import { AiAction, bandOf, daysTo, Initial, JobActions, postedAgo, Sky } from "./jobs";
+import { AiAction, bandOf, daysTo, Initial, JobActions, postedAgo, Sky, useSave } from "./jobs";
 
 export type Basics = { url: string; title: string; company: string; location: string; date?: string };
 type Section = { title: string; from: number; to: number; list: boolean };
@@ -137,8 +137,8 @@ function sourceName(portal: string, url: string, t: T) {
 // ---------- the parts of the page ----------
 
 // The job, as its row has it: the company's initial, the title, the company and place, when it was posted and
-// whether it closes soon, and its buttons.
-function Head({ view, basics }: { view: View | null; basics?: Basics }) {
+// whether it closes soon, and its round buttons, unless the side has its buttons (SideActions).
+function Head({ view, basics, actions = true }: { view: View | null; basics?: Basics; actions?: boolean }) {
   const { t } = useApp();
   const job = view?.job ?? { ...basics!, key: "", portal: "", status: "" };
   const posted = view?.posting.facts.posted ?? basics?.date;
@@ -156,8 +156,29 @@ function Head({ view, basics }: { view: View | null; basics?: Basics }) {
           {posted && <span className="result-chip">{postedAgo(posted, t)}</span>}
         </div>
       </div>
-      <JobActions job={{ url: job.url, title: job.title, company: job.company, location: job.location, date: basics?.date ?? posted ?? "" }} />
+      {actions && <JobActions job={{ url: job.url, title: job.title, company: job.company, location: job.location, date: basics?.date ?? posted ?? "" }} />}
     </header>
+  );
+}
+
+// The job's buttons down the side of its page, as the sidebar's main button is drawn: apply, a mint pill across the
+// side, then save it and open it on its site, two soft grey pills; none with a border or a shadow.
+function SideActions({ job }: { job: Basics & { date: string } }) {
+  const { t, start } = useApp();
+  const { isSaved, toggle } = useSave();
+  const href = safeUrl(job.url);
+  if (!href) return null;
+  const on = isSaved(job.url);
+  return (
+    <div className="job-side-acts">
+      <button type="button" className="job-apply" onClick={() => start(`/apply ${job.url}`)}><Icon name="apply" />{t("jobs.apply")}</button>
+      <div className="job-side-pair">
+        <button type="button" className={`job-side-act ${on ? "on" : ""}`} aria-pressed={on} onClick={() => toggle(job)}>
+          <Icon name="saved" filled={on} />{on ? t("jobs.savedOne") : t("jobs.save")}
+        </button>
+        <a className="job-side-act" href={href} target="_blank" rel="noopener noreferrer"><Icon name="open" />{t("jobs.open")}</a>
+      </div>
+    </div>
   );
 }
 
@@ -330,15 +351,16 @@ function Blocks({ lines, list = false }: { lines: string[]; list?: boolean }) {
 }
 
 // The posting in its own words: its parts as the AI found them, each under its heading. Before the AI has read it,
-// the page's words as they came, which on a page with no data of its own have the site's menus round them: so many
-// lines, then the rest on asking.
+// the page's words as they came: so many lines, fading out, then the rest on asking, by a quiet link under them in the
+// accent colour, as the profile's "show more" is.
 function Description({ posting }: { posting: View["posting"] }) {
   const { t } = useApp();
   const [all, setAll] = useState(false);
   const { lines, sections } = posting;
   if (!lines.length) return null;
   const raw = !sections.length && posting.source === "page";
-  const shown = raw && !all ? lines.slice(0, RAW_LINES) : lines;
+  const cut = raw && !all && lines.length > RAW_LINES;
+  const shown = cut ? lines.slice(0, RAW_LINES) : lines;
   // The posting in its own language's direction, its lists' bullets on their side; a line in the other language
   // keeps its own (dir="auto").
   const words = sections.length ? sections.flatMap((s) => lines.slice(s.from, s.to + 1)) : lines;
@@ -354,9 +376,13 @@ function Description({ posting }: { posting: View["posting"] }) {
             {s.title && <h3 dir="auto">{s.title.replace(/\s*[:：]\s*$/, "")}</h3>}
             <Blocks lines={lines.slice(s.from, s.to + 1)} list={s.list} />
           </section>
-        )) : <div className="job-desc-part"><Blocks lines={shown} /></div>}
+        )) : <div className={`job-desc-part ${cut ? "cut" : ""}`}><Blocks lines={shown} /></div>}
       </div>
-      {raw && !all && lines.length > RAW_LINES && <button type="button" className="btn job-raw-more" onClick={() => setAll(true)}>{t("job.rawMore", { n: lines.length - RAW_LINES })}</button>}
+      {cut && (
+        <button type="button" className="job-read-more" onClick={() => setAll(true)}>
+          {t("job.rawMore")}<Icon name="down" />
+        </button>
+      )}
     </section>
   );
 }
@@ -430,14 +456,17 @@ function Above({ level }: { level: View["level"] }) {
   return <p className="job-above" role="note"><Icon name="minus" />{level.why === "senior" ? t("job.above.senior") : t("job.above.years", { n: level.years ?? 3 })}</p>;
 }
 
-// The page's body: the job, then each part as it comes.
+// The page's body: the job, then each part as it comes. Read, its skills and words in the main column, and beside them
+// how well it fits, its buttons and its facts, which come first on a narrow screen.
 function JobView({ id }: { id: string }) {
   const { view, error, outdated, again, analyze } = useJobView(id);
   const basics = basicsOf.get(id);
   if (!view && !basics) return error ? <Missing /> : <Reading stage="page" />;
+  const read = Boolean(view && !view.reading && view.posting.status === "read");
+  const job = view ? { ...view.job, date: basics?.date ?? view.posting.facts.posted ?? "" } : null;
   return (
     <article className="job-view" aria-busy={!view || Boolean(view.reading)}>
-      <Head view={view} basics={basics} />
+      <Head view={view} basics={basics} actions={!read} />
       {view?.applied && <Applied applied={view.applied} />}
       {!view && outdated ? <Outdated url={basics?.url ?? ""} />
         : !view || view.reading ? <Reading stage={view?.reading ?? "page"} />
@@ -445,10 +474,17 @@ function JobView({ id }: { id: string }) {
         : (
           <div className="job-body">
             <Above level={view.level} />
-            <Match view={view} onAnalyze={analyze} />
-            <FactsGrid view={view} />
-            <Skills skills={view.posting.skills} />
-            <Description posting={view.posting} />
+            <div className="job-layout">
+              <aside className="job-side">
+                <Match view={view} onAnalyze={analyze} />
+                {job && <SideActions job={job} />}
+                <FactsGrid view={view} />
+              </aside>
+              <div className="job-main">
+                <Skills skills={view.posting.skills} />
+                <Description posting={view.posting} />
+              </div>
+            </div>
           </div>
         )}
       {error && view && <p className="error-line" role="alert">{error}</p>}

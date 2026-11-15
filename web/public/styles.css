@@ -3737,8 +3737,9 @@ a.ai-pill { text-decoration: none; }
 .result-lead { display: contents; }
 .result.opens .score-mark { z-index: 1; cursor: pointer; }
 
-/* The page: as wide as a careers page reads, under the jobs' moving sky, with the way back above it. */
-.page.job-page { max-width: 920px; padding-top: 0; gap: 0; }
+/* The page: as wide as a careers page with a summary beside its words, under the jobs' moving sky, with the way back
+   above it. */
+.page.job-page { max-width: 1160px; padding-top: 0; gap: 0; }
 .job-page-top { position: relative; isolation: isolate; display: flex; padding: 24px 0 12px; overflow-x: clip; }
 .job-page-top .seek-sky { top: 120px; opacity: 0.5; }
 .job-back {
@@ -3762,6 +3763,47 @@ a.ai-pill { text-decoration: none; }
 .job-head .result-meta { white-space: normal; font-size: 15px; }
 .job-head .result-actions { align-self: flex-start; padding-top: 6px; }
 .job-part-title { margin: 0 0 12px; font-size: 18px; font-weight: 600; }
+
+/* A read job: its skills and words in the main column, at the page's start, and beside them, at its end, how well it
+   fits, its buttons and its facts, a careers page's summary box; on a narrow screen the summary comes first. */
+.job-layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-areas: "main side"; gap: 36px; align-items: start; }
+.job-main { grid-area: main; display: flex; flex-direction: column; gap: 28px; min-width: 0; }
+.job-side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.job-side .match-lists { grid-template-columns: minmax(0, 1fr); }
+/* Its buttons, drawn as the sidebar's main button is: apply a mint pill across the side, save and open soft grey
+   pills beside each other, a saved job's in the main green; no border and no shadow on any. */
+.job-side-acts { display: flex; flex-direction: column; gap: 8px; }
+.job-apply {
+  display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 50px; border: 0; border-radius: 999px;
+  background: var(--primary); color: var(--primary-ink); font: inherit; font-size: 17px; font-weight: 700; cursor: pointer; transition: opacity 0.2s ease;
+}
+.job-apply .icon { width: 19px; height: 19px; }
+.job-side-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.job-side-act {
+  display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; border: 0; border-radius: 999px;
+  background: var(--soft); color: var(--ink); font: inherit; font-size: 14.5px; font-weight: 600; text-decoration: none; cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.job-side-act .icon { width: 17px; height: 17px; }
+.job-side-act.on { background: color-mix(in srgb, var(--good) 13%, var(--surface)); color: var(--accent); }
+@media (hover: hover) and (pointer: fine) {
+  .job-apply:hover { opacity: 0.88; }
+  .job-side-act:hover { background: color-mix(in srgb, var(--ink) 9%, var(--surface)); }
+  .job-side-act.on:hover { background: color-mix(in srgb, var(--good) 19%, var(--surface)); }
+}
+.job-apply:focus-visible, .job-side-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Its facts down the side, a row each, the name at the start and the value at the end. */
+.job-side .job-facts { display: flex; flex-direction: column; gap: 0; padding: 4px 18px; border: 1px solid var(--line); border-radius: 20px; }
+.job-side .job-facts > div { flex-direction: row; align-items: baseline; justify-content: space-between; gap: 14px; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.job-side .job-facts > div:last-child { border-bottom: 0; }
+.job-side .job-facts dt { flex: none; font-size: 14px; }
+.job-side .job-facts dd { min-width: 0; font-size: 14.5px; text-align: end; }
+@media (min-width: 901px) {
+  .job-side .auto-part { grid-template-columns: 62px minmax(0, 1fr) 52px; gap: 10px; }
+}
+@media (max-width: 900px) {
+  .job-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side" "main"; gap: 26px; }
+}
 
 /* Applied, from the applications, which it leads to: green, or amber for a draft; the colour deepens under the pointer. */
 .job-applied {
@@ -3840,7 +3882,16 @@ a.ai-pill { text-decoration: none; }
 .job-desc-part li::marker { color: var(--ink-3); }
 .job-desc-part a { color: var(--accent); }
 .job-raw-note { margin: 0 0 12px; color: var(--ink-3); font-size: 13.5px; }
-.job-raw-more { align-self: flex-start; }
+/* The page's words cut short fade out over their last lines, and a quiet link under them, in the accent colour as the
+   profile's "show more" is, shows the rest. */
+.job-desc-part.cut { margin-bottom: 4px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 96px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 96px), transparent); }
+.job-read-more {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: 4px; margin-inline-start: -10px; padding: 5px 10px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--accent); font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer; transition: background-color 0.2s ease;
+}
+.job-read-more .icon { width: 17px; height: 17px; }
+@media (hover: hover) and (pointer: fine) { .job-read-more:hover { background: var(--hover); } }
+.job-read-more:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* While it is read: Pip at work, what he is doing, and the AI's sky in a thin line along the card's foot. */
 .job-reading, .job-notread { position: relative; display: flex; align-items: center; gap: 18px; padding: 22px 22px 26px; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; }

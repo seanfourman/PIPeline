@@ -52,6 +52,7 @@ Key flags:
 - `--jobage <days>` — posted within N days: `1`, `7`, `14`, `30`. Omit for all postings.
 - `--jobage-minutes <n>` — posted within N minutes (sub-day precision, e.g. `30`). Conflicts with `--jobage` — pass only one.
 - `--remote <mode>` — `remote`, `hybrid`, or `onsite` (workplace-type filter).
+- `--sort recent` — newest first (`sortBy=DD`). Without it LinkedIn orders by relevance, and a page of ten over a week or more seldom holds the day's new jobs: use it with `--jobage 1` to find what was just posted.
 - `--page <n>` — page number (1-indexed, 10 results per page).
 - `--limit <n>` / `-n <n>` — cap total results emitted (client-side).
 - `--format json|table|plain` — default `json`.

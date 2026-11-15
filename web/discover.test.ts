@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Fetch } from "./boards";
-import { boardOf, discoverEmployers, foundPortals, readFound } from "./discover";
+import { boardOf, discoverEmployers, foundPortals, learnFromLinks, readFound } from "./discover";
 
 const today = "2026-11-08";
 const temp = () => mkdtempSync(path.join(os.tmpdir(), "discover-"));
@@ -53,5 +53,63 @@ describe("the list that grows by itself", () => {
     await discoverEmployers({ fetch, today: "2026-12-09", seen, file });
     expect(asked).toEqual(["https://www.comeet.com/jobs/faraway/12.345"]);
     expect(JSON.parse(readFileSync(file, "utf8")).found).toHaveLength(1);
+  });
+
+  // As Comeet's board pages are since it became Spark Hire Recruit: the title is the platform's, the name in the data.
+  const DEALHUB = `<title>Spark Hire Recruit Jobs | Spark Hire Recruit - Collaborative Recruiting</title><meta property="og:title" content="Job opportunities at DealHub" />`
+    + `<script>COMPANY_DATA = {"company_name": "DealHub"}; COMPANY_POSITIONS_DATA = [{"name":"PMO","location":{"country":"IL","city":"Tel Aviv"},"url_comeet_hosted_page":"https://www.comeet.com/jobs/dealhub/86.005/pmo/7A.47C"}];</script>`;
+
+  test("a company kept under its board's address gets its name in the next check, once a day at most", async () => {
+    const dir = temp();
+    const file = path.join(dir, "found-employers.json");
+    const seen = path.join(dir, "seen_jobs.json");
+    writeFileSync(seen, JSON.stringify({ seen: {} }));
+    const read = { comeet: "dealhub/86.005" };
+    writeFileSync(file, JSON.stringify({ found: [{ id: "found-comeet-dealhub-86-005", name: "dealhub/86.005", read, url: "https://www.comeet.com/jobs/dealhub/86.005", added: "2026-11-01", israel: 3 }], tried: {} }));
+    let asked = 0;
+    const fetch: Fetch = async (url) => { asked++; return url === "https://www.comeet.com/jobs/dealhub/86.005" ? DEALHUB.replace(/<script>COMPANY_DATA[^;]*;/, "<script>") : null; };
+    expect(await discoverEmployers({ fetch, today, seen, file })).toEqual([]);
+    expect(readFound(file).found.map((f) => f.name)).toEqual(["DealHub"]);
+    // Named now: not read again.
+    asked = 0;
+    await discoverEmployers({ fetch, today: "2026-11-09", seen, file });
+    expect(asked).toBe(0);
+  });
+
+  test("a job's link sent in the chat adds its company at once, even one a check tried this month", async () => {
+    const file = path.join(temp(), "found-employers.json");
+    writeFileSync(file, JSON.stringify({ found: [], tried: { "comeet:dealhub/86.005": "2026-11-01" } }));
+    const asked: string[] = [];
+    const fetch: Fetch = async (url) => { asked.push(url); return url === "https://www.comeet.com/jobs/dealhub/86.005" ? DEALHUB : null; };
+    const found = await learnFromLinks("מה דעתך? https://www.comeet.com/jobs/dealhub/86.005/pmo/7A.47C.", { fetch, today, file });
+    expect(found.map((f) => [f.id, f.name, f.url, f.israel])).toEqual([["found-comeet-dealhub-86-005", "DealHub", "https://www.comeet.com/jobs/dealhub/86.005", 1]]);
+    expect(readFound(file).tried["comeet:dealhub/86.005"]).toBe(today);
+
+    // Sent again, or a link to a company on the list or to another site: nothing read.
+    asked.length = 0;
+    expect(await learnFromLinks("/apply https://www.comeet.com/jobs/dealhub/86.005/other/7A.48D", { fetch, today, file })).toEqual([]);
+    expect(await learnFromLinks("https://job-boards.greenhouse.io/wizinc/jobs/13 https://www.linkedin.com/jobs/view/1", { fetch, today, file })).toEqual([]);
+    expect(asked).toEqual([]);
+  });
+
+  test("a company one reader adds survives the other writing what it read at the same time", async () => {
+    const dir = temp();
+    const seen = path.join(dir, "seen_jobs.json");
+    const file = path.join(dir, "found-employers.json");
+    writeFileSync(seen, JSON.stringify({ seen: { a: { url: "https://job-boards.greenhouse.io/acme/jobs/11", first_seen: "2026-11-07" } } }));
+    let release = () => {};
+    const held = new Promise<void>((r) => { release = r; });
+    const fetch: Fetch = async (url) => {
+      if (url.startsWith("https://boards-api.greenhouse.io/v1/boards/acme")) {
+        await held;
+        return url.endsWith("/jobs") ? JSON.stringify({ jobs: [{ id: 1, title: "Data Analyst", location: { name: "Tel Aviv, Israel" } }] }) : JSON.stringify({ name: "Acme Labs" });
+      }
+      return url === "https://www.comeet.com/jobs/dealhub/86.005" ? DEALHUB : null;
+    };
+    const check = discoverEmployers({ fetch, today, seen, file });
+    await learnFromLinks("https://www.comeet.com/jobs/dealhub/86.005/pmo/7A.47C", { fetch, today, file });
+    release();
+    await check;
+    expect(readFound(file).found.map((f) => f.name).sort()).toEqual(["Acme Labs", "DealHub"]);
   });
 });

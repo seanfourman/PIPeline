@@ -16,6 +16,9 @@ export interface SearchOpts {
   jobage: number
   jobageMinutes?: number
   remote?: string // "remote" | "hybrid" | "onsite"
+  // "recent": newest first (sortBy=DD). LinkedIn's own order is by relevance, where a job posted an hour ago is
+  // seldom on the first page.
+  sort?: "recent" | "relevant"
   page: number
   limit?: number
   format: "json" | "table" | "plain"
@@ -29,6 +32,7 @@ function buildUrl(opts: SearchOpts): string {
   if (tpr) params.set("f_TPR", tpr)
   const wt = workTypeFlag(opts.remote)
   if (wt) params.set("f_WT", wt)
+  if (opts.sort === "recent") params.set("sortBy", "DD")
   params.set("start", String((opts.page - 1) * 10))
   return `${SEARCH_URL}?${params.toString()}`
 }

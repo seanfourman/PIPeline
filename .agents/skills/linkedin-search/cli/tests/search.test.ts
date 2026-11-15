@@ -58,4 +58,19 @@ describe("runSearch", () => {
     expect(code).toBe(0);
     expect(capturedUrl).toContain("f_TPR=r1800");
   });
+
+  test("--sort recent asks for the newest first (sortBy=DD); LinkedIn's own order otherwise", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      urls.push(typeof input === "string" ? input : input.toString());
+      return new Response("");
+    }) as typeof fetch;
+    process.stdout.write = (() => true) as typeof process.stdout.write;
+
+    await runSearch({ location: "Israel", jobage: 1, sort: "recent", page: 1, format: "json" });
+    await runSearch({ location: "Israel", jobage: 1, page: 1, format: "json" });
+
+    expect(urls[0]).toContain("sortBy=DD");
+    expect(urls[1]).not.toContain("sortBy");
+  });
 });

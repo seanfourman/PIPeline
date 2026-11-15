@@ -13,17 +13,18 @@ import { askInOrder, ENGINE_NAMES, engineOrder } from "./ai";
 import { ChatbotError, forgetKeys, keyStatus, PROVIDERS, type Provider } from "./chatbots";
 import { cliSignedIn, cliStatus, openLogin } from "./clis";
 import { accountFile, computerId, findLocal, localAccounts, readAccount, requestSwitch, USERS_DIR, type AccountFile, type LocalAccount } from "./accounts";
-import { foundPortals } from "./discover";
+import { foundPortals, learnFromLinks } from "./discover";
+import { pageFetcher } from "./boards";
 import { answerFile, answerManifest, syncAccount } from "./sync";
 import { deriveKey, loadKey, openWith, saveKey, sealWith } from "./synckey";
-import { INDUSTRIES, PORTALS } from "./portals";
+import { INDUSTRIES, PORTALS, type Portal } from "./portals";
 import { rankJobs, runTool, type Steps } from "./ranker";
 import { applyThroughTool, createPostings, seenReader } from "./postings";
 import { applyJob } from "./applier";
 import { JOB_ID } from "./ui/jobid";
 import { readPortalChecks, scanPortals, scrapeJobs, searchDaily } from "./scraper";
 import { alertText, createWatcher, desktopNotice, type AlertJob } from "./alerts";
-import { jobGroup } from "./groups";
+import { forgetKnown, jobGroup } from "./groups";
 import { classifyLocation, conversationFiles, loadState, parseCsv, resolveDocument, searchJobs } from "./data";
 import { createAutoScores } from "./match";
 import { atsTerms, buildSource, EditError, isSourceKind, listEditableFiles, listSources, readChecks, readDocument, readEditableFile, readSource, saveChecks, saveDocument, saveEditableFile, saveSource, setApplicationStatus } from "./edit";
@@ -750,6 +751,7 @@ async function api(req: Request, url: URL): Promise<Response> {
     const prompt = String(body.prompt ?? "").trim();
     const uploads = attached(body.files);
     if (!prompt && !uploads.length) return json({ error: "empty" }, 400);
+    learnLinks(prompt);
     // Applying is the server's own (applier.ts): the posting read and the CV built with no AI, and a few calls to the AI
     // the settings put first, a fraction of what /apply as an agent uses up. /apply --full is that agent, Claude's or
     // ChatGPT's in Codex (codex.ts), which also researches the company, has a reviewer check the draft, looks at the
@@ -772,6 +774,7 @@ async function api(req: Request, url: URL): Promise<Response> {
     const text = String(body.text ?? "").trim();
     const uploads = attached(body.files);
     if (!text && !uploads.length) return json({ error: "empty" }, 400);
+    learnLinks(text);
     session.send(text, uploads);
     return json({ ok: true });
   }
@@ -808,6 +811,16 @@ function portfolioMedia(req: Request, url: URL) {
 
 // The uploads a message names, by id, up to five; one that is not there is left out.
 const attached = (ids: unknown) => (Array.isArray(ids) ? ids.slice(0, 5).map((id) => findUpload(String(id))).filter((u) => u !== null) : []);
+
+// A job's link on a recruiting platform in a message, or in /apply from a job's page: its company joins the employers
+// the portals check reads (discover.ts), in the background, whatever the conversation goes on to do.
+const linkFetch = pageFetcher();
+function learnLinks(text: string) {
+  if (!/https?:\/\//.test(text)) return;
+  learnFromLinks(text, { fetch: linkFetch, today: new Date().toLocaleDateString("en-CA") })
+    .then((found) => { if (found.length) forgetKnown(); })
+    .catch((err) => console.error("A link's company could not be learned:", err));
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -855,13 +868,17 @@ const AUTOMATION_CHECK_MS = 60_000;
 setInterval(() => automation.tick(), AUTOMATION_CHECK_MS);
 
 // Live alerts (alerts.ts): the search watched with no AI, quietly, with no conversation for it, and each new job told by
-// email and on this computer as it is stored, by its group (groups.ts). Its rounds wait for the daily run and for a
-// search of the user's own; a daily run that starts during a round writes the list through the same locked tool.
+// email and on this computer as it is stored, by its group (groups.ts). Its two lanes start only while the daily run
+// and a search of the user's own aren't going; a daily run that starts during one writes the list through the same
+// locked tool. The quick search looks one day back, newest first. In the half-hourly sweep, an employer read through a
+// board's page (AllJobs's or Drushim's, some 400 on two sites, read a page at a time) is read hourly; one on its own
+// site or a recruiting platform each time (25 minutes, under the sweep's half hour).
 const QUIET: Steps = { start() {}, done() {} };
+const throughBoard = (p: Portal) => !p.direct && Boolean(p.read && ("alljobs" in p.read || "drushim" in p.read));
 const watcher = createWatcher({
   loadSettings,
-  search: (found, signal) => searchDaily({ steps: QUIET, signal, lang: language(), found }),
-  scan: (found, signal, boards) => scanPortals({ steps: QUIET, signal, lang: language(), ask: async () => "", boards, discover: boards, rest: 0.25, fresh: 60, found }),
+  search: (found, signal) => searchDaily({ steps: QUIET, signal, lang: language(), found, days: "1" }),
+  scan: (found, signal) => scanPortals({ steps: QUIET, signal, lang: language(), ask: async () => "", boards: true, discover: true, rest: 0.25, fresh: (p) => (throughBoard(p) ? 60 : 25), found }),
   busy: () => listBusy !== "" || automation.isRunning(),
   tell: tellAlerts,
   group: (j) => jobGroup(j),

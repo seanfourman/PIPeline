@@ -328,6 +328,10 @@ export const PORTALS: Portal[] = [
   // IT placement houses that list their jobs on their own sites, which the job sites' searches found them by before.
   tech("aman", "קבוצת Aman", "Aman Group", { own: "aman" }, "https://www.aman.co.il/careers/"),
   tech("dialog", "דיאלוג", "Dialog", { own: "dialog" }, "https://www.dialog.co.il/high-tech/jobs/"),
+  // A testing and QA company that takes on many juniors, on its own careers site (SAP SuccessFactors, like ICL's),
+  // searched for Israel, 25 jobs a page: 63 on 2026-11-15, nearly all in Petah Tikva.
+  tech("qualitest", "קוואליטסט", "Qualitest", { links: { url: "https://careers.quality-ai.com/search/?q=&locationsearch=Israel", path: "^/job/", step: { param: "startrow", size: 25 } } },
+    "https://careers.quality-ai.com/search/?q=&locationsearch=Israel"),
   ajTech("one", "וואן טכנולוגיות", "One Technologies", 61904),
   ajTech("calanit", "כלנית (וואן)", "Calanit by One", 151960),
   ajTech("consist", "קונסיסט", "Consist", 9322),

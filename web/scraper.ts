@@ -18,7 +18,7 @@ import { classifyLocation, searchJobs } from "./data";
 import { discoverEmployers, foundPortals } from "./discover";
 import { seniorTitle } from "./experience";
 import { roleFit, roleWords } from "./match";
-import { employerName, employersToRead, portalOn, webPortals } from "./portals";
+import { employerName, employersToRead, portalOn, webPortals, type Portal } from "./portals";
 import { fieldWords, titleMatches } from "./roles";
 import { channelJobs, channelName } from "./telegram";
 import { candidateContext, FATAL, PYTHON, runTool, type Ask, type Run, type Steps } from "./ranker";
@@ -268,14 +268,16 @@ export async function scrapeJobs(o: { ask: Ask; steps: Steps; signal: AbortSigna
 
 // ---------- the daily run's search ----------
 
-const toolsOnly: Search = (role, settings, signal) => searchJobs(role, "14", "all", settings.workMode, settings, "tools", signal);
+const toolsOnly = (days: string): Search => (role, settings, signal) => searchJobs(role, days, "all", settings.workMode, settings, "tools", signal);
 
 // The daily run's search, with no AI at all, where an agent used to run /job-scraper: every role on LinkedIn and
 // freehire in every market (the Israeli boards are the portals check's, which comes next), and the Telegram channels
 // the portals page has on (telegram.ts), each hit judged by the rules (judgeByRules) and stored. The recruiting
 // platforms and the other sites the agent searched with WebSearch need a search engine, so they are left to the
 // smart search and to the employers found on them (discover.ts).
-export async function searchDaily(o: Omit<Judging, "ask" | "rules"> & { settings?: Settings; fetch?: Fetch; search?: Search; now?: number }) {
+// days is how far back LinkedIn and freehire look, two weeks unless said. The live alerts look one day back: LinkedIn
+// gives a search's first ten by relevance, and over two weeks a job posted an hour ago is seldom among them.
+export async function searchDaily(o: Omit<Judging, "ask" | "rules"> & { settings?: Settings; fetch?: Fetch; search?: Search; now?: number; days?: "1" | "14" }) {
   const { steps, signal, lang, run = runTool } = o;
   const settings = o.settings ?? loadSettings();
   const fetch = o.fetch ?? pageFetcher(run);
@@ -283,7 +285,7 @@ export async function searchDaily(o: Omit<Judging, "ask" | "rules"> & { settings
   const roles = [...new Set(settings.roles.map((r) => r.query).filter(Boolean))];
   if (!settings.markets.length) throw new ChatbotError("scrape_no_market");
   if (!roles.length) throw new ChatbotError("scrape_no_roles");
-  const { hits, failed } = await searchRoles(roles, settings, o.search ?? toolsOnly, steps, signal);
+  const { hits, failed } = await searchRoles(roles, settings, o.search ?? toolsOnly(o.days ?? "14"), steps, signal);
   const field = fieldWords(settings.roles);
   const places = settings.areas.flatMap((a) => a.places);
   const channels = webPortals(settings).filter((p) => p.channel).map((p) => ({ name: channelName(p.url), label: employerName(p, lang) })).filter((c) => c.name);
@@ -324,8 +326,12 @@ const boardsOnly: Search = (role, settings, signal) => searchJobs(role, "14", "a
 // didn't fail, is left alone: most of those have no jobs open at all, and each is one more page from a site that is
 // read a page at a time. With discover, the companies found on the recruiting platforms are read too, and the job
 // list's new boards looked into once the rest is done (discover.ts).
-// fresh, for the live alerts, is the minutes a portal checked well is left alone after its check.
-export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; post?: Post; boards?: boolean; search?: Search; checks?: string; rest?: number; fresh?: number; discover?: boolean }) {
+// fresh, for the live alerts, is the minutes a portal checked well is left alone after its check, the same for all or
+// by the portal. With found (the live alerts), what is read is judged, stored and handed on a minute's worth at a time
+// rather than once all is read: the sweep takes a quarter of an hour, most of it the some 400 employers read through
+// AllJobs one page at a time, and a job on a site read in the first minute shouldn't wait for them.
+const BATCH_MS = 60_000;
+export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fetch; post?: Post; boards?: boolean; search?: Search; checks?: string; rest?: number; fresh?: number | ((p: Portal) => number); discover?: boolean }) {
   const { steps, signal, lang, run = runTool } = o;
   const settings = o.settings ?? loadSettings();
   const fetch = o.fetch ?? pageFetcher(run);
@@ -339,18 +345,49 @@ export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fe
   const israel = settings.markets.some((m) => m.code === "IL");
   if (!employers.length && !own.length && !(o.boards && israel)) return `## ${w.portals}\n\n${w.none}`;
 
-  const found: Hit[] = [];
   const failed = new Set<string>();
   const checks = readPortalChecks(o.checks);
   const checkedAt = new Date().toISOString();
-  const resting = (id: string) => {
-    const c = checks[id];
+  const resting = (p: Portal) => {
+    const c = checks[p.id];
     if (!c || c.error) return false;
     const age = Date.now() - Date.parse(c.checked);
-    return Boolean((o.rest && !c.found && age < o.rest * 86_400_000) || (o.fresh && age < o.fresh * 60_000));
+    const fresh = typeof o.fresh === "function" ? o.fresh(p) : o.fresh;
+    return Boolean((o.rest && !c.found && age < o.rest * 86_400_000) || (fresh && age < fresh * 60_000));
   };
+
+  // What was read waits in pending until it is judged and stored (judgeAndStore), all at the end, or with found a
+  // minute's worth at a time, one batch after another. A batch whose storing fails doesn't stop the others; the first
+  // failure is thrown once the checks are written.
+  const done: Awaited<ReturnType<typeof judgeAndStore>> = { kept: [], skipped: [], unjudged: 0, already: 0, engines: new Set<string>() };
+  let pending: Hit[] = [];
+  let storing: Promise<void> = Promise.resolve();
+  let failure: unknown = null;
+  let stored = Date.now();
+  const store = () => {
+    const batch = pending;
+    pending = [];
+    stored = Date.now();
+    storing = storing.then(async () => {
+      if (!batch.length) return;
+      try {
+        // Judged by the rules, with no AI: the employers' lists are kept to the roles' fields already, and a scraper
+        // needs no model (Sean 2026-11-14: "מה הפואנטה ל AI בשביל SCRAPER רגיל").
+        const d = await judgeAndStore(batch, { ...o, run, today: o.today, rules: settings });
+        done.kept.push(...d.kept);
+        done.skipped.push(...d.skipped);
+        done.unjudged += d.unjudged;
+        done.already += d.already;
+        d.engines.forEach((e) => done.engines.add(e));
+      } catch (err) {
+        failure ??= err;
+      }
+    });
+    return storing;
+  };
+
   const lists = [
-    ...employers.filter((p) => !resting(p.id)).map((p) => ({ id: p.id, name: employerName(p, lang), read: () => readEmployer(p, settings.roles, { fetch, post, today, signal, seniority: settings.seniority }) })),
+    ...employers.filter((p) => !resting(p)).map((p) => ({ id: p.id, name: employerName(p, lang), read: () => readEmployer(p, settings.roles, { fetch, post, today, signal, seniority: settings.seniority }) })),
     ...own.map((p) => ({ id: p.id, name: p.name, read: () => readOwnPage(p.id, p.name, p.url, settings.roles, { fetch, today, signal }) })),
   ];
   const perPortal = new Map<string, Found[]>();
@@ -362,9 +399,10 @@ export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fe
       try {
         const postings = await list.read();
         perPortal.set(list.id, postings);
-        found.push(...postings.map((p) => ({ ...p, tier: classifyLocation(p.location, settings.areas) })));
+        pending.push(...postings.map((p) => ({ ...p, tier: classifyLocation(p.location, settings.areas) })));
         checks[list.id] = { checked: checkedAt, found: postings.length, kept: 0 };
         steps.done(`portal-${list.id}`, true, `${postings.length}`);
+        if (o.found && Date.now() - stored >= BATCH_MS) void store();
       } catch (err) {
         failed.add(list.name);
         checks[list.id] = { checked: checkedAt, found: 0, kept: 0, error: oneLine((err as Error)?.message ?? err, 120) };
@@ -377,16 +415,15 @@ export async function scanPortals(o: Judging & { settings?: Settings; fetch?: Fe
   const roles = [...new Set(settings.roles.map((r) => r.query).filter(Boolean))];
   if (o.boards && israel && !signal.aborted) {
     const searched = await searchRoles(roles, settings, o.search ?? boardsOnly, steps, signal);
-    found.push(...searched.hits.values());
+    pending.push(...searched.hits.values());
     searched.failed.forEach((f) => failed.add(f));
   }
 
-  // Judged by the rules, with no AI: the employers' lists are kept to the roles' fields already, and a scraper needs
-  // no model (Sean 2026-11-14: "מה הפואנטה ל AI בשביל SCRAPER רגיל").
-  const done = await judgeAndStore(found, { ...o, run, today: o.today, rules: settings });
+  await store();
   for (const { h } of done.kept) if (h.portal_id && checks[h.portal_id]) checks[h.portal_id].kept++;
   mkdirSync(path.dirname(o.checks ?? CHECKS_FILE), { recursive: true });
   writeFileSync(o.checks ?? CHECKS_FILE, JSON.stringify(checks, null, 2));
+  if (failure) throw failure;
   const discovered = o.discover && !signal.aborted ? await discoverEmployers({ fetch, today, signal }).catch(() => []) : [];
   const head = [w.read(lists.length), o.boards && israel ? w.boards : ""].filter(Boolean).join(" ");
   const [title, line, ...rest] = report(lang, `## ${w.portals}`, done, failed, signal.aborted);
