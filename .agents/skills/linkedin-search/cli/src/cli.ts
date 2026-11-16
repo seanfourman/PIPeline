@@ -187,6 +187,12 @@ async function main(): Promise<number> {
       if (v === null) return 1
       flags.limit = String(v)
     }
+    if (flags.sort !== undefined && flags.sort !== "recent" && flags.sort !== "relevant") {
+      process.stderr.write(
+        JSON.stringify({ error: `--sort must be recent or relevant, got "${flags.sort}"`, code: "BAD_ARG" }) + "\n",
+      )
+      return 1
+    }
 
     const opts: SearchOpts = {
       query: typeof flags.query === "string" ? flags.query : undefined,
@@ -194,6 +200,7 @@ async function main(): Promise<number> {
       jobage: flags.jobage ? parseInt(flags.jobage as string, 10) : 9999,
       jobageMinutes: flags["jobage-minutes"] ? parseInt(flags["jobage-minutes"] as string, 10) : undefined,
       remote: typeof flags.remote === "string" ? flags.remote : undefined,
+      sort: flags.sort === "recent" ? "recent" : undefined,
       page: flags.page ? Math.max(1, parseInt(flags.page as string, 10)) : 1,
       limit: flags.limit ? parseInt(flags.limit as string, 10) : undefined,
       format: fmt as SearchOpts["format"],

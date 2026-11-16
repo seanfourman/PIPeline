@@ -185,7 +185,9 @@ describe("a computer joining an account through the site", () => {
     paired.stop();
     second.start();
     await until(() => second.status().state === "on");
-  });
+    // On Windows each link's key is sealed by starting PowerShell, twice here, and on a fresh GitHub runner that alone
+    // can pass Bun's five seconds for a hook.
+  }, 30_000);
   afterAll(() => { first.stop(); second.stop(); site.stop(); });
 
   test("a computer not on the account can't ask its computers anything", async () => {

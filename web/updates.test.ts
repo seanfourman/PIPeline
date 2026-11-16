@@ -78,7 +78,8 @@ describe("an update's signature", () => {
 
   test("is checked by the launcher and the Mac's update with the key in update-key.pem, over the same words", () => {
     const installer = path.join(import.meta.dir, "..", "installer");
-    const publicPem = readFileSync(PUBLIC_KEY_FILE, "utf8");
+    // Git on GitHub's Windows runners checks the key out with \r\n, and the Mac script's copy of it keeps \n.
+    const publicPem = readFileSync(PUBLIC_KEY_FILE, "utf8").replaceAll("\r\n", "\n");
     const launcher = readFileSync(path.join(installer, "launcher.cs"), "utf8");
     const { modulus, exponent } = launcherKey(publicPem);
     expect(launcher).toContain(`const string UpdateKeyModulus = "${modulus}";`);

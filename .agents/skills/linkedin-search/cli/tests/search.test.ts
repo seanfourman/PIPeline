@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { runSearch } from "../src/commands/search";
+import { runSearchFixture } from "./helpers";
 
 const originalFetch = globalThis.fetch;
 const originalStdoutWrite = process.stdout.write;
@@ -59,18 +60,23 @@ describe("runSearch", () => {
     expect(capturedUrl).toContain("f_TPR=r1800");
   });
 
+  // Through the real command line: the flag was once accepted there and never handed on, so the search kept
+  // LinkedIn's relevance order while a direct call to runSearch passed.
   test("--sort recent asks for the newest first (sortBy=DD); LinkedIn's own order otherwise", async () => {
-    const urls: string[] = [];
-    globalThis.fetch = (async (input: RequestInfo | URL) => {
-      urls.push(typeof input === "string" ? input : input.toString());
-      return new Response("");
-    }) as typeof fetch;
-    process.stdout.write = (() => true) as typeof process.stdout.write;
+    const recent = await runSearchFixture(["search", "-l", "Israel", "--jobage", "1", "--sort", "recent"]);
+    expect(recent.result.exitCode).toBe(0);
+    expect(recent.requests[0].searchParams.get("sortBy")).toBe("DD");
+    for (const args of [[], ["--sort", "relevant"]]) {
+      const { result, requests } = await runSearchFixture(["search", "-l", "Israel", "--jobage", "1", ...args]);
+      expect(result.exitCode).toBe(0);
+      expect(requests[0].searchParams.has("sortBy")).toBe(false);
+    }
+  });
 
-    await runSearch({ location: "Israel", jobage: 1, sort: "recent", page: 1, format: "json" });
-    await runSearch({ location: "Israel", jobage: 1, page: 1, format: "json" });
-
-    expect(urls[0]).toContain("sortBy=DD");
-    expect(urls[1]).not.toContain("sortBy");
+  test("--sort with another order exits 1 with BAD_ARG before any request", async () => {
+    const { result, requests } = await runSearchFixture(["search", "-l", "Israel", "--sort", "newest"]);
+    expect(result.exitCode).toBe(1);
+    expect(JSON.parse(result.stderr).code).toBe("BAD_ARG");
+    expect(requests).toHaveLength(0);
   });
 });
