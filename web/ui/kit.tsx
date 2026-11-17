@@ -2,7 +2,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Archive, ArchiveRestore, ArrowLeftRight, ArrowUp, Award, Bookmark, BookOpenText, BriefcaseBusiness, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, FolderInput, FolderOpen, FolderPlus, Gauge,
-  Gem, Globe, GraduationCap, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, MessageCircleDashed, Mic, Minus, Moon, PanelLeft, PanelRight, Pause, Pencil, Phone, Pin, PinOff, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
+  Gem, Globe, GraduationCap, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, MessageCircleDashed, Mic, Minus, Moon, PanelLeft, PanelRight, Pause, Pencil, Phone, Pin, PinOff, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, Signal, SignalHigh, SignalLow, SignalMedium, SlidersHorizontal,
   Sparkles, Square, Sun, Trash2, TriangleAlert, User, UserPlus, X, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -128,9 +128,14 @@ function inline(text: string, key = ""): React.ReactNode[] {
 const isTableRule = (line = "") => /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(line);
 const isList = (line: string) => /^\s*([-*]|\d+\.)\s+/.test(line);
 
+// dir "rtl": words in Hebrew (a conversation in Hebrew), where every block with a Hebrew word in it reads from the
+// right and every list keeps its bullets there, even one whose items start with an English name or a link, as a list
+// of sources does (Sean 2026-11-17: "במקורות ביקשתי שזה תמיד יהיה מצד ימין אם השיחה בעברית"). Otherwise each block
+// goes by its own first letter (dir="auto"), and a list by most of its items.
 export function Markdown({ src, className = "md", dir }: { src: string; className?: string; dir?: string }) {
   const lines = src.replace(/\r/g, "").split("\n");
   const blocks: React.ReactNode[] = [];
+  const blockDir = (text: string) => (dir === "rtl" && HEBREW.test(text) ? "rtl" : "auto");
   for (let i = 0; i < lines.length;) {
     const line = lines[i];
     const k = String(i);
@@ -146,7 +151,7 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
     const heading = line.match(/^(#{1,4})\s+(.*)/);
     if (heading) {
       const Tag = `h${Math.min(heading[1].length + 1, 4)}` as "h2";
-      blocks.push(<Tag key={k} dir="auto">{inline(heading[2], k)}</Tag>);
+      blocks.push(<Tag key={k} dir={blockDir(heading[2])}>{inline(heading[2], k)}</Tag>);
       i++;
       continue;
     }
@@ -158,8 +163,8 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
       const body: string[][] = [];
       while (i < lines.length && lines[i].includes("|")) body.push(cells(lines[i++]));
       blocks.push(<div key={k} className="tablebox"><table>
-        <thead><tr>{head.map((c, j) => <th key={j} dir="auto">{inline(c, `${k}h${j}`)}</th>)}</tr></thead>
-        <tbody>{body.map((r, j) => <tr key={j}>{r.map((c, n) => <td key={n} dir="auto">{inline(c, `${k}${j}-${n}`)}</td>)}</tr>)}</tbody>
+        <thead><tr>{head.map((c, j) => <th key={j} dir={blockDir(c)}>{inline(c, `${k}h${j}`)}</th>)}</tr></thead>
+        <tbody>{body.map((r, j) => <tr key={j}>{r.map((c, n) => <td key={n} dir={blockDir(c)}>{inline(c, `${k}${j}-${n}`)}</td>)}</tr>)}</tbody>
       </table></div>);
       continue;
     }
@@ -174,10 +179,13 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
       const rtl = dirs.filter((d) => d === "rtl").length;
       const ltr = dirs.filter((d) => d === "ltr").length;
       const page = typeof document !== "undefined" && document.documentElement.dir === "ltr" ? "ltr" : "rtl";
-      const side = rtl > ltr ? "rtl" : ltr > rtl ? "ltr" : dir === "ltr" || dir === "rtl" ? dir : page;
+      const side = dir === "rtl" ? "rtl" : rtl > ltr ? "rtl" : ltr > rtl ? "ltr" : dir === "ltr" ? dir : page;
       const items = texts.map((text, n) => {
         const body = inline(text, `${k}-${n}`);
-        return <li key={n}>{dirs[n] && dirs[n] !== side ? <bdi dir={dirs[n]}>{body}</bdi> : body}</li>;
+        // In a list read from the right, an item with any Hebrew in it reads from the right too; only one all in another
+        // language is set apart in its own.
+        const apart = side === "rtl" && HEBREW.test(text) ? undefined : dirs[n] && dirs[n] !== side ? dirs[n] : undefined;
+        return <li key={n}>{apart ? <bdi dir={apart}>{body}</bdi> : body}</li>;
       });
       blocks.push(ordered ? <ol key={k} dir={side}>{items}</ol> : <ul key={k} dir={side}>{items}</ul>);
       continue;
@@ -185,7 +193,7 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
     if (line.startsWith(">")) {
       const quote: string[] = [];
       while (i < lines.length && lines[i].startsWith(">")) quote.push(lines[i++].replace(/^>\s?/, ""));
-      blocks.push(<blockquote key={k} dir="auto">{inline(quote.join(" "), k)}</blockquote>);
+      blocks.push(<blockquote key={k} dir={blockDir(quote.join(" "))}>{inline(quote.join(" "), k)}</blockquote>);
       continue;
     }
     const para: string[] = [];
@@ -193,7 +201,7 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
       if (lines[i].includes("|") && isTableRule(lines[i + 1])) break;
       para.push(lines[i++]);
     }
-    if (para.length) blocks.push(<p key={k} dir="auto">{inline(para.join(" "), k)}</p>);
+    if (para.length) blocks.push(<p key={k} dir={blockDir(para.join(" "))}>{inline(para.join(" "), k)}</p>);
     else i++;
   }
   return <div className={className} dir={dir}>{blocks}</div>;
@@ -234,6 +242,7 @@ const ICONS: Record<string, LucideIcon> = {
   "folder-plus": FolderPlus, move: FolderInput, "panel-left": PanelLeft, "panel-right": PanelRight,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,
   "model-default": Cpu, "model-opus": Gem, "model-sonnet": Feather, "model-haiku": Leaf,
+  "effort-default": Gauge, "effort-low": SignalLow, "effort-medium": SignalMedium, "effort-high": SignalHigh, "effort-xhigh": Signal,
 };
 
 // filled is for the page you are on: the shape filled in, its inner lines cut out (see .icon.filled in the CSS).
@@ -250,9 +259,48 @@ export const ActLabel = ({ children, dir }: { children: React.ReactNode; dir?: s
 // The AI's colours, as the sparkles have them on the jobs page (.ai-sky in styles.css): the forest rainbow in clouds
 // drifting over the sky's blue, behind whatever stands for the AI, a button or a round mark, and in its shape. orb is
 // for a small round one, with five small clouds about its middle.
+// In a button, the colours move faster while the pointer is on it or the keyboard is, where they once grew brighter
+// (Sean 2026-11-17: "אל תעשה שזה יהיה יותר SATURATED תעשה שהוא יהיה מהיר יותר בפנים"). The speed eases in and out from
+// where each cloud is, as the animations' own rate changes, never their place; with reduced motion nothing moves at all.
+const SKY_QUICK = 2.6;
+const SKY_EASE_MS = 350;
 export function AiSky({ orb = false }: { orb?: boolean }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const sky = ref.current;
+    const host = sky?.parentElement?.closest<HTMLElement>("button, a, [role='button']");
+    if (!sky || !host) return;
+    let rate = 1;
+    let frame = 0;
+    const toward = (target: number) => {
+      cancelAnimationFrame(frame);
+      const from = rate;
+      const start = performance.now();
+      const step = (now: number) => {
+        const p = Math.min(1, (now - start) / SKY_EASE_MS);
+        rate = from + (target - from) * (1 - (1 - p) ** 3);
+        for (const a of sky.getAnimations({ subtree: true })) a.playbackRate = rate;
+        if (p < 1) frame = requestAnimationFrame(step);
+      };
+      frame = requestAnimationFrame(step);
+    };
+    const quick = () => { if (!host.matches(":disabled")) toward(SKY_QUICK); };
+    const calm = () => toward(1);
+    const focus = () => { if (host.matches(":focus-visible")) quick(); };
+    host.addEventListener("pointerenter", quick);
+    host.addEventListener("pointerleave", calm);
+    host.addEventListener("focusin", focus);
+    host.addEventListener("focusout", calm);
+    return () => {
+      cancelAnimationFrame(frame);
+      host.removeEventListener("pointerenter", quick);
+      host.removeEventListener("pointerleave", calm);
+      host.removeEventListener("focusin", focus);
+      host.removeEventListener("focusout", calm);
+    };
+  }, []);
   return (
-    <span className={`ai-sky ${orb ? "orb" : ""}`} aria-hidden="true">
+    <span ref={ref} className={`ai-sky ${orb ? "orb" : ""}`} aria-hidden="true">
       {Array.from({ length: orb ? 5 : 7 }, (_, i) => <i key={i} />)}
     </span>
   );

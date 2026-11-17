@@ -34,6 +34,17 @@ describe("answer parts", () => {
     expect(answerParts(mixed)).toEqual([{ md: mixed }]);
   });
 
+  test("keeps as words the questions Pip asks, each with why he asks on its own line", () => {
+    // Such questions once showed as cards to turn over to "how to answer" (2026-11-17).
+    const asks = [
+      "### לפני שאני מתחיל, שלוש שאלות",
+      "1. **עבדת עם Kafka?** לא מצאתי אותו בפרופיל.",
+      "2. **עבדת עם Terraform?** המודעה מבקשת אותו.",
+      "3. **להמשיך לקורות החיים?** המודעה לא מבקשת מכתב מקדים.",
+    ].join("\n");
+    expect(answerParts(asks)).toEqual([{ md: asks }]);
+  });
+
   test("blank lines between the questions keep them one run", () => {
     const src = "- **Why Wix?**\n  The product.\n\n- **Why backend?**\n  I like systems.";
     expect(answerParts(src)).toEqual([{ cards: [{ q: "Why Wix?", a: "The product." }, { q: "Why backend?", a: "I like systems." }] }]);

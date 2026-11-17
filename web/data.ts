@@ -45,12 +45,14 @@ const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // A place matches from the start of a word, so "lod" does not match "Melody"; a Hebrew one, from the Israeli boards,
 // by its English name too (inEnglish).
-// Exclusions are checked first, so an excluded "Kiryat Gat" beats a wider acceptable area.
+// Exclusions are checked first, so an excluded "Kiryat Gat" beats a wider acceptable area. A hyphen is a space, in the
+// place and in the words alike (any dash, the Hebrew maqaf too), so the "Israel, Kiryat-Gat" of Intel's site is Kiryat Gat.
+const spaced = (s: string) => s.toLowerCase().replace(/[\p{Pd}_]+/gu, " ");
 export function classifyLocation(location: string, areas: Area[]): Area["tier"] | "unknown" {
-  const text = `${location ?? ""} ${inEnglish(location ?? "")}`.toLowerCase();
+  const text = spaced(`${location ?? ""} ${inEnglish(location ?? "")}`);
   for (const tier of ["far", "edge", "near", "ok"] as const) {
     const places = areas.filter((a) => a.tier === tier).flatMap((a) => a.places);
-    if (places.some((p) => new RegExp(`(^|[^\\p{L}])${escapeRegex(p)}`, "u").test(text))) return tier;
+    if (places.some((p) => new RegExp(`(^|[^\\p{L}])${escapeRegex(spaced(p))}`, "u").test(text))) return tier;
   }
   return "unknown";
 }

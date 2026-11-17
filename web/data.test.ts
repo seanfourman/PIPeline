@@ -93,6 +93,9 @@ describe("classifyLocation", () => {
     expect(tier("Jerusalem District, Israel")).toBe("far");
     expect(tier("Be'er Sheva, South District")).toBe("far");
     expect(tier("Kiryat Gat")).toBe("far");
+    // A hyphen, or any dash, is a space, as Intel's site writes its places.
+    expect(tier("Israel, Kiryat-Gat")).toBe("far");
+    expect(tier("Rosh-Ha'Ayin")).toBe(tier("Rosh Ha'Ayin"));
     expect(tier("Kiryat Bialik, Haifa District")).toBe("ok");
     expect(tier("Israel")).toBe("unknown");
     expect(tier("")).toBe("unknown");

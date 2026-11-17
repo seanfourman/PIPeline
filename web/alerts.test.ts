@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { alertText, createWatcher, desktopNotice, justPublished, noticeCommand, type AlertJob, type NewJob } from "./alerts";
+import { alertText, createWatcher, desktopNotice, justPublished, noticeCommand, worthTelling, type AlertJob, type NewJob } from "./alerts";
 import { forgetKnown, jobGroup, plainName } from "./groups";
 import { EMPTY_SETTINGS, type Settings } from "./settings";
 
@@ -133,6 +133,48 @@ describe("the live alerts", () => {
     watcher.tick();
     await Bun.sleep(5);
     expect(rounds).toBe(2);
+  });
+
+  test("a job is told once its posting is read: not one asking three years or more, a senior one, a closed one, or a student's the settings rank low", async () => {
+    const postings: Record<string, { status?: string; years?: number | null } | null> = {
+      "Software Engineer II": { status: "read", years: 4 },
+      "Software Engineer": { status: "read", years: 1 },
+      "Backend Developer": { status: "expired" },
+      "QA Engineer": { status: "unreachable" },
+      "Data Engineer": null,
+    };
+    const titles = async (jobs: NewJob[], o: { students?: string; seniority?: string; waitMs?: number; read?: (j: NewJob) => Promise<any> } = {}) =>
+      (await worthTelling(jobs, { read: o.read ?? (async (j) => postings[j.title] ?? null), seniority: o.seniority ?? "junior", students: o.students ?? "low", waitMs: o.waitMs })).map((j) => j.title);
+    const jobs = ["Software Engineer II", "Software Engineer", "Backend Developer", "QA Engineer", "Data Engineer", "Senior Data Engineer", "Software Engineering Student"].map((t) => job(t));
+    // A page that won't open, or none read, is judged by its title.
+    expect(await titles(jobs)).toEqual(["Software Engineer", "QA Engineer", "Data Engineer"]);
+    expect(await titles(jobs, { students: "normal" })).toEqual(["Software Engineer", "QA Engineer", "Data Engineer", "Software Engineering Student"]);
+    // Any other level keeps the years and the senior title.
+    expect(await titles(jobs, { seniority: "any", students: "normal" })).toEqual(["Software Engineer II", "Software Engineer", "QA Engineer", "Data Engineer", "Senior Data Engineer", "Software Engineering Student"]);
+    // A reading that fails, or isn't done when the batch has waited its while, leaves the title to judge.
+    expect(await titles([job("Software Engineer II")], { read: async () => { throw new Error("no page"); } })).toEqual(["Software Engineer II"]);
+    expect(await titles([job("Software Engineer II")], { read: () => new Promise(() => {}), waitMs: 5 })).toEqual(["Software Engineer II"]);
+  });
+
+  test("the watcher tells only what its screen keeps, and tells all when the screen fails", async () => {
+    const told: string[] = [];
+    let failing = false;
+    const watcher = createWatcher({
+      loadSettings: () => on(),
+      search: async (found) => found([job(failing ? "Data Engineer" : "Junior QA Engineer"), job(failing ? "Data Analyst" : "QA Engineer, 5 years")]),
+      scan: async () => {},
+      busy: () => false,
+      screen: async (jobs) => { if (failing) throw new Error("no postings"); return jobs.filter((j) => !j.title.includes("years")); },
+      tell: async (jobs) => { told.push(...jobs.map((j) => j.title)); },
+      group: () => "other",
+      log: () => {},
+    });
+    await watcher.round();
+    expect(told).toEqual(["Junior QA Engineer"]);
+    failing = true;
+    await watcher.round();
+    expect(told).toEqual(["Junior QA Engineer", "Data Engineer", "Data Analyst"]);
+    expect(watcher.status().told).toBe(3);
   });
 
   test("a search that fails doesn't stop the round: the portals check's jobs are still told, and the failure logged", async () => {

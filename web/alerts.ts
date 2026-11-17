@@ -1,5 +1,6 @@
-// Live alerts: the search watched with no AI, each new job told by email and on the computer the moment it is stored,
-// marked by its group (groups.ts): a high-tech company's or a known employer's, or another's. Two lanes, each at its
+// Live alerts: the search watched with no AI, each new job told by email and on the computer the moment it is stored
+// and its posting read (a job above the level searched for isn't told, server.ts), marked by its group (groups.ts): a
+// high-tech company's or a known employer's, or another's. Two lanes, each at its
 // own pace, so the slow one never holds the quick one back. The quick search (LinkedIn and freehire for the last day,
 // newest first, and the Telegram channels, scraper.ts searchDaily), some ten seconds, runs every few minutes
 // (settings.alerts.every). The sites' sweep (scanPortals) runs every half hour: an employer's own site is read when its
@@ -7,6 +8,7 @@
 // searched each time. It takes a quarter of an hour, most of it the some 400 employers read through AllJobs one page at
 // a time, so what it finds is told as it is stored, a minute's worth at a time. A lane starts only while the daily run
 // or a search of the user's own isn't going, and never twice at once.
+import { levelGate, STUDENT } from "./experience";
 import type { Group } from "./groups";
 import type { Settings } from "./settings";
 
@@ -36,6 +38,29 @@ export function justPublished(jobs: NewJob[], o: { now: number; readBefore: (por
   });
 }
 
+// The just published jobs worth a message, once each posting is read: none the list would leave out, a job a junior
+// search shouldn't see (a senior title, or three years or more asked, experience.ts levelGate) or one found closed;
+// nor a student's position when the settings rank those low (still on the list, not worth a message). The batch waits
+// so long for its postings; one not read by then, or that won't open, is judged by its title.
+const SCREEN_WAIT_MS = 3 * 60_000;
+type Read = { status?: string; years?: number | null } | null;
+export async function worthTelling(jobs: NewJob[], o: { read: (job: NewJob) => Promise<Read>; seniority: string; students: string; waitMs?: number }) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const waited = new Promise<null>((go) => { timer = setTimeout(() => go(null), o.waitMs ?? SCREEN_WAIT_MS); });
+  try {
+    const judged = await Promise.all(jobs.map(async (j) => {
+      if (o.students !== "normal" && STUDENT.test(j.title)) return null;
+      const read = await Promise.race([o.read(j).catch((): Read => null), waited]);
+      if (read?.status === "expired") return null;
+      const years = read?.status === "read" ? read.years ?? null : null;
+      return levelGate({ title: j.title, years, seniority: o.seniority }).verdict === "PASS" ? j : null;
+    }));
+    return judged.filter((j): j is NewJob => j !== null);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export type WatchDeps = {
   loadSettings: () => Settings;
   // The quick search and the sites' sweep (the portals check with the boards), each handing the jobs it stored as new
@@ -43,6 +68,9 @@ export type WatchDeps = {
   search: (found: Found, signal: AbortSignal) => Promise<unknown>;
   scan: (found: Found, signal: AbortSignal) => Promise<unknown>;
   busy: () => boolean;
+  // The just published jobs worth telling, once their postings are read (server.ts): a search judges a job by its title
+  // alone, and the years a posting asks are in its words. When it fails, they are told as they are.
+  screen?: (jobs: NewJob[]) => Promise<NewJob[]>;
   tell: (jobs: AlertJob[]) => Promise<unknown>;
   group: (job: NewJob) => Group;
   // Asked as a round starts: whether an employer's site was read, with no error, before it (scraper.ts's portal checks).
@@ -71,7 +99,10 @@ export function createWatcher(deps: WatchDeps) {
   // Each job looked at once: one that isn't just published isn't told later either.
   const tellNew = (jobs: NewJob[], readBefore: (portalId: string) => boolean) => {
     telling = telling.then(async () => {
-      const fresh = justPublished(jobs.filter((j) => j.url && !seen.has(j.url) && seen.add(j.url)), { now: now(), readBefore });
+      let fresh = justPublished(jobs.filter((j) => j.url && !seen.has(j.url) && seen.add(j.url)), { now: now(), readBefore });
+      if (fresh.length && deps.screen) {
+        try { fresh = await deps.screen(fresh); } catch (err) { deps.log?.(`alerts: reading ${fresh.length} postings failed: ${(err as Error)?.message ?? err}`); }
+      }
       if (!fresh.length) return;
       try {
         await deps.tell(fresh.map((j) => ({ ...j, group: deps.group(j) })));

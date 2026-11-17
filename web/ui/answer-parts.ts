@@ -15,7 +15,10 @@ const HEADING = /^ {0,3}#/;
 
 // The answer in parts: its words as they are, but for each run of two or more questions that each say how to answer
 // them, which becomes a run of cards. A question's answer is the rest of its line and the lines under it, up to the
-// next item, a heading, or a blank line that the item doesn't go on after.
+// next item, a heading, or a blank line that the item doesn't go on after. Questions to prepare come with talking
+// points on the lines under them (/interview writes them so); questions Pip asks the user, one to a line with why he
+// asks after them, stay words, as a reply is all they want (Sean 2026-11-17: "מה קשור עכשיו קלפים"). So a run is
+// cards only when at least one of its answers goes on under its question.
 export function answerParts(src: string): Part[] {
   const lines = src.replace(/\r\n/g, "\n").split("\n");
   const parts: Part[] = [];
@@ -27,6 +30,7 @@ export function answerParts(src: string): Part[] {
   let i = 0;
   while (i < lines.length) {
     const run: Card[] = [];
+    let under = false;
     let j = i;
     for (let m = lines[j]?.match(QUESTION); m; m = lines[j]?.match(QUESTION)) {
       const answer = m[2] ? [m[2]] : [];
@@ -39,13 +43,14 @@ export function answerParts(src: string): Part[] {
         }
         if (TOP_ITEM.test(line) || HEADING.test(line)) break;
         answer.push(line.trim());
+        under = true;
         k++;
       }
       run.push({ q: m[1].trim(), a: answer.join("\n").trim() });
       while (k + 1 < lines.length && !lines[k].trim() && QUESTION.test(lines[k + 1])) k++;
       j = k;
     }
-    if (run.length >= 2 && run.every((c) => c.a)) {
+    if (run.length >= 2 && run.every((c) => c.a) && under) {
       flush();
       parts.push({ cards: run });
       i = j;

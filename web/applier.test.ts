@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { addedFrom, allowedCommands, applyJob, checkSource, draftingSystem, folderName, parseEvaluation, portalFor, reviewPrompt, sourceFrom, sourceHost } from "./applier";
+import { addedFrom, allowedCommands, applyJob, checkSource, draftingSystem, evaluationSystem, folderName, parseEvaluation, portalFor, reviewPrompt, sourceFrom, sourceHost } from "./applier";
 import { recordDraft } from "./edit";
 import type { Run } from "./ranker";
 
@@ -146,8 +146,9 @@ describe("applier", () => {
     expect(text).toContain("ציון לפי מה שכל חברה מפרסמת: Google 90, Workday A (85), כללי 88.");
     expect(text).toContain("מכתב מקדים");
     expect(text).toContain("נוסף מעבר לפרופיל, כדאי להתכונן לשאלות עליו: Docker, Tailwind CSS.");
-    expect(text).toContain("זו ההגשה המהירה");
-    expect(text).toContain("/apply --full");
+    // What comes next is asked for in the same conversation, with no command to learn.
+    expect(text).toContain("אפשר להמשיך כאן כרגיל");
+    expect(text).not.toContain("/apply");
     // Four calls to the AI: the fit, the draft, the review, and one fix after the build stopped.
     expect(prompts).toHaveLength(4);
   });
@@ -182,5 +183,23 @@ describe("applier", () => {
     });
     expect(text).toContain("I didn't write a CV, because the location doesn't fit your settings.");
     expect(existsSync(path.join(root, "user", "cv"))).toBe(false);
+  });
+
+  test("goes on when the company comes back in Hebrew, and names the conversation by the role and company", async () => {
+    // A Hebrew posting once stopped here with apply_no_name (2026-11-17): its folder name had no Latin letter left.
+    const root = mkdtempSync(path.join(os.tmpdir(), "apply-"));
+    const run: Run = async (argv) => (argv.some((a) => a.includes("posting_guard.py")) ? { code: 0, out: "posting_guard: clean\n--- text ---\nA software tester job in Tel Aviv.", err: "" } : { code: 2, out: "", err: "" });
+    const names: string[] = [];
+    const text = await applyJob({
+      input: "A software tester job in Tel Aviv.", lang: "en", signal: never, run, root, context: [], r: () => "",
+      ask: async () => JSON.stringify({ ...EVALUATION, company: "אקמה", role: "בודק תוכנה", location_verdict: "FAIL" }), build: async () => { throw new Error("no build"); },
+      steps: { start: () => {}, done: () => {}, named: (n) => names.push(n) },
+    });
+    expect(text).toContain("I didn't write a CV");
+    expect(names).toEqual(["בודק תוכנה, אקמה"]);
+  });
+
+  test("asks for the company and role in Latin letters", () => {
+    expect(evaluationSystem("he", [])).toContain("the employer name in Latin letters");
   });
 });

@@ -229,6 +229,15 @@ export function createPostings(d: Deps) {
     return view(p.id);
   }
 
+  // A job read now, as the background reading reads one, and what it has then: for the live alerts, which tell a job
+  // once its posting is read (server.ts). A page that won't open says nothing against the job, as in the background.
+  async function readNow(basics: Basics) {
+    const p = keepBasics(basics);
+    if (!p) return null;
+    if (needsRead(p)) await readJob(p.id, "crawl");
+    return load(p.id);
+  }
+
   // Read again by the page's button: a page that wouldn't open.
   function again(id: string) {
     if (!load(id)) return null;
@@ -339,7 +348,7 @@ export function createPostings(d: Deps) {
     return read;
   }
 
-  return { open, again, analyze, view, keepRanked, readJob, crawl, load, save };
+  return { open, again, analyze, view, keepRanked, readJob, readNow, crawl, load, save };
 }
 export type JobView = NonNullable<ReturnType<ReturnType<typeof createPostings>["view"]>>;
 

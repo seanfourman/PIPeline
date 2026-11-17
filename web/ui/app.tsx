@@ -62,7 +62,7 @@ type Ctx = {
   say: (text: string, mood?: Mood, ms?: number) => void; news: News; update: Update;
   // access is how much the conversation may do without asking (policy.ts); left out, it asks. files are the ids
   // of uploads attached to the first message (uploads.ts).
-  start: (prompt: string, model?: string, access?: string, files?: string[], temporary?: boolean) => Promise<void>;
+  start: (prompt: string, model?: string, access?: string, files?: string[], temporary?: boolean, effort?: string) => Promise<void>;
   // The same in the background: the conversation is made and listed, but the page stays where it is, and Pip
   // peeks out while it works (PeekingPip).
   run: (prompt: string) => Promise<void>;
@@ -107,8 +107,12 @@ export const COMMANDS: { group: string; items: { id: string; arg?: boolean; dang
   { group: "setup", items: [{ id: "setup", arg: true }, { id: "reset", danger: true }] },
 ];
 
-// Shows "/apply https://site/..." as a readable conversation name.
+// Shows "/apply https://site/..." as a readable conversation name, and a link alone (an application, until it is
+// named by its role and company) by its site.
 export function friendlyTitle(title: string, t: Ctx["t"]) {
+  if (/^https?:\/\/\S+$/.test(title)) {
+    try { return `${t("tools.commands.apply")[0]}: ${new URL(title).hostname.replace(/^www\./, "")}`; } catch { return title; }
+  }
   const [cmd, ...rest] = title.split(" ");
   const id = cmd.startsWith("/") ? cmd.slice(1) : "";
   const known = COMMANDS.some((g) => g.items.some((c) => c.id === id));
@@ -765,9 +769,10 @@ export function App() {
   // button asks for them; with more after them they are Claude's commands.
   // temporary: a conversation that leaves nothing behind (agent.ts Session.temporary); the server's own runs keep
   // records, so in one everything goes to the conversation itself.
-  const begin = async (prompt: string, model?: string, access?: string, files?: string[], temporary = false) => {
+  // effort: how hard Claude thinks (low to xhigh), picked beside the model; none is the user's own default.
+  const begin = async (prompt: string, model?: string, access?: string, files?: string[], temporary = false, effort?: string) => {
     const own = temporary || files?.length ? "" : ({ "/rank": "rank", "/job-scraper": "scrape" } as Record<string, string>)[prompt.trim()] ?? "";
-    const session = own ? await api<{ id: string }>(own, {}) : await api<{ id: string }>("sessions", { prompt, model, access, files, ...(temporary ? { temporary: true } : {}) });
+    const session = own ? await api<{ id: string }>(own, {}) : await api<{ id: string }>("sessions", { prompt, model, access, files, ...(effort ? { effort } : {}), ...(temporary ? { temporary: true } : {}) });
     await refresh();
     return session;
   };
@@ -794,8 +799,8 @@ export function App() {
       setNews({ text, mood });
       newsTimer.current = setTimeout(() => setNews(null), ms);
     },
-    start: async (prompt, model, access, files, temporary) => {
-      const session = await begin(prompt, model, access, files, temporary);
+    start: async (prompt, model, access, files, temporary, effort) => {
+      const session = await begin(prompt, model, access, files, temporary, effort);
       goTo(`/chat/${session.id}`);
     },
     run: async (prompt) => { await begin(prompt); },

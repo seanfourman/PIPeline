@@ -16,10 +16,10 @@ import { jsonPoster, pageFetcher, readEmployer, readOwnPage, type Fetch, type Fo
 import { ChatbotError } from "./chatbots";
 import { classifyLocation, searchJobs } from "./data";
 import { discoverEmployers, foundPortals } from "./discover";
-import { seniorTitle } from "./experience";
+import { seniorTitle, STUDENT } from "./experience";
 import { roleFit, roleWords } from "./match";
 import { employerName, employersToRead, portalOn, webPortals, type Portal } from "./portals";
-import { fieldWords, titleMatches } from "./roles";
+import { fieldTest, fieldWords } from "./roles";
 import { channelJobs, channelName } from "./telegram";
 import { candidateContext, FATAL, PYTHON, runTool, type Ask, type Run, type Steps } from "./ranker";
 import type { NewJob } from "./alerts";
@@ -101,23 +101,27 @@ const RULE_WORDS = {
   he: { senior: "כותרת בכירה מהרמה שמחפשים", far: "באזור שהוחרג בהגדרות", student: "משרת סטודנט, וההגדרות לא רוצות כאלה", field: "לא בתחום התפקידים" },
   en: { senior: "a senior title, above the level searched for", far: "in an area the settings exclude", student: "a student position, which the settings don't want", field: "not in the roles' field" },
 };
-const STUDENT = /\b(?:students?|interns?|internship)\b|סטודנט|מתמחה|התמחות/i;
 
 // The quick fit with no AI, from a hit's title and area alone: the words the automatic score matches roles by
 // (match.ts roleFit), the level its title names (experience.ts), and the settings. A hit is left out for a senior
-// title on a junior search, an excluded area, a student position when the settings exclude them, or a title outside
-// the roles' field (roles.ts fieldWords, so that "junior" alone doesn't count); its fit is how well its title fits a
-// role. The posting is read later, with no AI either (postings.ts crawl), for its years and its automatic score.
+// title on a junior search, an excluded area (its place's, or with no place given, one its title names), a student
+// position when the settings exclude them, or a title outside the roles' field: in it by a good share of a role's own
+// words, or by a word of the field that stands on its own (roles.ts fieldTest, so that "junior" or "engineer" alone
+// doesn't count); its fit is how well its title fits a role. The posting is read later, with no AI either (postings.ts
+// crawl), for its years and its automatic score; the live alerts read it before telling (server.ts).
+const OWN_FIT = 0.4;
 export function judgeByRules(hits: { title: string; tier: string }[], settings: Settings, lang: "he" | "en" = "he") {
   const w = RULE_WORDS[lang];
   const roles = roleWords(settings.roles);
   const field = settings.roles.length ? fieldWords(settings.roles) : [];
+  const inTheField = settings.roles.length ? fieldTest(settings.roles) : () => true;
   const judged = new Map<number, Judged>();
   hits.forEach((h, i) => {
     const { fit } = roleFit(h.title, roles, field);
-    const inField = !field.length || fit >= 0.4 || titleMatches(h.title, field);
+    const inField = !field.length || roleFit(h.title, roles, []).fit >= OWN_FIT || inTheField(h.title);
+    const far = h.tier === "far" || ((!h.tier || h.tier === "unknown") && classifyLocation(h.title, settings.areas) === "far");
     const reason = settings.seniority === "junior" && seniorTitle(h.title) ? w.senior
-      : h.tier === "far" ? w.far
+      : far ? w.far
       : settings.studentJobs === "exclude" && STUDENT.test(h.title) ? w.student
       : !inField ? w.field : "";
     judged.set(i, { fit: fit >= 0.75 ? "high" : fit >= 0.4 ? "medium" : "low", keep: !reason, reason });

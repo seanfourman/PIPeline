@@ -14,7 +14,7 @@ export type Role = { label: string; query: string; id?: string };
 // out of an employer's whole list (boards.ts); they are matched from the start of a word, in lower case.
 export const ROLE_FIELDS: { id: string; he: string; en: string; words: string[]; roles: ListedRole[] }[] = [
   { id: "software", he: "פיתוח תוכנה", en: "Software development",
-    words: ["software", "developer", "engineer", "programmer", "full stack", "fullstack", "backend", "back-end", "frontend", "front-end", "mobile", "android", "ios", "embedded", "python", "java", ".net", "c#", "c++", "react", "node", "פיתוח", "מפתח", "מתכנת", "תוכנה", "תכנות", "מהנדס"],
+    words: ["software", "sw", "developer", "engineer", "programmer", "full stack", "fullstack", "backend", "back-end", "frontend", "front-end", "mobile", "android", "ios", "embedded", "python", "java", ".net", "c#", "c++", "react", "node", "פיתוח", "מפתח", "מתכנת", "תוכנה", "תכנות", "מהנדס"],
     roles: [
       { id: "software", title: "Software Engineer", he: "Software", en: "Software", hebrew: "מפתח תוכנה" },
       { id: "fullstack", title: "Full Stack Developer", he: "Full Stack", en: "Full Stack", hebrew: "מפתח פול סטאק" },
@@ -37,7 +37,9 @@ export const ROLE_FIELDS: { id: string; he: string; en: string; words: string[];
       { id: "fpga", title: "FPGA Engineer", he: "FPGA", en: "FPGA", hebrew: "מהנדס FPGA" },
     ] },
   { id: "data", he: "Data ו-AI", en: "Data and AI",
-    words: ["data", "analyst", "analytics", "bi", "sql", "machine learning", "ml", "ai", "algorithm", "statistic", "scientist", "דאטה", "נתונים", "אנליסט", "אנליטי", "מידע", "סטטיסט", "כלכלן", "אלגוריתם", "בינה", "למידת מכונה", "מודל"],
+    words: ["data", "analyst", "analytics", "bi", "sql", "machine learning", "deep learning", "reinforcement learning", "computer vision", "nlp", "llm", "ml", "ai", "algorithm", "statistic", "scientist", "דאטה", "נתונים", "אנליסט", "אנליטי", "מידע", "סטטיסט", "כלכלן",
+      // A word's last letter takes another form inside a longer one: "אלגוריתמי", "אלגוריתמיקה".
+      "אלגוריתם", "אלגוריתמ", "בינה", "למידת מכונה", "למידה עמוקה", "ראייה ממוחשבת", "מודל"],
     roles: [
       { id: "ml", title: "Machine Learning Engineer", he: "AI / ML", en: "AI / ML", hebrew: "למידת מכונה" },
       { id: "ai", title: "AI Engineer", he: "AI Engineer", en: "AI Engineer", hebrew: "בינה מלאכותית" },
@@ -157,6 +159,26 @@ export const titleMatches = (title: string, words: string[]) => words.some((w) =
 // for being junior. For judging a job by its title with no AI (scraper.ts judgeByRules, telegram.ts).
 const LEVEL_ONLY = new Set([...(ROLE_FIELDS.find((f) => f.id === "start")?.words ?? []), "בוגרי", "תואר"].map((w) => lower(w)));
 export const fieldWords = (roles: Role[]) => titleWords(roles).filter((w) => !LEVEL_ONLY.has(w));
+
+// Whether a title is in the roles' field by a word of the field alone, for judging a job by its title with no AI
+// (scraper.ts judgeByRules, beside the roles' own words). Stricter than the words above, which pick a field's postings
+// out of an employer's whole list: a word that names another trade as often as these fields' (an engineer, a system,
+// information, quality, development, a network or a chain of shops, an analyst of investments) puts no title in the
+// field on its own, nor does a word of one role's title alone ("machine" of machine learning, a machine operator's;
+// "full" of full stack, a full-time job's). And a word that is everywhere now counts only beside one that says who does
+// the work: an AI engineer is in the field, an AI video creator isn't, nor a cloud marketing coordinator.
+const BROAD = new Set([
+  "engineer", "מהנדס", "system", "מערכות", "it", "מידע", "כלכלן", "quality", "איכות", "פיתוח", "network", "רשת", "רשתות", "infrastructure",
+  "תשתיות", "מודל", "analyst", "אנליסט", "project", "פרויקט", "support", "תמיכה", "solutions", "implementation", "הטמעה", "דיגיטל", "product", "מוצר",
+]);
+const WITH_MAKER = new Set(["ai", "בינה", "cloud", "ענן", "מחשוב", "data", "דאטה", "נתונים", "analytics", "אנליטי"]);
+const MAKERS = ["engineer", "developer", "programmer", "researcher", "scientist", "analyst", "architect", "מהנדס", "מפתח", "מתכנת", "חוקר", "מדען", "אנליסט"];
+export function fieldTest(roles: Role[]) {
+  const words = ROLE_FIELDS.filter((f) => fieldsOf(roles).includes(f.id)).flatMap((f) => f.words).filter((w) => !LEVEL_ONLY.has(lower(w)) && !BROAD.has(w));
+  const alone = words.filter((w) => !WITH_MAKER.has(w));
+  const paired = words.filter((w) => WITH_MAKER.has(w));
+  return (title: string) => titleMatches(title, alone) || (titleMatches(title, paired) && titleMatches(title, MAKERS));
+}
 
 // A role's searches on the Israeli boards: its title, and its Hebrew name when it has one.
 export const boardQueries = (role: Role) => [...new Set([role.query, listedRole(role.id)?.hebrew].filter((q): q is string => Boolean(q)))];

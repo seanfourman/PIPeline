@@ -36,7 +36,8 @@ export type Run = (argv: string[], options?: { stdin?: string; signal?: AbortSig
 // The model's answer, with the name of the AI that gave it when there is a choice of them.
 export type Ask = (system: string, prompt: string, signal: AbortSignal) => Promise<string | { text: string; by: string }>;
 // A step's name says what kind of step it is (chat.tools in i18n.ts): RankJob unless said.
-export type Steps = { start: (id: string, target: string, name?: string) => void; done: (id: string, ok: boolean, preview: string) => void };
+// named: the conversation called by what the work found out, as an application by its role and company.
+export type Steps = { start: (id: string, target: string, name?: string) => void; done: (id: string, ok: boolean, preview: string) => void; named?: (title: string) => void };
 type Job = { key: string; title?: string; company?: string; url?: string; portal?: string };
 // source is where the words came from: the portal's detail command, a site's API, a page's own data, or its text.
 // whole: the page read whole, menus and all, as no part of it held the job's words (posting-read.ts mainContent).

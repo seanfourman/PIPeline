@@ -1322,7 +1322,7 @@ textarea { resize: vertical; width: 100%; }
 .ai-pill .icon { width: 20px; height: 20px; filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
 /* A shade over the colours, so the white words read on the palest of them too. */
 .ai-pill > .ai-sky::after { background: rgb(15 20 40 / 14%); }
-.ai-pill:hover > .ai-sky { filter: saturate(1.3) brightness(1.04); }
+/* Hovered, the AI's colours move faster rather than brighten (AiSky in kit.tsx). */
 .ai-pill:active { scale: 0.97; }
 .ai-pill:disabled { cursor: default; }
 .ai-pill:disabled:active { scale: 1; }
@@ -1362,7 +1362,6 @@ textarea { resize: vertical; width: 100%; }
 }
 .rank-pill::after { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; background: var(--hover); opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
 .rank-pill:hover::after { opacity: 1; }
-.rank-pill:hover .ai-sky { filter: saturate(1.3) brightness(1.04); }
 .rank-pill:disabled { opacity: 0.6; cursor: default; }
 .rank-pill:disabled::after { display: none; }
 .rank-pill:disabled .ai-sky { filter: none; }
@@ -2099,7 +2098,6 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
 .voice-bars i:nth-child(2) { --b: var(--b1, 0); }
 .voice-bars i:nth-child(3) { --b: var(--b2, 0); }
 .voice-bars i:nth-child(4) { --b: var(--b3, 0); }
-.voice-go:hover .ai-sky { filter: saturate(1.3) brightness(1.04); }
 .voice-go:active:where(:not(:disabled)) { scale: 0.94; }
 .voice-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .voice-lang {

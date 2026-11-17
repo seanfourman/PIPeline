@@ -4,7 +4,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { friendlyTitle, PopMenu, useApp } from "../app";
 import { answerParts, type Card, type Change, docKind, type DocKind, docOwner, docPath, docSlug, hasSteering, placeDocs, readChange, revealSteering, type TurnItem, turnItems, writingKind } from "../answer-parts";
-import { ActLabel, AiSky, api, Btn, goTo, HEBREW, Icon, Markdown, ThinBar, useGoSlot, Words } from "../kit";
+import { ActLabel, AiSky, api, Btn, goTo, HEBREW, Icon, langDir, Markdown, ThinBar, useGoSlot, Words } from "../kit";
 import { grounded, takeOff, useLanding } from "../launch";
 import { Select } from "../select";
 import { useVoiceTyping, VoiceGlow, VoiceTypingButton } from "../voice";
@@ -472,6 +472,14 @@ function ModelPicker({ value, onChange }: { value: string; onChange: (m: string)
   return <Select compact className="circle" label={t("chat.model")} value={value} onChange={onChange} options={MODELS.map(([m, key]) => ({ value: m, label: t(`chat.models.${key}`), icon: `model-${key}` }))} />;
 }
 
+// How hard Claude thinks in the new conversation, beside the model (Sean 2026-11-17: "בחירת חכמה כאילו LOW MEDIUM HIGH
+// VERY HIGH"): the user's own default, or a level the SDK takes as effort; very high is its xhigh.
+const EFFORTS = ["", "low", "medium", "high", "xhigh"];
+function EffortPicker({ value, onChange }: { value: string; onChange: (e: string) => void }) {
+  const { t } = useApp();
+  return <Select compact className="circle" label={t("chat.effort")} value={value} onChange={onChange} options={EFFORTS.map((e) => ({ value: e, label: t(`chat.efforts.${e || "default"}`), icon: `effort-${e || "default"}` }))} />;
+}
+
 // The list button, for a window too narrow to show the list beside the conversation.
 const ListButton = ({ onList }: { onList: () => void }) => {
   const { t } = useApp();
@@ -507,6 +515,7 @@ function NewConversation({ onList }: { onList: () => void }) {
   const { s, t, start, draft } = useApp();
   const [text, setText] = useState(() => { const d = draft.current; draft.current = ""; return d; });
   const [model, setModel] = useState("");
+  const [effort, setEffort] = useState("");
   const [access, setAccess] = useState<Access>("ask");
   const [busy, setBusy] = useState(false);
   // A temporary conversation (Sean 2026-11-12: "צאט INCOGNITO... חד פעמי שנמחק"), picked at the top of the page.
@@ -520,11 +529,11 @@ function NewConversation({ onList }: { onList: () => void }) {
   const go = (raw = text.trim(), files: string[] = []) => {
     if ((!raw && !files.length) || busy) return;
     setBusy(true);
-    const prompt = !files.length && /^https?:\/\/\S+$/.test(raw) ? `/apply ${raw}` : raw;
+    // A link alone is an application, which the server knows by itself (server.ts), so it goes as it was written.
     // The box's way into the conversation (launch.ts); its words fly with it only when the bubble will show them as
     // they are.
-    takeOff(prompt === raw && !raw.startsWith("/") && !files.length ? raw : "", s.sessions.map((c) => c.id));
-    return start(prompt, model || undefined, access, files, temporary).catch((err) => { setBusy(false); grounded(); throw err; });
+    takeOff(!raw.startsWith("/") && !files.length ? raw : "", s.sessions.map((c) => c.id));
+    return start(raw, model || undefined, access, files, temporary, codex ? undefined : effort || undefined).catch((err) => { setBusy(false); grounded(); throw err; });
   };
   const begin = (command: string, more: boolean) => {
     if (!more) { go(`/${command}`)?.catch(() => {}); return; }
@@ -540,7 +549,7 @@ function NewConversation({ onList }: { onList: () => void }) {
         </div>
         <Composer
           text={text} setText={setText} onSend={(files) => { go(text.trim(), files)?.catch(() => {}); }} placeholder={t("chat.newPlaceholder")} input={input} autoFocus glow="halo" temporary={temporary}
-          tools={plain ? null : <><AccessPicker value={access} onChange={setAccess} />{!codex && <ModelPicker value={model} onChange={setModel} />}</>}
+          tools={plain ? null : <><AccessPicker value={access} onChange={setAccess} />{!codex && <><ModelPicker value={model} onChange={setModel} /><EffortPicker value={effort} onChange={setEffort} /></>}</>}
           warn={!plain && access === "full" ? <FullWarn /> : ""} hint={codex ? t("chat.ai.codex", MAKERS[first]) : plain ? t("chat.ai.plain", MAKERS[first]) : ""}
         />
         <div className="chat-starts" role="group" aria-label={t("chat.suggest")}>
@@ -695,7 +704,11 @@ function useToolLabel() {
     if (ev.label) return <bdi><Steered text={clip(String(ev.label))} /></bdi>;
     const target = clip(shortTarget(ev.target));
     if (String(t(`chat.tools.${ev.name}`)).startsWith("chat.tools.")) return <bdi><Steered text={target || String(ev.name)} /></bdi>;
-    const [before, after = ""] = String(t(`chat.tools.${ev.name}`, { target: "\u0000" })).split("\u0000");
+    const words = String(t(`chat.tools.${ev.name}`, { target: "\u0000" }));
+    const [before, after = ""] = words.split("\u0000");
+    // Words with no place for the target (an application's own steps, "Writing the CV") get it after a colon, where
+    // it was once glued to their last word with no space (Sean 2026-11-17).
+    if (!words.includes("\u0000")) return <>{words}{target && <>: <bdi><Steered text={target} /></bdi></>}</>;
     return <>{before}{target && <bdi><Steered text={target} /></bdi>}{after}</>;
   };
 }
@@ -952,12 +965,17 @@ function QuestionCards({ cards }: { cards: Card[] }) {
   );
 }
 
+// The language of a whole answer, by its words outside code: one in Hebrew keeps all its parts on the right, a list of
+// sources that starts each item with a link too (kit.tsx Markdown).
+const answerDir = (src: string) => (langDir(src.replace(/```[\s\S]*?(?:```|$)/g, "")) === "rtl" ? "rtl" : undefined);
+
 // Pip's answer: his words, a run of questions to prepare among them as cards (answer-parts.ts).
 function Answer({ src }: { src: string }) {
   const parts = useMemo(() => answerParts(src), [src]);
+  const dir = useMemo(() => answerDir(src), [src]);
   return (
     <div className="msg-pip">
-      {parts.map((part, k) => ("cards" in part ? <QuestionCards key={k} cards={part.cards} /> : <Markdown key={k} src={part.md} className="md msg-text" />))}
+      {parts.map((part, k) => ("cards" in part ? <QuestionCards key={k} cards={part.cards} /> : <Markdown key={k} src={part.md} className="md msg-text" dir={dir} />))}
     </div>
   );
 }
@@ -1159,7 +1177,7 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
                 </React.Fragment>
               )))}
             {writing && <DocCard ghost={writing} />}
-            {live && <div className="msg-pip live"><Markdown src={live} className="md msg-text" /></div>}
+            {live && <div className="msg-pip live"><Markdown src={live} className="md msg-text" dir={answerDir(live)} /></div>}
             {!live && status === "running" && (stopping || items[items.length - 1]?.kind !== "tools") && (
               <div className="working-line">
                 <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>

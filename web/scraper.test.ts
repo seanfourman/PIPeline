@@ -210,6 +210,29 @@ describe("scraper", () => {
     expect(judged.get(5)?.keep).toBe(true);
   });
 
+  test("a title is in the field by a role's own words or a word of the field that stands alone, not by an engineer's, a system's or one word of a role", () => {
+    const mine: Settings = {
+      ...settings, seniority: "junior",
+      roles: [
+        { id: "software", label: "Software", query: "Junior Software Engineer" }, { id: "ml", label: "AI / ML", query: "Junior Machine Learning Engineer" },
+        { id: "integration", label: "Integration", query: "Junior System Integration Engineer" }, { id: "fullstack", label: "Full Stack", query: "Junior Full Stack Developer" },
+        { id: "qa", label: "QA", query: "Junior QA Engineer" }, { id: "dataeng", label: "Data", query: "Junior Data Engineer" },
+      ],
+      areas: [{ name: "South", tier: "far", places: ["kiryat gat", "ashkelon"] }],
+    };
+    const kept = (titles: string[]) => { const judged = judgeByRules(titles.map((title) => ({ title, tier: "unknown" })), mine, "en"); return titles.filter((_, i) => judged.get(i)?.keep); };
+    expect(kept([
+      "Web Developer", "React Native Developer בחברת סטארט-אפ", "AI Engineer", "NLP Research Engineer", "System Integration Engineer", "בודק/ת תוכנה (QA)", "מפתח/ת ETL",
+      "Junior SW Engineer - Virtual Platforms", "Reinforcement Learning Researcher", "מהנדס/ת פיתוח אלגוריתמי עיבוד אות",
+      "מפעיל/ת מכונה", "Electrical Power Systems Engineer", "כלכלן/ית רכש", "AI Video Creator", "Junior Marketing Coordinator- Cloud", "נציג/ת פיתוח עסקי Full Time", "מהנדס/ת תהליך", "מוביל/ת איכות",
+    ])).toEqual([
+      "Web Developer", "React Native Developer בחברת סטארט-אפ", "AI Engineer", "NLP Research Engineer", "System Integration Engineer", "בודק/ת תוכנה (QA)", "מפתח/ת ETL",
+      "Junior SW Engineer - Virtual Platforms", "Reinforcement Learning Researcher", "מהנדס/ת פיתוח אלגוריתמי עיבוד אות",
+    ]);
+    // With no place given, an excluded place the title names counts.
+    expect(kept(["Software Engineer - Kiryat Gat", "Software Engineer, Ashkelon", "Software Engineer"])).toEqual(["Software Engineer"]);
+  });
+
   test("the daily search runs no AI: LinkedIn and freehire for each role, then the Telegram channels, judged by the rules", async () => {
     const searched: string[] = [];
     const search: Search = async (role) => { searched.push(role); return { results: [hit(1, { title: "Junior Backend Developer" })], failed: [] }; };

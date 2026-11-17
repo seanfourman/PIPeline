@@ -94,6 +94,8 @@ const LEADS = /\b(lead|leader|principal|staff|head|director|vp|vice president|ch
 export const seniorTitle = (title: string) => SAYS_SENIOR.test(title) || (!JUNIOR_TITLE.test(title) && LEADS.test(title));
 // A title that names a junior role: junior, entry, graduate, student, intern or trainee.
 export const juniorTitle = (title: string) => JUNIOR_TITLE.test(title) && !SAYS_SENIOR.test(title);
+// A student's position, or an intern's, which the settings may rank low or leave out (studentJobs).
+export const STUDENT = /\b(?:students?|interns?|internship)\b|סטודנט|מתמחה|התמחות/i;
 
 // Whether a job is above the level the candidate looks for: for a junior search, a senior title or three years or
 // more asked; any other search keeps every job. why says which, years how many.

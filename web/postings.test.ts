@@ -161,6 +161,19 @@ describe("postings", () => {
     expect(s.fetches()).toBe(2);
   });
 
+  test("a job read now for an alert: its years and the list's filter as it is read, once; a page that won't open says nothing to the list", async () => {
+    const seen = { "acme-7": { url: JOB.url, title: "Data Engineer", company: "Acme", status: "new" } };
+    const s = setup({ seen: () => seen }, undefined, SENIOR_TEXT);
+    const read = await s.postings.readNow(JOB);
+    expect(read?.read).toMatchObject({ status: "read", years: { min: 4 } });
+    expect(s.applied).toEqual([{ key: "acme-7", status: "filtered", reason: "years", years: 4 }]);
+    expect((await s.postings.readNow(JOB))?.read?.status).toBe("read");
+    expect(s.fetches()).toBe(1);
+    const shut = setup({ seen: () => seen }, { code: 0, out: "HTTP 403 size=1 saved=x" });
+    expect((await shut.postings.readNow(JOB))?.read?.status).toBe("unreachable");
+    expect(shut.applied).toEqual([]);
+  });
+
   test("an AI that can't answer leaves the posting to read and says why, and its button asks again", async () => {
     let fail = true;
     const s = setup({ ask: async () => { if (fail) throw new ChatbotError("ai_none"); return { text: JSON.stringify(ANSWER), by: "ChatGPT" }; } });

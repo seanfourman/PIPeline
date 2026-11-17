@@ -22,8 +22,8 @@ const rectOf = (el: Element): Rect => {
 let pending: Launch | null = null;
 
 // On send, before the page changes: where the box is and where its words begin, and copies of the greeting and the
-// starts. words is the message as its bubble will show it, or "" when the bubble will look otherwise (a command, a
-// link made into /apply, files over the words), and then only the box moves. known: the conversations there already,
+// starts. words is the message as its bubble will show it, or "" when the bubble will look otherwise (a command,
+// files over the words), and then only the box moves. known: the conversations there already,
 // so a different one opened meanwhile doesn't take the move.
 export function takeOff(words: string, known: string[]) {
   pending = null;

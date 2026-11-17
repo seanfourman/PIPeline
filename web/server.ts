@@ -23,7 +23,7 @@ import { applyThroughTool, createPostings, seenReader } from "./postings";
 import { applyJob } from "./applier";
 import { JOB_ID } from "./ui/jobid";
 import { readPortalChecks, scanPortals, scrapeJobs, searchDaily } from "./scraper";
-import { alertText, createWatcher, desktopNotice, type AlertJob } from "./alerts";
+import { alertText, createWatcher, desktopNotice, worthTelling, type AlertJob } from "./alerts";
 import { forgetKnown, jobGroup } from "./groups";
 import { classifyLocation, conversationFiles, loadState, parseCsv, resolveDocument, searchJobs } from "./data";
 import { createAutoScores } from "./match";
@@ -756,17 +756,20 @@ async function api(req: Request, url: URL): Promise<Response> {
     // the settings put first, a fraction of what /apply as an agent uses up. /apply --full is that agent, Claude's or
     // ChatGPT's in Codex (codex.ts), which also researches the company, has a reviewer check the draft, looks at the
     // PDF and writes a cover letter. Files attached go to the agent too, which can read them.
+    // A link sent alone is an application too, and the conversation shows it as it was sent, with no command before
+    // it (Sean 2026-11-17: "למה כשאני שולח לו קישור הוא מוסיף APPLY לפני"); so does one from a job's page.
     const full = prompt.match(/^\/apply\s+--full\s+([\s\S]+)$/)?.[1]?.trim();
-    const applying = full ? "" : prompt.match(/^\/apply\s+([\s\S]+)$/)?.[1]?.trim() ?? "";
+    const link = !uploads.length && /^https?:\/\/\S+$/.test(prompt) ? prompt : "";
+    const applying = full ? "" : link || (prompt.match(/^\/apply\s+([\s\S]+)$/)?.[1]?.trim() ?? "");
     const settings = loadSettings();
     // The sign-in of the AI chosen first, asked again now when the last answer said it isn't there: one answer that
     // failed by chance would send the whole conversation to the other AI.
     if (!cliSignedIn()[settings.aiPrimary === "openai" ? "openai" : "claude"]) await cliStatus(true).catch(() => {});
     if (applying && !uploads.length) {
       const lang = settings.language === "en" ? "en" : "he";
-      return json(createTaskSession(prompt.slice(0, 300), (steps, signal) => applyJob({ input: applying, steps, signal, lang, ask: askFor(steps) }), body.temporary === true).summary());
+      return json(createTaskSession(applying.slice(0, 300), (steps, signal) => applyJob({ input: applying, steps, signal, lang, ask: askFor(steps) }), body.temporary === true, false, { model: body.model, effort: body.effort }).summary());
     }
-    return json(createSession(full ? `/apply ${full}` : prompt, body.model, { access: isAccess(body.access) ? body.access : "ask", uploads, temporary: body.temporary === true }).summary());
+    return json(createSession(full ? `/apply ${full}` : prompt, body.model, { access: isAccess(body.access) ? body.access : "ask", uploads, temporary: body.temporary === true, effort: body.effort }).summary());
   }
   const session = parts[0] === "sessions" ? getSession(parts[1]) : undefined;
   if (!session) return json({ error: "not found" }, 404);
@@ -880,6 +883,7 @@ const watcher = createWatcher({
   search: (found, signal) => searchDaily({ steps: QUIET, signal, lang: language(), found, days: "1" }),
   scan: (found, signal) => scanPortals({ steps: QUIET, signal, lang: language(), ask: async () => "", boards: true, discover: true, rest: 0.25, fresh: (p) => (throughBoard(p) ? 60 : 25), found }),
   busy: () => listBusy !== "" || automation.isRunning(),
+  screen: (jobs) => { const s = loadSettings(); return worthTelling(jobs, { read: readForAlert, seniority: s.seniority, students: s.studentJobs }); },
   tell: tellAlerts,
   group: (j) => jobGroup(j),
   readBefore: () => {
@@ -889,6 +893,13 @@ const watcher = createWatcher({
   log: (line) => console.log(line),
 });
 setInterval(() => watcher.tick(), AUTOMATION_CHECK_MS);
+
+// Each job's posting read as the list reads it (postings.ts), LinkedIn's too, the few of a round, where the
+// background reading never goes; a page that won't open says nothing against the job.
+async function readForAlert(j: { url: string; title: string; company: string; location: string; posted?: string }) {
+  const p = await postings.readNow({ url: j.url, title: j.title, company: j.company, location: j.location, date: j.posted });
+  return p?.read ? { status: p.read.status, years: p.read.years?.min ?? null } : null;
+}
 
 async function tellAlerts(jobs: AlertJob[]) {
   const settings = loadSettings();
