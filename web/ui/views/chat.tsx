@@ -2,9 +2,9 @@
 // one column over a round box to write in, and the list of conversations on the page's far side, as wide as the
 // sidebar, so the page is even. In a narrower window the list opens over the page from a button at the top.
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { friendlyTitle, PopMenu, useApp } from "../app";
+import { commandWords, friendlyTitle, PopMenu, useApp } from "../app";
 import { answerParts, type Card, type Change, docKind, type DocKind, docOwner, docPath, docSlug, hasSteering, placeDocs, readChange, revealSteering, type TurnItem, turnItems, writingKind } from "../answer-parts";
-import { ActLabel, AiSky, api, Btn, goTo, HEBREW, Icon, langDir, Markdown, ThinBar, useGoSlot, Words } from "../kit";
+import { ActLabel, AiSky, api, goTo, HEBREW, Icon, langDir, Markdown, ThinBar, useGoSlot, Words } from "../kit";
 import { grounded, takeOff, useLanding } from "../launch";
 import { Select } from "../select";
 import { useVoiceTyping, VoiceGlow, VoiceTypingButton } from "../voice";
@@ -762,7 +762,10 @@ function stepTree(tools: Ev[]): StepRow[] {
 // folds out under it (.fold). place: where it stands in the tree; fresh: it came while the steps were on the page,
 // so it grows into place instead of jumping in.
 // aside: the step started a helper that is still at work in the background, so it shows at work though it answered.
+// What agent.ts refuse() tells the agent in an unattended run; the step says it in the user's words.
+const UNATTENDED_REFUSED = /^This is an unattended run, so nobody can approve this/;
 function ToolLine({ ev, result, working, place = "", fresh = false, aside = false }: { ev: Ev; result?: Ev; working: boolean; place?: StepRow["place"]; fresh?: boolean; aside?: boolean }) {
+  const { t } = useApp();
   const label = useToolLabel();
   const [open, setOpen] = useState(false);
   const body = useId();
@@ -776,7 +779,9 @@ function ToolLine({ ev, result, working, place = "", fresh = false, aside = fals
       <div className="tool-in">
         {result?.preview ? <>
           <button type="button" className="tool-row" aria-expanded={open} aria-controls={body} onClick={() => setOpen(!open)}>{row}</button>
-          <div className={`fold${open ? " open" : ""}`} id={body}><div><pre className="pre">{result.preview}</pre></div></div>
+          <div className={`fold${open ? " open" : ""}`} id={body}><div>
+            {UNATTENDED_REFUSED.test(result.preview) ? <p className="step-note" dir="auto">{t("chat.unattendedStep")}</p> : <pre className="pre">{result.preview}</pre>}
+          </div></div>
         </> : <div className="tool-row">{row}</div>}
       </div>
     </li>
@@ -955,7 +960,7 @@ function QuestionCards({ cards }: { cards: Card[] }) {
             </span>
             <span className="q-face back" aria-hidden={!over}>
               <span className="q-label">{t("chat.cards.how")}</span>
-              <Markdown src={card.a} className="md q-answer" />
+              <Markdown src={card.a} className="md q-answer" chat />
               <span className="q-turn"><Icon name="refresh" />{t("chat.cards.back")}</span>
             </span>
           </div>
@@ -975,7 +980,7 @@ function Answer({ src }: { src: string }) {
   const dir = useMemo(() => answerDir(src), [src]);
   return (
     <div className="msg-pip">
-      {parts.map((part, k) => ("cards" in part ? <QuestionCards key={k} cards={part.cards} /> : <Markdown key={k} src={part.md} className="md msg-text" dir={dir} />))}
+      {parts.map((part, k) => ("cards" in part ? <QuestionCards key={k} cards={part.cards} /> : <Markdown key={k} src={part.md} className="md msg-text" dir={dir} chat />))}
     </div>
   );
 }
@@ -989,6 +994,10 @@ type Item = TurnItem<Ev>;
 // its own on the computer (clis.ts openLogin). Once it is signed in, the next message starts the conversation again
 // (agent.ts send), and the block says so instead.
 const CLAUDE_REFUSED = /^Failed to authenticate\b/;
+const SIGN_IN_CODES = new Set(["claude_login", "openai_login", "no_agent"]);
+// Claude's own words when its usage runs out ("You've hit your weekly limit · resets Nov 14, 8am (Asia/Jerusalem)"),
+// said in the user's words, with when it comes back as Claude gives it.
+const CLAUDE_LIMIT = /^You've hit your [^\n]*limit(?:\s*·\s*resets ([^\n]+))?$/i;
 type Login = "claude" | "openai";
 const LOGIN_NAMES: Record<Login, string> = { claude: "Claude", openai: "ChatGPT" };
 function AgentLogin({ code }: { code: "claude_login" | "openai_login" | "no_agent" }) {
@@ -1006,9 +1015,11 @@ function AgentLogin({ code }: { code: "claude_login" | "openai_login" | "no_agen
   };
   return (
     <div className="chat-login" role="alert">
-      <p className={ready ? "note" : "error-line"} dir="auto">{t(ready ? "chat.errors.agent_ready" : expired ? "chat.errors.login_expired" : "chat.errors.no_agent", { name })}</p>
+      {/* What happened in a calm line, not an alarm: a sign-in to make is no fault of the user's. The way to make it is a
+          borderless pill, never the boxed button (Sean's rule), that opens the sign-in in a window of its own. */}
+      <p className={ready ? "note" : "chat-login-says"} dir="auto">{!ready && <Icon name="warn" />}{t(ready ? "chat.errors.agent_ready" : expired ? "chat.errors.login_expired" : "chat.errors.no_agent", { name })}</p>
       {!ready && (opened ? <p className="note" dir="auto">{t("chat.loginOpened")}</p>
-        : <div className="chat-login-ways"><Btn kind="primary" onClick={open}>{t(expired ? "chat.loginAgain" : "chat.loginTo", { name })}</Btn></div>)}
+        : <button type="button" className="login-pill" onClick={open}><Icon name="login" />{t(expired ? "chat.loginAgain" : "chat.loginTo", { name })}</button>)}
       {error && <p className="error-line" dir="auto">{error}</p>}
     </div>
   );
@@ -1117,6 +1128,17 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
     const ok = r.code === "allowed" || !r.code;
     return <p key={e.requestId} className={`settled ${ok ? "" : "no"}`} dir="auto"><Icon name={ok ? "check" : "close"} />{r.code ? t(`chat.resolved.${r.code}`) : r.answer}</p>;
   };
+  // Whether the run this end belongs to stopped on a sign-in to make: the last thing it said, a sign-in block. An item's
+  // key is its place in the events (turnItems).
+  const endedOnSignIn = (key: string) => {
+    for (let i = Number(key) - 1; i >= 0; i--) {
+      const e = events[i];
+      if (!e || e.t === "user") return false;
+      if (e.t === "error") return SIGN_IN_CODES.has(e.code);
+      if (e.t === "text") return CLAUDE_REFUSED.test(e.text);
+    }
+    return false;
+  };
   const render = (e: Ev, key: string) => {
     switch (e.t) {
       case "user": return (
@@ -1134,16 +1156,24 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
               ))}
             </div>
           )}
-          {e.text && <div className="msg-bubble" dir="auto">{e.text}</div>}
+          {e.text && <div className="msg-bubble" dir="auto">{commandWords(e.text, t) ?? e.text}</div>}
         </div>
       );
-      case "text": return CLAUDE_REFUSED.test(e.text) ? <AgentLogin key={key} code="claude_login" /> : <Answer key={key} src={e.text} />;
+      case "text": {
+        if (CLAUDE_REFUSED.test(e.text)) return <AgentLogin key={key} code="claude_login" />;
+        const limit = String(e.text).trim().match(CLAUDE_LIMIT);
+        if (limit) return <p key={key} className="switched-line" dir="auto"><Icon name="warn" />{t("chat.claudeLimit")}{limit[1] ? <> {t("chat.claudeResets")} <bdi>{limit[1]}</bdi></> : null}</p>;
+        return <Answer key={key} src={e.text} />;
+      }
       case "permission": return resolved.has(e.requestId) ? settled(e) : <Permission key={key} ev={e} sessionId={id} />;
       case "question": return resolved.has(e.requestId) ? settled(e) : <Question key={key} ev={e} sessionId={id} />;
       // A run's end is said only when it has something to say: that it failed, or what it cost on a key.
-      case "result": return !e.ok || e.cost >= 0.01
+      // A run that ended on a sign-in to make has said so in the sign-in block above it.
+      case "result": return !e.ok && endedOnSignIn(key) ? null : !e.ok || e.cost >= 0.01
         ? <p key={key} className="done-line">{e.ok ? t("chat.done") : t("chat.doneError")}{e.cost >= 0.01 ? t("chat.cost", { cost: e.cost.toFixed(2) }) : ""}</p> : null;
-      case "error": return e.code === "claude_login" || e.code === "openai_login" || e.code === "no_agent" ? <AgentLogin key={key} code={e.code} />
+      // A step refused in an unattended run is said in the step itself (ToolLine), not as a red line for each.
+      case "error": return String(e.code ?? "").startsWith("unattended_") ? null
+        : e.code === "claude_login" || e.code === "openai_login" || e.code === "no_agent" ? <AgentLogin key={key} code={e.code} />
         : <p key={key} className="error-line" role="alert" dir="auto">{e.code ? t(`chat.errors.${e.code}`, { detail: e.text ?? "" }) : e.text}</p>;
       case "switched": return <p key={key} className="switched-line" dir="auto"><Icon name="warn" />{t("chat.switched", { from: e.from, to: e.to })}</p>;
       default: return null;
@@ -1177,7 +1207,7 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
                 </React.Fragment>
               )))}
             {writing && <DocCard ghost={writing} />}
-            {live && <div className="msg-pip live"><Markdown src={live} className="md msg-text" dir={answerDir(live)} /></div>}
+            {live && <div className="msg-pip live"><Markdown src={live} className="md msg-text" dir={answerDir(live)} chat /></div>}
             {!live && status === "running" && (stopping || items[items.length - 1]?.kind !== "tools") && (
               <div className="working-line">
                 <span className="steps-orb" aria-hidden="true"><AiSky orb /></span>

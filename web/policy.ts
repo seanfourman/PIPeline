@@ -44,6 +44,10 @@ const SETUP_FILES = ["user/claude.md"];
 const PICK_ROLES = /^bun run web\/pick-roles\.ts( [a-z0-9-]+)*$/;
 
 const NAME = "[A-Za-z0-9_.-]+";
+// The one variable a command may name: the conversation's scratch folder, which Pip sets for its agent (agent.ts
+// SCRATCHPAD), as the workflows write "${SCRATCHPAD:?...}/page.html". It expands to that folder and nothing else; the
+// message or default in it may hold words, never a quote, a command or another variable.
+const SCRATCH_VAR = /\$\{SCRATCHPAD(?::?[?-][^}"'$`\\;&|<>\n\r]*)?\}|\$SCRATCHPAD(?![A-Za-z0-9_])/g;
 const SAFE_COMMANDS = [
   // The LaTeX compile, in the shapes /apply and the templates use. -shell-escape never matches.
   new RegExp(
@@ -103,8 +107,9 @@ export function createPolicy(repo = REPO, tempRoot = path.join(os.tmpdir(), "cla
   const bashIsSafe = (command: string) => {
     const cmd = withoutProjectCd(command.trim()).trim();
     if (SAFE_COMMANDS.some((re) => re.test(cmd))) return true;
-    if (/[;&|<>`$\n\r]/.test(cmd)) return false;
-    return prefixes.some((p) => cmd === p || cmd.startsWith(p + " "));
+    const plain = cmd.replace(SCRATCH_VAR, "SCRATCH");
+    if (/[;&|<>`$\n\r]/.test(plain)) return false;
+    return prefixes.some((p) => plain === p || plain.startsWith(p + " "));
   };
 
   // A file each edit of which is confirmed on its own: what changes what the agent may do, a skill, or a script. In any

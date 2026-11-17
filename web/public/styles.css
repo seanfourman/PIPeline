@@ -1861,6 +1861,8 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
 .step-state.done { color: var(--ink-3); }
 .step-state.failed { color: var(--bad); }
 .tool .pre { max-height: 240px; margin-block: 2px 8px; margin-inline: 60px 14px; overflow: auto; font-size: 12.5px; }
+/* A step's outcome in words rather than a tool's output: a step skipped in an unattended run. */
+.tool .step-note { margin-block: 2px 8px; margin-inline: 60px 14px; color: var(--ink-3); font-size: 13px; }
 .tool.child .pre { margin-inline-start: 90px; }
 /* A request to allow a step (Permission in chat.tsx), as a line in the conversation like the steps' (Sean's pick of
    three sketches, 2026-11-12), no box: a slow amber dot while it waits, the question in words, what it would do
@@ -2167,6 +2169,18 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
 .md code { background: var(--surface-2); border-radius: 5px; padding: 1px 5px; font: 13px Consolas, monospace; }
 .md pre code { background: none; padding: 0; }
 .md blockquote { margin: 0; padding-inline-start: 12px; border-inline-start: 3px solid var(--accent); color: var(--ink-2); }
+/* A sub-list under an item, a little tighter than the list it is in. */
+.md li > :is(ul, ol) { margin-block: 4px 2px; }
+/* A document a chat answer names, by its name only (kit.tsx inline), opening it in a new tab. */
+.md a.md-file { font-weight: 500; text-decoration: none; overflow-wrap: anywhere; }
+.md a.md-file:hover { text-decoration: underline; }
+/* A list item's box ("[x]" or "[ ]"): a small round mark, the accent with a check when done. */
+.md-box {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; margin-inline-end: 7px; vertical-align: -3px;
+  border: 1.5px solid var(--ink-3); border-radius: 50%; color: #fff;
+}
+.md-box.done { border-color: var(--accent); background: var(--accent); }
+.md-box .icon { width: 11px; height: 11px; stroke-width: 3; }
 .tablebox { overflow-x: auto; }
 .tablebox th, .tablebox td { padding: 8px 10px; }
 /* A cell's words break between words only, never inside one, whatever the text around the table allows; a table
@@ -3533,8 +3547,21 @@ html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0
 .welcome-convo .log-column { width: calc(100% - 32px); }
 /* Claude's sign-in refused (ClaudeLogin in chat.tsx): what happened, and under it the way to sign in again. */
 .chat-login { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-.chat-login .error-line, .chat-login .note { margin: 0; }
+.chat-login .error-line, .chat-login .note, .chat-login-says { margin: 0; }
 .chat-login-ways { display: flex; flex-wrap: wrap; gap: 8px; }
+/* What the sign-in block says: calm, with the warning mark before it, not an alarm in red. */
+.chat-login-says { display: flex; align-items: flex-start; gap: 7px; color: var(--ink-2); }
+.chat-login-says .icon { flex: none; width: 16px; height: 16px; margin-top: 3px; color: #c58a1b; }
+/* The way to sign in: a borderless pill in the accent's tint, never the boxed button. */
+.login-pill {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 16px; border: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); font: inherit; font-weight: 600; cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.login-pill .icon { width: 17px; height: 17px; }
+@media (hover: hover) and (pointer: fine) { .login-pill:hover { background: color-mix(in srgb, var(--accent) 20%, transparent); } }
+.login-pill:active { scale: 0.97; }
+.login-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .welcome-convo .composer { width: calc(100% - 28px); padding-bottom: 14px; }
 /* Its bar, as a window's: what it is, in bold pixel letters, and at its end the way to make it big or small again,
    the word and then its icon. */

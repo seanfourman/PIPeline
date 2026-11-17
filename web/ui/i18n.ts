@@ -386,6 +386,7 @@ const he = {
       codex: "השיחה עם {name}. הוא עובד בפרויקט כמו Claude, עם אותם אישורים ואותה רמת גישה.",
     },
     switched: "{from} לא הצליח לענות, אז {to} ממשיך.",
+    claudeLimit: "הגעת למגבלת השימוש של Claude.", claudeResets: "היא מתאפסת:",
     access: {
       label: "רמת גישה", ask: "לשאול אותי", askNote: "אבקש אישור לפני כל פעולה רגישה.",
       auto: "אוטומטי בפרויקט", autoNote: "עורך קבצים בפרויקט בלי לשאול. שואל לפני פקודות, מחיקות ושליחה החוצה.",
@@ -421,7 +422,7 @@ const he = {
       "מגהץ…", "מלהטט…", "מאלתר…", "מכשף…", "טוחן…", "מתקתק…", "מזמזם…", "ממלמל…", "מפזז…", "משוטט…", "מזגזג…",
     ],
     // The step under way, by its number, and how long a run took.
-    stepN: "צעד {n}", second: "שנייה", secs: "{n} שניות", minute: "דקה", mins: "{n} דקות",
+    stepN: "צעד {n}", unattendedStep: "דילגתי על הצעד הזה: הוא צריך אישור, ואף אחד לא היה כאן לאשר אותו.", second: "שנייה", secs: "{n} שניות", minute: "דקה", mins: "{n} דקות",
     files: "קבצים מהשיחה", open: "פתיחה", download: "הורדה",
     // What a document the conversation made is (answer-parts.ts docKind), and one still being written.
     doc: { cv: "קורות חיים", letter: "מכתב מקדים", report: "דוח", doc: "מסמך", writing: "נכתב עכשיו" },
@@ -447,7 +448,7 @@ const he = {
       ai_none: "אף AI מחובר לא הצליח לענות.",
       login_expired: "החיבור שלי ל-{name} פג, ולכן לא הצלחתי להתחיל. צריך להתחבר שוב.",
       no_agent: "{name} לא מחובר כאן, ולכן לא הצלחתי להתחיל. צריך להתחבר אליו עם החשבון.",
-      agent_ready: "{name} מחובר עכשיו, אז אפשר לכתוב לי כאן ואתחיל מההתחלה.",
+      agent_ready: "{name} מחובר עכשיו. אני ממשיך מההתחלה, ואם לא התחלתי תוך רגע, אפשר לכתוב לי כאן.",
       openai_login: "ChatGPT לא מחובר כאן. אפשר להתחבר אליו עם החשבון בהגדרות.",
     },
     loginAgain: "להתחבר שוב", loginTo: "להתחבר ל-{name}",
@@ -1067,6 +1068,7 @@ const en: Dict = {
       codex: "This conversation is with {name}. It works in the project as Claude does, with the same approvals and the same access.",
     },
     switched: "{from} couldn't answer, so {to} carries on.",
+    claudeLimit: "Claude's usage limit is reached.", claudeResets: "It resets:",
     access: {
       label: "Access", ask: "Ask me", askNote: "I ask for approval before anything sensitive.",
       auto: "Automatic in the project", autoNote: "Edits files in the project without asking. Asks before commands, deleting and sending anything out.",
@@ -1094,7 +1096,7 @@ const en: Dict = {
       "Philosophizing…", "Hairsplitting…", "Doodling…", "Pondering…", "Digesting…", "Cooking…", "Foxtrotting…", "Percolating…", "Whisking…", "Seasoning…",
       "Ironing…", "Juggling…", "Improvising…", "Bewitching…", "Grinding…", "Tinkering…", "Humming…", "Mumbling…", "Prancing…", "Moseying…", "Zigzagging…",
     ],
-    stepN: "Step {n}", second: "a second", secs: "{n} seconds", minute: "a minute", mins: "{n} minutes",
+    stepN: "Step {n}", unattendedStep: "I skipped this step: it needs approval, and nobody was here to give it.", second: "a second", secs: "{n} seconds", minute: "a minute", mins: "{n} minutes",
     files: "Files from this conversation", open: "Open", download: "Download",
     doc: { cv: "CV", letter: "Cover letter", report: "Report", doc: "Document", writing: "Being written now" },
     cards: { turn: "Turn over for the answer", how: "How to answer", back: "Back to the question" },
@@ -1118,7 +1120,7 @@ const en: Dict = {
       ai_none: "None of the connected AIs could answer.",
       login_expired: "My sign-in to {name} has run out, so I couldn't start. Sign in again.",
       no_agent: "{name} isn't signed in here, so I couldn't start. Sign in to it with your account.",
-      agent_ready: "{name} is signed in now, so write to me here and I'll start from the beginning.",
+      agent_ready: "{name} is signed in now. I'm starting from the beginning; if I haven't within a moment, write to me here.",
       openai_login: "ChatGPT isn't signed in here. You can sign in with your account in the settings.",
     },
     loginAgain: "Sign in again", loginTo: "Sign in to {name}",

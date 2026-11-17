@@ -101,41 +101,75 @@ export function Field({ label, hint, children }: { label: React.ReactNode; hint?
   return <label className="field"><span className="field-label">{label}</span>{children}{hint && <small className="note">{hint}</small>}</label>;
 }
 
-// A small Markdown reader that builds elements, so nothing the agent writes is parsed as HTML.
-const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\(https?:[^)\s]+\)|https?:\/\/[^\s)<>]+|\*[^*\s][^*]*\*)/g;
+// A small Markdown reader that builds elements, so nothing the agent writes is parsed as HTML. A link may point to a
+// web page or, as the agent sometimes writes one, to a file here, in angle brackets or not.
+const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\((?:<[^>\n]+>|[^)\s]+)\)|<https?:\/\/[^>\s]+>|https?:\/\/[^\s)<>]+|\*[^*\s][^*]*\*)/g;
 
-function inline(text: string, key = ""): React.ReactNode[] {
+// A document of the project an answer names, as the page can open it (data.ts resolveDocument): the path from "user/"
+// on, whatever came before it (an absolute path, a drive), its spaces written out or not.
+const OPENABLE = /(?:^|\/)(user\/(?:(?:cv|cover_letters|reports)\/[^/]+\.(?:pdf|html)|documents\/applications\/[A-Za-z0-9_-]+\/[^/]+\.pdf))$/i;
+function documentHref(target: string) {
+  let p = target;
+  try { p = decodeURIComponent(target); } catch { /* as it is */ }
+  const m = p.replaceAll("\\", "/").match(OPENABLE);
+  return m ? `/file?path=${encodeURIComponent(m[1])}` : "";
+}
+// A path to a file, folders and all, with no command around it: "user/documents/applications/x/Dana Levi - Resume.pdf".
+const FILE_PATH = /^(?:[A-Za-z]:[\\/]|\/)?(?:[\w.@-]+[\\/])+[^\\/\n]+\.[A-Za-z0-9]{1,5}$/;
+// In a chat answer, what the page can't draw or the user shouldn't have to read: a maqaf, which the user asked never to
+// see, is a space, and a dash between words a comma (Sean's rule for everything written to him); a line break in HTML
+// is a space.
+const tidy = (s: string) => s.replace(/־/g, " ").replace(/\s+[—–]\s+/g, ", ").replace(/<br\s*\/?>/gi, " ");
+
+// chat: a chat answer's (Markdown's chat), where a path or a link to a file shows as the file's name, opening it when
+// the page can, and the words are tidied.
+function inlineOf(text: string, key = "", chat = false): React.ReactNode[] {
   const out: React.ReactNode[] = [];
+  const words = (s: string) => (chat ? tidy(s) : s);
   let last = 0;
   let i = 0;
   for (const m of text.matchAll(INLINE)) {
-    if (m.index! > last) out.push(text.slice(last, m.index));
+    if (m.index! > last) out.push(words(text.slice(last, m.index)));
     const t = m[0];
     const k = `${key}-${i++}`;
-    if (t.startsWith("**")) out.push(<strong key={k}>{inline(t.slice(2, -2), k)}</strong>);
-    else if (t.startsWith("`")) out.push(<code key={k} dir="ltr">{t.slice(1, -1)}</code>);
-    else if (t.startsWith("[")) {
-      const [, label, url] = t.match(/^\[([^\]]+)\]\((.+)\)$/)!;
-      out.push(<a key={k} href={url} target="_blank" rel="noopener noreferrer">{label}</a>);
-    } else if (t.startsWith("http")) out.push(<a key={k} href={t} target="_blank" rel="noopener noreferrer" dir="ltr">{t}</a>);
+    if (t.startsWith("**")) out.push(<strong key={k}>{inlineOf(t.slice(2, -2), k, chat)}</strong>);
+    else if (t.startsWith("`")) {
+      const code = t.slice(1, -1);
+      const href = chat && FILE_PATH.test(code) ? documentHref(code) : "";
+      const name = chat && FILE_PATH.test(code) ? code.split(/[\\/]/).pop()! : code;
+      out.push(href ? <a key={k} className="md-file" href={href} target="_blank" rel="noopener noreferrer" dir="auto">{name}</a> : <code key={k} dir="ltr">{name}</code>);
+    } else if (t.startsWith("[")) {
+      const [, label, raw] = t.match(/^\[([^\]]+)\]\((.+)\)$/)!;
+      const url = raw.replace(/^<|>$/g, "");
+      // A file here opens when the page can open it, and is otherwise only its label, never its path.
+      const href = /^https?:/i.test(url) ? url : documentHref(url);
+      out.push(href ? <a key={k} href={href} target="_blank" rel="noopener noreferrer">{inlineOf(label, k, chat)}</a> : <span key={k}>{inlineOf(label, k, chat)}</span>);
+    } else if (t.startsWith("<")) out.push(<a key={k} href={t.slice(1, -1)} target="_blank" rel="noopener noreferrer" dir="ltr">{t.slice(1, -1)}</a>);
+    else if (t.startsWith("http")) out.push(<a key={k} href={t} target="_blank" rel="noopener noreferrer" dir="ltr">{t}</a>);
     else out.push(<em key={k}>{t.slice(1, -1)}</em>);
     last = m.index! + t.length;
   }
-  if (last < text.length) out.push(text.slice(last));
+  if (last < text.length) out.push(words(text.slice(last)));
   return out;
 }
 
 const isTableRule = (line = "") => /^\s*\|?[\s:|-]+\|[\s:|-]*$/.test(line);
-const isList = (line: string) => /^\s*([-*]|\d+\.)\s+/.test(line);
+const LIST_MARK = /^\s*([-*]|\d+\.)\s+/;
+const isList = (line: string) => LIST_MARK.test(line);
+const indentOf = (line: string) => line.match(/^\s*/)![0].replace(/\t/g, "  ").length;
+// A list item's box, "[ ]" or "[x]", as a mark: done or still to do.
+const BOX = /^\[([ xX])\]\s+/;
 
 // dir "rtl": words in Hebrew (a conversation in Hebrew), where every block with a Hebrew word in it reads from the
 // right and every list keeps its bullets there, even one whose items start with an English name or a link, as a list
 // of sources does (Sean 2026-11-17: "במקורות ביקשתי שזה תמיד יהיה מצד ימין אם השיחה בעברית"). Otherwise each block
 // goes by its own first letter (dir="auto"), and a list by most of its items.
-export function Markdown({ src, className = "md", dir }: { src: string; className?: string; dir?: string }) {
+// chat: a chat answer (chat.tsx), whose paths and file links show as file names and whose words are tidied (inline).
+export function Markdown({ src, className = "md", dir, chat = false }: { src: string; className?: string; dir?: string; chat?: boolean }) {
   const lines = src.replace(/\r/g, "").split("\n");
   const blocks: React.ReactNode[] = [];
   const blockDir = (text: string) => (dir === "rtl" && HEBREW.test(text) ? "rtl" : "auto");
+  const inline = (text: string, key = "") => inlineOf(text, key, chat);
   for (let i = 0; i < lines.length;) {
     const line = lines[i];
     const k = String(i);
@@ -148,7 +182,8 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
       blocks.push(<pre key={k}><code>{code.join("\n")}</code></pre>);
       continue;
     }
-    const heading = line.match(/^(#{1,4})\s+(.*)/);
+    // Five and six hashes are headings too, drawn as the smallest, where they once showed as the hashes themselves.
+    const heading = line.match(/^(#{1,6})\s+(.*)/);
     if (heading) {
       const Tag = `h${Math.min(heading[1].length + 1, 4)}` as "h2";
       blocks.push(<Tag key={k} dir={blockDir(heading[2])}>{inline(heading[2], k)}</Tag>);
@@ -169,25 +204,57 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
       continue;
     }
     if (isList(line)) {
+      // Items at the first item's depth; one indented under an item is its sub-item, one level deep (deeper ones join
+      // it), and an indented line that isn't an item goes on with the item above it. They were all flattened into one
+      // list before. A numbered list starts at its first number, so one that goes on after a paragraph or a heading
+      // doesn't count from 1 again.
+      const base = indentOf(line);
       const ordered = /^\s*\d+\./.test(line);
-      const texts: string[] = [];
-      while (i < lines.length && isList(lines[i])) texts.push(lines[i++].replace(/^\s*([-*]|\d+\.)\s+/, ""));
+      const first = Number(line.match(/^\s*(\d+)\./)?.[1] ?? 1);
+      type Entry = { text: string; kids: string[]; kidsOrdered: boolean };
+      const entries: Entry[] = [];
+      while (i < lines.length) {
+        const l = lines[i];
+        const last = entries[entries.length - 1];
+        if (isList(l) && indentOf(l) <= base + 1) entries.push({ text: l.replace(LIST_MARK, ""), kids: [], kidsOrdered: false });
+        else if (last && isList(l)) {
+          if (!last.kids.length) last.kidsOrdered = /^\s*\d+\./.test(l);
+          last.kids.push(l.replace(LIST_MARK, ""));
+        } else if (last && l.trim() && indentOf(l) > base) {
+          if (last.kids.length) last.kids[last.kids.length - 1] += ` ${l.trim()}`;
+          else last.text += ` ${l.trim()}`;
+        } else break;
+        i++;
+      }
       // A list keeps one direction, that of most of its items (the page's on a tie), so its bullets stay on one side; an
       // item in the other language is set apart in its own (Sean 2026-11-12: "שהכל יהיה פה בצד ימין גם הזה של הטקסט
       // האנגלית").
-      const dirs = texts.map(langDir);
+      const dirs = entries.map((e) => langDir(e.text));
       const rtl = dirs.filter((d) => d === "rtl").length;
       const ltr = dirs.filter((d) => d === "ltr").length;
       const page = typeof document !== "undefined" && document.documentElement.dir === "ltr" ? "ltr" : "rtl";
       const side = dir === "rtl" ? "rtl" : rtl > ltr ? "rtl" : ltr > rtl ? "ltr" : dir === "ltr" ? dir : page;
-      const items = texts.map((text, n) => {
-        const body = inline(text, `${k}-${n}`);
-        // In a list read from the right, an item with any Hebrew in it reads from the right too; only one all in another
-        // language is set apart in its own.
-        const apart = side === "rtl" && HEBREW.test(text) ? undefined : dirs[n] && dirs[n] !== side ? dirs[n] : undefined;
-        return <li key={n}>{apart ? <bdi dir={apart}>{body}</bdi> : body}</li>;
+      // In a list read from the right, an item with any Hebrew in it reads from the right too; only one all in another
+      // language is set apart in its own. A box ("[x]", "[ ]") is a mark, done or to do, where it once showed as typed.
+      const item = (text: string, key: string) => {
+        const box = text.match(BOX);
+        const words = box ? text.slice(box[0].length) : text;
+        const own = langDir(words);
+        const apart = side === "rtl" && HEBREW.test(words) ? undefined : own && own !== side ? own : undefined;
+        const body = inline(words, key);
+        const mark = box ? <span className={`md-box${box[1] === " " ? "" : " done"}`} aria-label={box[1] === " " ? "☐" : "☑"}>{box[1] === " " ? null : <Icon name="check" />}</span> : null;
+        return <>{mark}{apart ? <bdi dir={apart}>{body}</bdi> : body}</>;
+      };
+      const items = entries.map((e, n) => {
+        const kids = e.kids.map((kid, j) => <li key={j}>{item(kid, `${k}-${n}-${j}`)}</li>);
+        return (
+          <li key={n}>
+            {item(e.text, `${k}-${n}`)}
+            {kids.length > 0 && (e.kidsOrdered ? <ol>{kids}</ol> : <ul>{kids}</ul>)}
+          </li>
+        );
       });
-      blocks.push(ordered ? <ol key={k} dir={side}>{items}</ol> : <ul key={k} dir={side}>{items}</ul>);
+      blocks.push(ordered ? <ol key={k} dir={side} start={first !== 1 ? first : undefined}>{items}</ol> : <ul key={k} dir={side}>{items}</ul>);
       continue;
     }
     if (line.startsWith(">")) {
@@ -197,7 +264,7 @@ export function Markdown({ src, className = "md", dir }: { src: string; classNam
       continue;
     }
     const para: string[] = [];
-    while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|```|>)/.test(lines[i]) && !isList(lines[i])) {
+    while (i < lines.length && lines[i].trim() && !/^(#{1,6}\s|```|>)/.test(lines[i]) && !isList(lines[i])) {
       if (lines[i].includes("|") && isTableRule(lines[i + 1])) break;
       para.push(lines[i++]);
     }

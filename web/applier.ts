@@ -227,7 +227,9 @@ const WORDS = {
     host: { portal: (h: string) => `המקור: ${h}, אתר משרות מותקן.`, ats: (h: string) => `המקור: ${h}, מערכת גיוס רשמית.`, unverified: (h: string) => `⚠ המקור ${h} לא מאומת: לא אתר משרות מותקן ולא מערכת גיוס מוכרת. כדאי לוודא שהמשרה והקישור אמיתיים.`, pasted: () => "המשרה הודבקה כטקסט." },
     guard: (g: string) => `⚠ בדיקת המודעה: ${g}`,
     stopped: (why: string) => `לא כתבתי קורות חיים, כי ${why}.`, locationFail: "המיקום לא מתאים להגדרות שלך", languageFail: "המשרה דורשת שפה שלא מופיעה אצלך",
-    built: (file: string) => `קורות החיים מוכנים: ${file}`, notBuilt: (tries: number) => `הבנייה לא עברה גם אחרי ${tries} תיקונים, אז לא נשמר PDF. מקור הטקסט נשאר בקבצים, ואפשר לנסות שוב או לתקן במסך העריכה.`,
+    // The path in code marks, which the chat shows as the file's name, opening it; the conversation finds its document
+    // by it (data.ts documentPaths).
+    built: (file: string) => `קורות החיים מוכנים: \`${file}\``, notBuilt: (tries: number) => `הבנייה לא עברה גם אחרי ${tries} תיקונים, אז לא נשמר PDF. מקור הטקסט נשאר בקבצים, ואפשר לנסות שוב או לתקן במסך העריכה.`,
     ats: (score: string, missing: string) => `ציון ATS: ${score}. חסרים: ${missing || "כלום"}.`,
     card: (line: string) => `ציון לפי מה שכל חברה מפרסמת: ${line}. החברות עצמן לא ראו את קורות החיים, והפירוט בעמוד ההגשות.`,
     tracker: { added: "נוספה שורה לטבלת ההגשות.", updated: "השורה בטבלת ההגשות עודכנה." },
@@ -247,7 +249,7 @@ const WORDS = {
     host: { portal: (h: string) => `Source: ${h}, an installed job portal.`, ats: (h: string) => `Source: ${h}, an official hiring system.`, unverified: (h: string) => `⚠ Unverified source ${h}: not an installed portal or a known hiring system. Check that the job and the link are real.`, pasted: () => "The posting was pasted as text." },
     guard: (g: string) => `⚠ Posting check: ${g}`,
     stopped: (why: string) => `I didn't write a CV, because ${why}.`, locationFail: "the location doesn't fit your settings", languageFail: "the job requires a language you don't list",
-    built: (file: string) => `The CV is ready: ${file}`, notBuilt: (tries: number) => `The build didn't pass even after ${tries} fixes, so no PDF was saved. The source stays in the files; try again or fix it on the editing screen.`,
+    built: (file: string) => `The CV is ready: \`${file}\``, notBuilt: (tries: number) => `The build didn't pass even after ${tries} fixes, so no PDF was saved. The source stays in the files; try again or fix it on the editing screen.`,
     ats: (score: string, missing: string) => `ATS score: ${score}. Missing: ${missing || "nothing"}.`,
     card: (line: string) => `By what each company publishes: ${line}. The companies themselves haven't seen the CV; the details are on the applications page.`,
     tracker: { added: "A row was added to the applications table.", updated: "The applications table's row was updated." },

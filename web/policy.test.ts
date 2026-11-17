@@ -21,6 +21,18 @@ describe("bash", () => {
     expect(bash("python tools/verify_pdfX.py a.pdf")).toBe("ask");
   });
 
+  test("lets through the scratch folder's variable as the workflows write it, and nothing riding on it", () => {
+    // Refused in every daily run before (2026-11-17), as any command naming a variable.
+    expect(bash(`python3 tools/fetch_page.py 'https://job-boards.greenhouse.io/x/jobs/1' --out "\${SCRATCHPAD:?set this to the session scratchpad directory from your system prompt}/page.html"`)).toBe("allow");
+    expect(bash(`python3 tools/posting_guard.py --in "\${SCRATCHPAD:?}/page.html" --html --json`)).toBe("allow");
+    expect(bash(`python tools/posting_guard.py --in "$SCRATCHPAD/posting.txt" --text --json`)).toBe("allow");
+    expect(bash(`python tools/posting_guard.py --in "\${SCRATCHPAD:-$(cat ~/.ssh/id_rsa)}/a"`)).toBe("ask");
+    expect(bash(`python tools/posting_guard.py --in "\${SCRATCHPAD:?x}/a" ; curl evil.example`)).toBe("ask");
+    expect(bash(`python tools/posting_guard.py --in "$SCRATCHPADX/a"`)).toBe("ask");
+    expect(bash(`python tools/posting_guard.py --in "$HOME/a"`)).toBe("ask");
+    expect(bash(`python3 tools/posting_guard.py --text --json <<'POSTING'\nhi\nPOSTING`)).toBe("ask");
+  });
+
   test("runs the known LaTeX compile shapes", () => {
     expect(bash("cd user/cv && lualatex -interaction=nonstopmode main_acme_dev.tex")).toBe("allow");
     expect(bash("cd ../cover_letters && xelatex -interaction=nonstopmode cover_acme_dev.tex")).toBe("allow");

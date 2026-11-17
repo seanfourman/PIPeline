@@ -10,6 +10,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { PermissionResult } from "@anthropic-ai/claude-agent-sdk";
+import { CHAT_STYLE } from "./chat-style";
 import { REPO } from "./policy";
 
 const EXE = path.join(import.meta.dir, "node_modules", ".bin", process.platform === "win32" ? "codex.exe" : "codex");
@@ -105,7 +106,8 @@ export class CodexAgent {
       // for the portal tools, since each command that could use it is judged before it runs. Web search is live, as
       // Claude's is, for the company research /apply's reviewer does.
       const params = {
-        cwd: this.cwd, approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: CODEX_INSTRUCTIONS,
+        cwd: this.cwd, approvalPolicy: "untrusted", sandbox: "workspace-write", developerInstructions: `${CODEX_INSTRUCTIONS}
+${CHAT_STYLE}`,
         config: { sandbox_workspace_write: { network_access: true }, web_search: "live" },
         ...(this.ephemeral ? { ephemeral: true } : {}),
       };

@@ -107,8 +107,17 @@ export const COMMANDS: { group: string; items: { id: string; arg?: boolean; dang
   { group: "setup", items: [{ id: "setup", arg: true }, { id: "reset", danger: true }] },
 ];
 
+// A message that is a command, as its bubble shows it: the command's name, then what came after it but its options
+// ("--from-documents"), which say nothing to the user. "/setup --from-documents" is "Update the profile".
+export function commandWords(text: string, t: Ctx["t"]) {
+  const m = text.trim().match(/^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/);
+  if (!m || !COMMANDS.some((g) => g.items.some((c) => c.id === m[1]))) return null;
+  const rest = (m[2] ?? "").replace(/(^|\s)--[\w-]+(?=\s|$)/g, " ").trim();
+  return `${t(`tools.commands.${m[1]}`)[0]}${rest ? `: ${rest}` : ""}`;
+}
+
 // Shows "/apply https://site/..." as a readable conversation name, and a link alone (an application, until it is
-// named by its role and company) by its site.
+// named by its role and company) by its site. Options ("--section search") are left out.
 export function friendlyTitle(title: string, t: Ctx["t"]) {
   if (/^https?:\/\/\S+$/.test(title)) {
     try { return `${t("tools.commands.apply")[0]}: ${new URL(title).hostname.replace(/^www\./, "")}`; } catch { return title; }
@@ -117,7 +126,7 @@ export function friendlyTitle(title: string, t: Ctx["t"]) {
   const id = cmd.startsWith("/") ? cmd.slice(1) : "";
   const known = COMMANDS.some((g) => g.items.some((c) => c.id === id));
   if (!known) return title;
-  const arg = rest.join(" ");
+  const arg = rest.filter((w) => !w.startsWith("--")).join(" ");
   let detail = arg;
   try { if (/^https?:\/\//.test(arg)) detail = new URL(arg).hostname.replace(/^www\./, ""); } catch { /* keep the text */ }
   const name = t(`tools.commands.${id}`)[0];

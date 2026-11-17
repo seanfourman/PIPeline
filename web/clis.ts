@@ -64,18 +64,38 @@ export async function cliStatus(fresh = false): Promise<Record<Login, boolean>> 
 
 // Signing in opens Claude Code or Codex in a window of its own on this computer, where the user finishes it in the
 // browser; the settings see it within a few seconds after.
+// On Windows the window's title goes first in quotes, as start reads its first quoted word as the title: unquoted, as
+// Bun passed it, start took "Claude" for the program to run, so the window never ran the sign-in (a missing program,
+// or another Claude given the path as its prompt), and a refused sign-in stayed refused however often it was "opened"
+// (2026-11-17). The line goes to cmd as it is written (windowsVerbatimArguments); a Windows path holds no quote. With
+// /wait, cmd ends when the window does, and only then does a refused sign-in count again, and is it asked again: Claude
+// Code says it is signed in from what it keeps even when its server refuses that, so it counts once it has run. Each
+// one waiting for it (onSignedIn, agent.ts) hears when the AI is signed in after that.
+export const windowsLoginLine = (title: string, exe: string, argv: string[]) => `start "${title}" /wait "${exe}" ${argv.join(" ")}`;
+const signedInListeners = new Set<(which: Login) => void>();
+export const onSignedIn = (fn: (which: Login) => void) => { signedInListeners.add(fn); };
 export function openLogin(which: Login) {
   const [exe, title, argv] = which === "claude" ? [CLAUDE, "Claude", ["auth", "login"]] : [EXE, "Codex", ["login"]];
   if (!existsSync(exe)) throw new ChatbotError("ai_cli_missing");
   checked = 0;
+  const finished = () => {
+    refused[which] = false;
+    checked = 0;
+    cliStatus(true).then((now) => { if (now[which]) for (const fn of signedInListeners) fn(which); }).catch(() => {});
+  };
+  if (process.platform === "win32") {
+    const proc = Bun.spawn(["cmd", "/c", windowsLoginLine(title, exe, argv)], { stdout: "ignore", stderr: "ignore", windowsVerbatimArguments: true });
+    proc.exited.then(finished, finished);
+    return;
+  }
+  // Elsewhere the window can't be waited for, so it counts as opened. On a Mac, in a Terminal window: the command
+  // quoted for the shell, then as AppleScript's text.
   refused[which] = false;
-  if (process.platform === "win32") Bun.spawn(["cmd", "/c", "start", title, exe, ...argv], { stdout: "ignore", stderr: "ignore" });
-  // On a Mac, in a Terminal window: the command quoted for the shell, then as AppleScript's text.
-  else if (process.platform === "darwin") {
+  if (process.platform === "darwin") {
     const line = [exe, ...argv].map((a) => `'${a.replaceAll("'", `'\\''`)}'`).join(" ");
     const script = `"${line.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
     Bun.spawn(["osascript", "-e", `tell application "Terminal" to do script ${script}`, "-e", 'tell application "Terminal" to activate'], { stdout: "ignore", stderr: "ignore" });
-  } else Bun.spawn([exe, ...argv], { stdout: "ignore", stderr: "ignore" });
+  } else Bun.spawn([exe, ...argv], { stdout: "ignore", stderr: "ignore" }).exited.then(finished, finished);
 }
 
 // The whole of what is asked, as one text: the instructions, the conversation so far, and the new message. The

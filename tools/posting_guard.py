@@ -84,7 +84,7 @@ LINE_MAX = 200
 ZERO_WIDTH = "​‌‍⁠⁡⁢⁣⁤"
 BIDI = "‎‏‪‫‬‭‮⁦⁧⁨⁩"
 BIDI_TAMPER = "‭‮⁦⁧⁨⁩"  # overrides and isolates
-FORMAT = "­  "  # soft hyphen, line/paragraph separators
+FORMAT = "­"  # soft hyphen, line/paragraph separators
 BOM = "﻿"
 # U+E0000-U+E007F: the Unicode "tags" block, one invisible code point per ASCII
 # character. A payload written in it survives copy-paste, never renders, and
@@ -178,6 +178,22 @@ def _fold(text: str) -> str:
     return text.strip()
 
 
+# Words that careers pages split with a zero-width character on purpose, so that a phone or a mail app doesn't turn
+# them into a link: the share button's "Linked" + BOM + "In" on many of them. Encoding noise, not a word split to dodge
+# a scan, and it stopped an application to ask about it (2026-11-17).
+KNOWN_SPLIT = {"linkedin"}
+
+
+def _known_split(text: str, i: int) -> bool:
+    """Whether the invisible character at i sits inside one of KNOWN_SPLIT's words."""
+    start, end = i, i + 1
+    while start > 0 and (text[start - 1].isalpha() or text[start - 1] in INVISIBLE):
+        start -= 1
+    while end < len(text) and (text[end].isalpha() or text[end] in INVISIBLE):
+        end += 1
+    return "".join(c for c in text[start:end] if c.isalpha()).lower() in KNOWN_SPLIT
+
+
 def clean_text(text: str):
     """Remove invisible characters.
 
@@ -210,7 +226,7 @@ def clean_text(text: str):
         elif ch in ZERO_WIDTH or ch == BOM:
             before = text[i - 1] if i else ""
             after = text[i + 1] if i + 1 < len(text) else ""
-            if before.isalpha() and after.isalpha():
+            if before.isalpha() and after.isalpha() and not _known_split(text, i):
                 flagged += 1
     invisible_text = []
     for run in TAG_RUN.findall(unflagged):

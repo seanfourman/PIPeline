@@ -8,6 +8,7 @@ import { buildInterface } from "./build";
 import { DICTS, translate } from "./ui/i18n";
 import { tabIcon } from "./icon";
 import { foxPixels, ICON, ICON_COLORS, Pip } from "./ui/pip";
+import { commandWords, friendlyTitle } from "./ui/app";
 import { langDir, Markdown } from "./ui/kit";
 
 const paths = (value: unknown, prefix = ""): string[] =>
@@ -179,5 +180,41 @@ describe("Pip's answers", () => {
     const english = renderToStaticMarkup(createElement(Markdown, { src: "- FastAPI\n- PostgreSQL\n- פייתון" }));
     expect(english).toContain('<ul dir="ltr">');
     expect(english).toContain('<li><bdi dir="rtl">פייתון</bdi></li>');
+  });
+
+  test("a Hebrew answer keeps a list of sources that start with links on the right", () => {
+    const html = renderToStaticMarkup(createElement(Markdown, { dir: "rtl", src: "- [acme.com/careers](https://acme.com/careers): דף המשרות\n- Python, FastAPI\n\nDiorama היא הצנרת." }));
+    expect(html).toContain('<ul dir="rtl">');
+    expect(html).toContain("</a>: דף המשרות</li>");
+    expect(html).toContain('<li><bdi dir="ltr">Python, FastAPI</bdi></li>');
+    expect(html).toContain('<p dir="rtl">Diorama');
+  });
+
+  test("a message that is a command shows as the command's name, without its options", () => {
+    const t = (key: string, vars?: Record<string, string | number>) => translate("he", key, vars);
+    expect(commandWords("/setup --from-documents", t)).toBe("עדכון הפרופיל");
+    expect(commandWords("/apply https://acme.com/jobs/1", t)).toBe("הגשה למשרה: https://acme.com/jobs/1");
+    expect(commandWords("שלום", t)).toBeNull();
+    expect(commandWords("/nothing-like-it x", t)).toBeNull();
+    expect(friendlyTitle("/setup --section search", t)).toBe("עדכון הפרופיל: search");
+  });
+
+  test("draws what the chat's answers write that it once showed as typed", () => {
+    const md = (src: string, chat = true) => renderToStaticMarkup(createElement(Markdown, { src, dir: "rtl", chat })).replaceAll(' target="_blank" rel="noopener noreferrer"', "");
+    // A sub-list under its item, and a numbered list that goes on after a heading from its own number.
+    expect(md("- עבודה:\n  - בדיקות\n  - ענן\n- פרויקטים")).toContain("<li>עבודה:<ul><li>בדיקות</li><li>ענן</li></ul></li><li>פרויקטים</li>");
+    expect(md("**טובה**\n\n1. א\n\n**בינונית**\n\n2. ב")).toContain('<ol dir="rtl" start="2"><li>ב</li></ol>');
+    // Boxes as marks, five hashes as a heading.
+    expect(md("- [x] אתר\n- [ ] לינקדאין")).toContain('<span class="md-box done"');
+    expect(md("- [x] אתר\n- [ ] לינקדאין")).not.toContain("[x]");
+    expect(md("##### כותרת")).toBe('<div class="md" dir="rtl"><h4 dir="rtl">כותרת</h4></div>');
+    // A file here: a document opens by its name, anything else is its label or its name, never its path.
+    expect(md("[ההוראות](C:/Users/x/.claude/skills/a/SKILL.md)")).toContain("<span>ההוראות</span>");
+    expect(md("`user/documents/applications/acme_dev/Dana Levi - Resume.pdf`")).toContain('<a class="md-file" href="/file?path=user%2Fdocuments%2Fapplications%2Facme_dev%2FDana%20Levi%20-%20Resume.pdf" dir="auto">Dana Levi - Resume.pdf</a>');
+    expect(md("`user/company_research/acme.json`")).toContain('<code dir="ltr">acme.json</code>');
+    expect(md("`python tools/x.py a`")).toContain('<code dir="ltr">python tools/x.py a</code>');
+    // No maqaf and no dash between words in a chat answer; elsewhere, the text as it is.
+    expect(md("ב\u05BEBIScience \u2014 וזהו, 1\u20132")).toContain("ב BIScience, וזהו, 1\u20132");
+    expect(md("`user/cv/a.pdf` \u2014 x", false)).toContain("user/cv/a.pdf</code> \u2014 x");
   });
 });
