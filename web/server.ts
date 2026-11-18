@@ -5,7 +5,7 @@ import "./upgrade";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { createSession, createTaskSession, deleteSession, getSession, isAccess, leaveProject, listSessions, runTask, runUnattended, searchSessions } from "./agent";
+import { createSession, createTaskSession, defaultEfforts, deleteSession, getSession, isAccess, leaveProject, listSessions, runTask, runUnattended, searchSessions } from "./agent";
 import { AccountError, clearedCookie, createAuth, openedByHand, rememberedCookie, rememberedOf, sessionCookie, sessionOf } from "./auth";
 import { buildInterface, watchInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
@@ -547,7 +547,7 @@ async function api(req: Request, url: URL): Promise<Response> {
       const kept = rememberedOf(req.headers.get("cookie"));
       const accounts = others.map((a) => a.name);
       const remembered = others.filter((a) => kept.has(a.id)).map((a) => a.name);
-      return json({ ...loadState(settings, autoScores), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), projects: projects.list(), aiKeys: keyStatus(), aiLogins: await cliStatus(), account: auth.user(), accounts, remembered, computer: COMPUTER, intro, remote: remote.status(), transcript: transcriptInfo() });
+      return json({ ...loadState(settings, autoScores), saved: readSaved(), settings, presets: REGION_PRESETS, sessions: listSessions(), projects: projects.list(), aiKeys: keyStatus(), aiLogins: await cliStatus(), claudeEfforts: defaultEfforts(), account: auth.user(), accounts, remembered, computer: COMPUTER, intro, remote: remote.status(), transcript: transcriptInfo() });
     }
     if (parts[0] === "profile" || parts[0] === "rules") return json(readDocument(parts[0]));
     if (parts[0] === "checks") return json(readChecks());

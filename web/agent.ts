@@ -11,6 +11,7 @@ import { CHAT_SYSTEM, ChatbotError, providerOf, type Turn } from "./chatbots";
 import { CODEX_LOGIN_FAILED, cliSignedIn, loginRefused, onSignedIn } from "./clis";
 import { CodexAgent } from "./codex";
 import { documentPaths } from "./data";
+import { effortsFrom, isEffort, type Effort } from "./efforts";
 import { ACCESS, createPolicy, REPO, type Access } from "./policy";
 import { loadSettings } from "./settings";
 import { matches, type Meta } from "./threads";
@@ -35,10 +36,14 @@ mkdirSync(DATA, { recursive: true });
 
 const decide = createPolicy();
 export const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
-// How hard Claude thinks, picked beside the model (chat.tsx EffortPicker); none is the user's own default.
-export const EFFORTS = ["low", "medium", "high", "xhigh"] as const;
-type Effort = (typeof EFFORTS)[number];
-const isEffort = (e: unknown): e is Effort => EFFORTS.includes(e as Effort);
+// The level Claude thinks at where none is picked, by model, from this computer's Claude Code settings in the order
+// settingSources reads them (efforts.ts effortsFrom). For the new conversation's slider (chat.tsx EffortSlider).
+export function defaultEfforts(): Record<string, Effort> {
+  const dir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
+  const read = (file: string): Record<string, any> => { try { return JSON.parse(readFileSync(file, "utf8")) ?? {}; } catch { return {}; } };
+  const sources = [path.join(dir, "settings.json"), path.join(REPO, ".claude", "settings.json"), path.join(REPO, ".claude", "settings.local.json")].map(read);
+  return effortsFrom(sources, MODELS, process.env.CLAUDE_CODE_EFFORT_LEVEL);
+}
 
 type Pending = { resolve: (r: PermissionResult) => void; tool?: string; input: Record<string, unknown>; rememberKey?: string };
 type Status = "running" | "waiting" | "idle" | "error";
@@ -73,7 +78,7 @@ class Session {
   private replying?: AbortController;
   // In a plain conversation, the name of the AI that answered last.
   engine?: string;
-  // How hard Claude thinks in it, when one was picked (EFFORTS).
+  // How hard Claude thinks in it, when one was picked (efforts.ts EFFORTS).
   effort?: Effort;
   // A conversation ChatGPT works in as an agent, through Codex (codex.ts), and its thread there.
   agentThreadId?: string;

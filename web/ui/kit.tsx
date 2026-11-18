@@ -2,8 +2,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Archive, ArchiveRestore, ArrowLeftRight, ArrowUp, Award, Bookmark, BookOpenText, BriefcaseBusiness, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, FolderInput, FolderOpen, FolderPlus, Gauge,
-  Gem, Globe, GraduationCap, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, MessageCircleDashed, Mic, Minus, Moon, PanelLeft, PanelRight, Pause, Pencil, Phone, Pin, PinOff, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, Signal, SignalHigh, SignalLow, SignalMedium, SlidersHorizontal,
-  Sparkles, Square, Sun, Trash2, TriangleAlert, User, UserPlus, X, Zap,
+  Gem, Globe, GraduationCap, Palette, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, MessageCircleDashed, Mic, Minus, Moon, PanelLeft, PanelRight, Pause, Pencil, Phone, Pin, PinOff, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
+  Sparkles, Square, SquarePen, Sun, Trash2, TriangleAlert, User, UserPlus, X, Zap,
   type LucideIcon,
 } from "lucide-react";
 import { translate, type Lang } from "./i18n";
@@ -304,12 +304,12 @@ const ICONS: Record<string, LucideIcon> = {
   ai: Sparkles, open: ExternalLink, apply: Send, pin: MapPin, close: X, onward: ChevronLeft, back: ChevronRight, down: ChevronDown, check: Check, minus: Minus, find: Search,
   warn: TriangleAlert, hidden: ArrowLeftRight, temporary: MessageCircleDashed, send: ArrowUp, stop: Square, download: Download, file: FileText, portals: Office, companies: BriefcaseBusiness, refresh: RefreshCw, gauge: Gauge,
   portfolio: Case, repo: FolderGit2, video: Clapperboard, readme: BookOpenText, site: Globe, play: Play, pause: Pause,
-  mic: Mic, mail: Mail, phone: Phone, link: Link, school: GraduationCap, edit: Pencil, award: Award,
+  mic: Mic, mail: Mail, phone: Phone, link: Link, school: GraduationCap, edit: Pencil, compose: SquarePen, award: Award,
   "thread-pin": Pin, unpin: PinOff, archive: Archive, unarchive: ArchiveRestore, runs: CalendarClock, trash: Trash2, folder: Folder, "folder-open": FolderOpen,
   "folder-plus": FolderPlus, move: FolderInput, "panel-left": PanelLeft, "panel-right": PanelRight,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,
   "model-default": Cpu, "model-opus": Gem, "model-sonnet": Feather, "model-haiku": Leaf,
-  "effort-default": Gauge, "effort-low": SignalLow, "effort-medium": SignalMedium, "effort-high": SignalHigh, "effort-xhigh": Signal,
+  palette: Palette,
 };
 
 // filled is for the page you are on: the shape filled in, its inner lines cut out (see .icon.filled in the CSS).
@@ -327,39 +327,28 @@ export const ActLabel = ({ children, dir }: { children: React.ReactNode; dir?: s
 // drifting over the sky's blue, behind whatever stands for the AI, a button or a round mark, and in its shape. orb is
 // for a small round one, with five small clouds about its middle.
 // In a button, the colours move faster while the pointer is on it or the keyboard is, where they once grew brighter
-// (Sean 2026-11-17: "אל תעשה שזה יהיה יותר SATURATED תעשה שהוא יהיה מהיר יותר בפנים"). The speed eases in and out from
-// where each cloud is, as the animations' own rate changes, never their place; with reduced motion nothing moves at all.
+// (Sean 2026-11-17: "אל תעשה שזה יהיה יותר SATURATED תעשה שהוא יהיה מהיר יותר בפנים"). The speed changes from where
+// each cloud is, as the animations' own rate changes, never their place; with reduced motion nothing moves at all.
 const SKY_QUICK = 2.6;
-const SKY_EASE_MS = 350;
 export function AiSky({ orb = false }: { orb?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     const sky = ref.current;
     const host = sky?.parentElement?.closest<HTMLElement>("button, a, [role='button']");
     if (!sky || !host) return;
-    let rate = 1;
-    let frame = 0;
-    const toward = (target: number) => {
-      cancelAnimationFrame(frame);
-      const from = rate;
-      const start = performance.now();
-      const step = (now: number) => {
-        const p = Math.min(1, (now - start) / SKY_EASE_MS);
-        rate = from + (target - from) * (1 - (1 - p) ** 3);
-        for (const a of sky.getAnimations({ subtree: true })) a.playbackRate = rate;
-        if (p < 1) frame = requestAnimationFrame(step);
-      };
-      frame = requestAnimationFrame(step);
-    };
-    const quick = () => { if (!host.matches(":disabled")) toward(SKY_QUICK); };
-    const calm = () => toward(1);
+    // The rate set once, each cloud going on from where it is. It was eased in over a third of a second by setting it
+    // on every frame, and while that went on, newer Chromes (Brave 157) held back every other change the hover made on
+    // the same button, its transitions starting only once the easing ended (Sean 2026-11-17: "its still insanely
+    // delayed"; measured: 360 ms, against none without it).
+    const set = (rate: number) => { for (const a of sky.getAnimations({ subtree: true })) a.updatePlaybackRate(rate); };
+    const quick = () => { if (!host.matches(":disabled")) set(SKY_QUICK); };
+    const calm = () => set(1);
     const focus = () => { if (host.matches(":focus-visible")) quick(); };
     host.addEventListener("pointerenter", quick);
     host.addEventListener("pointerleave", calm);
     host.addEventListener("focusin", focus);
     host.addEventListener("focusout", calm);
     return () => {
-      cancelAnimationFrame(frame);
       host.removeEventListener("pointerenter", quick);
       host.removeEventListener("pointerleave", calm);
       host.removeEventListener("focusin", focus);
@@ -370,6 +359,68 @@ export function AiSky({ orb = false }: { orb?: boolean }) {
     <span ref={ref} className={`ai-sky ${orb ? "orb" : ""}`} aria-hidden="true">
       {Array.from({ length: orb ? 5 : 7 }, (_, i) => <i key={i} />)}
     </span>
+  );
+}
+
+// A new conversation: the sidebar's call to act, in the place of its main button (Sean 2026-11-17: "הכפתור של השיחה
+// חדשה מכוער רצח הוא צריך להיות יותר מיוחד"; "אולי זז בסיבובים כזה עם גלים סוג של ואז כששמים את העכבר זה מתפרש על כל
+// הכפתור"; and that its colours should move as the AI's do behind the microphone, not in a straight sweep; first at the
+// conversation list's top, then moved here, 2026-11-18: "שם את הכפתור הזה שעשינו ב SIDEBAR הימני"). Its ground is the
+// AI's own (AiSky). Over it lies a pill of the page's own colour a little in from the rim, its edge rippling in waves
+// that run round it (HOLE_WAVES, a SMIL animation of its outline), so at rest the clouds show as a wavy ring. Hovered,
+// the pill shrinks away, its waves still running, until the clouds fill the button and the words are white; off it,
+// the pill comes back (styles.css .new-chat). Its words never wrap. Where the sidebar keeps only its icons it is a
+// round plus on the clouds alone.
+// The waves are few, long and soft, and the outline a smooth curve through its points: ten short waves drawn as
+// straight segments looked sharp, all bends and corners (Sean 2026-11-18: "לא רציתי שזה יהיה כזה חד ויראה ככה בכאלה
+// פניות חדות").
+const HOLE_INSET = 8;
+const HOLE_AMP = 2.5;
+const HOLE_WAVE = 105;
+const HOLE_POINTS = 48;
+const HOLE_STEPS = 12;
+// The hole's outline at one phase of its waves: a pill HOLE_INSET in from the 200 by 60 field's rim, each point pushed
+// out along the edge's normal by a wave of the distance round it, a whole number of waves so they meet where they
+// began, joined by a closed Catmull-Rom curve (as cubic Béziers). The same commands at every phase, so one outline can
+// move into the next.
+function holeOutline(phase: number) {
+  const W = 200, H = 60, r = H / 2 - HOLE_INSET, x0 = HOLE_INSET + r, x1 = W - HOLE_INSET - r, cy = H / 2;
+  const straight = x1 - x0, arc = Math.PI * r, round = 2 * (straight + arc);
+  const k = (2 * Math.PI * Math.max(1, Math.round(round / HOLE_WAVE))) / round;
+  const p: [number, number][] = [];
+  for (let i = 0; i < HOLE_POINTS; i++) {
+    const s = (i / HOLE_POINTS) * round;
+    let x: number, y: number, nx: number, ny: number;
+    if (s < straight) { x = x0 + s; y = HOLE_INSET; nx = 0; ny = -1; }
+    else if (s < straight + arc) { const a = -Math.PI / 2 + (s - straight) / r; x = x1 + r * Math.cos(a); y = cy + r * Math.sin(a); nx = Math.cos(a); ny = Math.sin(a); }
+    else if (s < 2 * straight + arc) { x = x1 - (s - straight - arc); y = H - HOLE_INSET; nx = 0; ny = 1; }
+    else { const a = Math.PI / 2 + (s - 2 * straight - arc) / r; x = x0 + r * Math.cos(a); y = cy + r * Math.sin(a); nx = Math.cos(a); ny = Math.sin(a); }
+    const d = HOLE_AMP * Math.sin(k * s - phase);
+    p.push([x + nx * d, y + ny * d]);
+  }
+  const at = (i: number) => p[(i + HOLE_POINTS) % HOLE_POINTS];
+  const f = (n: number) => n.toFixed(2);
+  let path = `M${f(p[0][0])} ${f(p[0][1])}`;
+  for (let i = 0; i < HOLE_POINTS; i++) {
+    const [a, b, c, e] = [at(i - 1), at(i), at(i + 1), at(i + 2)];
+    path += ` C${f(b[0] + (c[0] - a[0]) / 6)} ${f(b[1] + (c[1] - a[1]) / 6)} ${f(c[0] - (e[0] - b[0]) / 6)} ${f(c[1] - (e[1] - b[1]) / 6)} ${f(c[0])} ${f(c[1])}`;
+  }
+  return `${path} Z`;
+}
+// The outlines the waves run through, back to the first, for the animation's values.
+const HOLE_WAVES = Array.from({ length: HOLE_STEPS + 1 }, (_, i) => holeOutline((i / HOLE_STEPS) * 2 * Math.PI)).join(";");
+export function AiNewChat({ label }: { label: string }) {
+  return (
+    <a className="new-chat" href="/chat/new">
+      <AiSky />
+      <svg className="new-chat-hole" viewBox="0 0 200 60" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        <path d={holeOutline(0)}>
+          <animate attributeName="d" dur="5s" repeatCount="indefinite" values={HOLE_WAVES} />
+        </path>
+      </svg>
+      <Icon name="plus" />
+      <span className="new-chat-words">{label}</span>
+    </a>
   );
 }
 

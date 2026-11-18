@@ -8,6 +8,7 @@ import { ActLabel, AiSky, api, goTo, HEBREW, Icon, langDir, Markdown, ThinBar, u
 import { grounded, takeOff, useLanding } from "../launch";
 import { Select } from "../select";
 import { useVoiceTyping, VoiceGlow, VoiceTypingButton } from "../voice";
+import { ChatBackdrop, ThemePicker, useChatTheme } from "../chat-theme";
 
 type Ev = Record<string, any> & { t: string };
 type Access = "ask" | "auto" | "full";
@@ -26,6 +27,7 @@ export function useFirstAi() {
 // The commands a new conversation offers as a start; one that needs more, a link or a company, goes into the box
 // to finish there.
 const STARTS: [string, boolean][] = [["job-scraper", false], ["rank", false], ["apply", true], ["interview", true]];
+const START_ICONS: Record<string, string> = { "job-scraper": "find", rank: "gauge", apply: "apply", interview: "chat" };
 const GROUPS = ["today", "yesterday", "week", "earlier"] as const;
 const DAY_MS = 86_400_000;
 // The box grows with what is written, up to this, then scrolls.
@@ -111,7 +113,15 @@ function ThreadMenu({ thread, projects, onRename, onDelete }: { thread: Thread; 
 
 // One conversation in the list: its title leading to it, a dot while it works, waits or stopped, and its ⋯. Renaming,
 // the title becomes a field (Enter or leaving it saves, Escape keeps the old one); deleting, the row asks first.
-function ThreadRow({ thread, current, projects, onPick }: { thread: Thread; current: string; projects: Project[]; onPick: () => void }) {
+// A title with what was searched for marked in it, wherever it falls, in any case of letters.
+function Marked({ text, q }: { text: string; q: string }) {
+  const at = q ? text.toLocaleLowerCase().indexOf(q.toLocaleLowerCase()) : -1;
+  if (at < 0) return <>{text}</>;
+  return <>{text.slice(0, at)}<mark>{text.slice(at, at + q.length)}</mark>{text.slice(at + q.length)}</>;
+}
+
+// mark: what a search looked for, marked in the title.
+function ThreadRow({ thread, current, projects, onPick, mark = "" }: { thread: Thread; current: string; projects: Project[]; onPick: () => void; mark?: string }) {
   const { t } = useApp();
   const { meta, remove } = useThreadActions(current);
   const [mode, setMode] = useState<"" | "rename" | "delete">("");
@@ -134,14 +144,13 @@ function ThreadRow({ thread, current, projects, onPick }: { thread: Thread; curr
   return (
     <div className={`thread ${thread.id === current ? "current" : ""}`}>
       <a className="thread-link" href={`/chat/${thread.id}`} aria-current={thread.id === current ? "page" : undefined} onClick={onPick}>
-        <span className="thread-title" dir="auto">{title}</span>
+        <span className="thread-title" dir="auto"><Marked text={title} q={mark} /></span>
       </a>
       {thread.status !== "idle" && <span className={`thread-dot ${thread.status}`} role="img" aria-label={t(`session.${thread.status}`)} />}
       <ThreadMenu thread={thread} projects={projects} onRename={() => { setName(thread.title); setMode("rename"); }} onDelete={() => setMode("delete")} />
     </div>
   );
 }
-
 // A project in the list: its folder, its name and how many conversations it holds, opening to show them; its ⋯ renames
 // or deletes it (its conversations only leave it). Renaming and deleting ask in the row, as a conversation's do.
 function ProjectRow({ project, threads, open, onToggle, current, projects, onPick }: {
@@ -233,45 +242,96 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
     if (name) void api("projects", { name }).then(() => refresh()).catch(() => {});
   };
   const side = document.documentElement.dir === "rtl" ? "panel-left" : "panel-right";
+  // The list's buttons say what they are by their icons alone, with no names floating by (Sean 2026-11-17: "לא חושב
+  // שצריך שם TOOLTIP בכלל"); screen readers still hear their names.
+  // The search opens out of its round button: the pill is clipped to the button's circle and the clip widens to the
+  // whole head, and closing it narrows back into the button before the button returns (Sean 2026-11-18: "תוסיף
+  // אנימציה על הלחיצה שלו"). from is the button's place in the head as that clip; empty, as when the folded rail's
+  // search opens the list, the pill just shows and goes.
+  const head = useRef<HTMLDivElement>(null);
+  const finder = useRef<HTMLButtonElement>(null);
+  const finding = useRef<HTMLLabelElement>(null);
+  const from = useRef("");
+  const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const PILL = "inset(0px 0px 0px 0px round 23px)";
+  const openSearch = () => {
+    const h = head.current?.getBoundingClientRect();
+    const b = finder.current?.getBoundingClientRect();
+    from.current = h && b ? `inset(${b.top - h.top}px ${h.right - b.right}px ${h.bottom - b.bottom}px ${b.left - h.left}px round ${b.height / 2}px)` : "";
+    setSearching(true);
+    setQuery("");
+  };
+  // What is in the pill fades in as it widens and out as it narrows: in the button's small circle the hint's last
+  // word showed through, filmed.
+  useLayoutEffect(() => {
+    const el = finding.current;
+    if (!searching || !el || !from.current || still()) return;
+    el.animate([{ clipPath: from.current }, { clipPath: PILL }], { duration: 260, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+    for (const kid of el.children) kid.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 150, delay: 60, easing: "ease-out", fill: "backwards" });
+  }, [searching]);
+  const closeSearch = () => {
+    setQuery("");
+    const el = finding.current;
+    if (!el || !from.current || still()) { setSearching(false); return; }
+    const done = () => setSearching(false);
+    for (const kid of el.children) kid.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 90, easing: "ease-out", fill: "forwards" });
+    el.animate([{ clipPath: PILL }, { clipPath: from.current }], { duration: 180, easing: "cubic-bezier(0.23, 1, 0.32, 1)", fill: "forwards" }).finished.then(done, done);
+  };
   if (folded) {
     return (
       <nav className="threads folded" aria-label={t("chat.list")}>
-        <button type="button" className="threads-icon" aria-label={t("chat.showList")} onClick={onOpen}>
-          <Icon name={side} /><ActLabel>{t("chat.showList")}</ActLabel>
-        </button>
-        <a className="threads-icon" href="/chat/new" aria-label={t("chat.new")} onClick={onPick}>
-          <Icon name="plus" /><ActLabel>{t("chat.new")}</ActLabel>
-        </a>
-        <button type="button" className="threads-icon" aria-label={t("chat.search")} onClick={() => { setSearching(true); setQuery(""); onOpen(); }}>
-          <Icon name="find" /><ActLabel>{t("chat.search")}</ActLabel>
-        </button>
+        <button type="button" className="threads-icon" aria-label={t("chat.showList")} onClick={onOpen}><Icon name={side} /></button>
+        <a className="threads-icon" href="/chat/new" aria-label={t("chat.new")} onClick={onPick}><Icon name="plus" /></a>
+        <button type="button" className="threads-icon" aria-label={t("chat.search")} onClick={() => { from.current = ""; setSearching(true); setQuery(""); onOpen(); }}><Icon name="find" /></button>
       </nav>
     );
   }
+  // The daily run's row: when it last ran at its end, or a dot while one is at work.
+  const lastRun = runs.length ? runs.reduce((a, b) => (b.createdAt > a.createdAt ? b : a)) : undefined;
+  const runDay = lastRun ? groupOf(lastRun.createdAt) : undefined;
+  const runWhen = !lastRun ? "" : runDay === "today" ? new Date(lastRun.createdAt).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })
+    : runDay === "yesterday" ? t("chat.groups.yesterday")
+    : new Date(lastRun.createdAt).toLocaleDateString("he-IL", { day: "numeric", month: "numeric" });
+  const runBusy = runs.some((c) => c.status === "running" || c.status === "waiting");
   return (
     <nav className="threads" aria-label={t("chat.list")}>
-      <div className="threads-head">
-        <a className="thread-new" href="/chat/new" onClick={onPick}><Icon name="plus" /><span>{t("chat.new")}</span></a>
-        <button type="button" className="threads-icon" aria-label={t("chat.search")} aria-pressed={searching} onClick={() => { setSearching(!searching); setQuery(""); }}>
-          <Icon name="find" /><ActLabel>{t("chat.search")}</ActLabel>
-        </button>
-        <button type="button" className="threads-icon threads-hide" aria-label={t("chat.hideList")} onClick={onHide}>
-          <Icon name={side} /><ActLabel>{t("chat.hideList")}</ActLabel>
-        </button>
+      {/* The head: the search's round button and the one that hides the list, at its end. The search opens out of its
+          button into a pill across the head, and closes back into it (openSearch, closeSearch). */}
+      <div ref={head} className="threads-head">
+        {searching ? (
+          <label ref={finding} className="threads-search">
+            <Icon name="find" />
+            <input autoFocus value={query} placeholder={t("chat.search")} aria-label={t("chat.search")} dir="auto" onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape") closeSearch(); }} />
+            <button type="button" className="threads-search-x" aria-label={t("chat.closeSearch")} onClick={closeSearch}><Icon name="close" /></button>
+          </label>
+        ) : <>
+          <button ref={finder} type="button" className="threads-icon" aria-label={t("chat.search")} onClick={openSearch}><Icon name="find" /></button>
+          <button type="button" className="threads-icon threads-hide" aria-label={t("chat.hideList")} onClick={onHide}><Icon name={side} /></button>
+        </>}
       </div>
-      {searching && (
-        <label className="threads-search">
-          <Icon name="find" />
-          <input autoFocus value={query} placeholder={t("chat.search")} aria-label={t("chat.search")} dir="auto" onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Escape") { setSearching(false); setQuery(""); } }} />
-        </label>
-      )}
+      {/* Under it, rows of places, as ChatGPT's, each its icon and its name (Sean 2026-11-18, with ChatGPT's New chat,
+          Scheduled, Library: "תשים שם כזה דבר עם הריצה היומית או משהו רק עם דברים שרלוונטים לנו"; the search stays in
+          the head: "החיפוש צריך להשאר רגיל ... ואת שאר הדברים תשים מתחת"). A new conversation; the daily run's
+          conversations; and the files and the tools, the two pages a conversation makes and starts from. The AI's
+          button for a new conversation is in the sidebar (kit.tsx AiNewChat). */}
+      <div className="threads-places">
+        <a className="thread threads-place" href="/chat/new" onClick={onPick}><Icon name="compose" /><span className="thread-title">{t("chat.new")}</span></a>
+        <button type="button" className={`thread threads-place ${shelf === "runs" ? "current" : ""}`} aria-pressed={shelf === "runs"} onClick={() => setShelf(shelf === "runs" ? "" : "runs")}>
+          <Icon name="runs" />
+          <span className="thread-title">{t("chat.runsTitle")}</span>
+          {runBusy ? <span className="thread-dot running" role="img" aria-label={t("session.running")} /> : runWhen && <span className="threads-place-when" dir="ltr">{runWhen}</span>}
+        </button>
+        <a className="thread threads-place" href="/files"><Icon name="files" /><span className="thread-title">{t("nav.files")}</span></a>
+        <a className="thread threads-place" href="/tools"><Icon name="tools" /><span className="thread-title">{t("nav.tools")}</span></a>
+      </div>
       <div className="threads-scroll">
         <div ref={list} className="threads-list">
           {q ? (
             <section className="thread-group">
-              <h2>{t("chat.results")}</h2>
-              {results.length ? results.map(row) : <p className="project-empty">{t("chat.searchNone")}</p>}
+              <h2>{t("chat.results")}{results.length > 0 && <span className="thread-group-count">{results.length}</span>}</h2>
+              {results.length ? results.map((c) => <ThreadRow key={c.id} thread={c} current={id} projects={projects} onPick={onPick} mark={q} />)
+                : <p className="threads-none"><Icon name="find" />{t("chat.searchNone")}</p>}
             </section>
           ) : shelf === "archive" ? (
             <section className="thread-group">
@@ -289,21 +349,22 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
             </>
           ) : <>
             {pinned.length > 0 && <section className="thread-group"><h2>{t("chat.pinned")}</h2>{pinned.map(row)}</section>}
+            {/* Projects as ChatGPT lists them: a new one first, as a row of its own, then each project, its folder and how
+                many conversations it holds. */}
             <section className="thread-group">
-              <h2 className="thread-group-head">{t("chat.projects")}
-                <button type="button" className="threads-add" aria-label={t("chat.newProject")} onClick={() => setMaking(true)}><Icon name="folder-plus" /><ActLabel>{t("chat.newProject")}</ActLabel></button>
-              </h2>
-              {making && (
+              <h2>{t("chat.projects")}</h2>
+              {making ? (
                 <div className="thread editing">
                   <input autoFocus value={newName} maxLength={80} placeholder={t("chat.projectName")} aria-label={t("chat.projectName")} dir="auto"
                     onChange={(e) => setNewName(e.target.value)} onBlur={makeProject} onKeyDown={(e) => { if (e.key === "Enter") makeProject(); if (e.key === "Escape") { setMaking(false); setNewName(""); } }} />
                 </div>
+              ) : (
+                <button type="button" className="thread project-new" onClick={() => setMaking(true)}><Icon name="folder-plus" /><span className="thread-title">{t("chat.newProject")}</span></button>
               )}
               {projects.map((p) => (
                 <ProjectRow key={p.id} project={p} threads={live.filter((c) => c.project === p.id && !c.pinned)} open={opened.has(p.id)} onToggle={() => toggle(p.id)}
                   current={id} projects={projects} onPick={onPick} />
               ))}
-              {!projects.length && !making && <button type="button" className="thread project-first" onClick={() => setMaking(true)}><Icon name="folder-plus" /><span className="thread-title">{t("chat.newProject")}</span></button>}
             </section>
             {GROUPS.map((g) => {
               const items = loose.filter((c) => groupOf(c.createdAt) === g);
@@ -313,9 +374,6 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
         </div>
         <ThinBar target={list} />
       </div>
-      {!q && !shelf && runs.length > 0 && (
-        <button type="button" className="threads-archive" onClick={() => setShelf("runs")}><Icon name="runs" />{t("chat.runs", { n: runs.length })}</button>
-      )}
       {!q && !shelf && archived.length > 0 && (
         <button type="button" className="threads-archive" onClick={() => setShelf("archive")}><Icon name="archive" />{t("chat.archived", { n: archived.length })}</button>
       )}
@@ -466,18 +524,143 @@ function AccessPicker({ value, onChange }: { value: Access; onChange: (a: Access
   );
 }
 
-// Claude's model, the same way: a round button with the model's icon.
-function ModelPicker({ value, onChange }: { value: string; onChange: (m: string) => void }) {
+
+// How hard Claude thinks in the new conversation (Sean 2026-11-17: "בחירת חכמה כאילו LOW MEDIUM HIGH VERY HIGH"): a
+// level the SDK takes as effort (very high is its xhigh), or "" for none, which leaves it to the user's own Claude Code
+// settings. "" stands on the level those settings give the chosen model (agent.ts defaultEfforts), so the slider shows
+// how hard Claude will really think: a separate "רגילה" in the middle was really very high here, set so in the
+// settings (Sean 2026-11-18: "רגילה ובינונית זה לא אותו דבר?"). With none set the model's own default holds, taken
+// as high, the default Anthropic documents for effort.
+const LEVELS = ["low", "medium", "high", "xhigh"];
+// How fast the fill's rainbow flows at each level: the harder it thinks, the quicker.
+const LEVEL_PACE = [0.4, 0.8, 1.3, 2];
+
+// The levels as a slider, a thick pill like a phone's volume and brightness sliders (Sean 2026-11-18: "למה הרמת חשיבה
+// זה לא איזה SLIDER מגניב"; a thin rainbow track with a haloed thumb came first: "הוא פאקינג מחריד"; then the pill in
+// the page's ink: "יותר טוב אבל למה הורדת את הצבעים"; then the AI's drifting clouds, which here should be straight:
+// "דווקא פה אני רוצה את זה לינארי כזה ולא רנדומלי ... קשת יכול להיות מתאים"; then a rainbow in bands: "יותר מרוח
+// בצבעים"). It fills from its start to the level, a quarter for each, with a soft, blurred rainbow of the AI's colours,
+// wide enough that only part of it shows at once, flowing along it toward the fill's end, faster the higher the level
+// (LEVEL_PACE). The level's name is written inside it in white, and the fill's round end is its handle. It stands on
+// the user's own level (mine) until another is picked: the title's end says so there, and elsewhere offers the way
+// back to it; picking that level again leaves it to the settings, as before. Pressed anywhere, the fill slides to the
+// nearest level; dragged, it follows the pointer, the name changing as it passes each level, and settles on the
+// nearest when let go. Under the pointer a faint fill shows where a press would take it. The arrow keys move it a
+// level in the page's direction; Delete or Backspace goes back to the user's own.
+function EffortSlider({ value, mine, onChange }: { value: string; mine?: string; onChange: (e: string) => void }) {
   const { t } = useApp();
-  return <Select compact className="circle" label={t("chat.model")} value={value} onChange={onChange} options={MODELS.map(([m, key]) => ({ value: m, label: t(`chat.models.${key}`), icon: `model-${key}` }))} />;
+  const track = useRef<HTMLDivElement>(null);
+  const rainbow = useRef<HTMLSpanElement>(null);
+  const [drag, setDrag] = useState<number | null>(null);
+  const [near, setNear] = useState(-1);
+  const pressed = useRef(false);
+  const last = LEVELS.length - 1;
+  const home = Math.max(0, LEVELS.indexOf(mine ?? "high"));
+  const found = LEVELS.indexOf(value);
+  const at = found < 0 ? home : found;
+  const rtl = document.documentElement.dir === "rtl";
+  // Where the pointer is along the bar from its start, 0 to 1; a level's fill ends at (its place + 1) / 4.
+  const along = (x: number) => {
+    const r = track.current!.getBoundingClientRect();
+    const f = (x - r.left) / r.width;
+    return Math.min(1, Math.max(0, rtl ? 1 - f : f));
+  };
+  const stop = (f: number) => Math.min(last, Math.max(0, Math.round(f * LEVELS.length) - 1));
+  const end = (i: number) => (i + 1) / LEVELS.length;
+  const pick = (i: number) => { const next = i === home ? "" : LEVELS[i]; if (next !== value) onChange(next); };
+  const shown = drag !== null ? stop(drag) : at;
+  const f = drag !== null ? Math.max(0.14, drag) : end(at);
+  const name = t(`chat.effortsShort.${LEVELS[shown]}`);
+  const clip = (to: number) => (rtl ? `inset(0 0 0 ${(1 - to) * 100}% round 999px)` : `inset(0 ${(1 - to) * 100}% 0 0 round 999px)`);
+  // The rainbow's pace set once for each level shown, going on from where it is.
+  const pace = LEVEL_PACE[shown];
+  useEffect(() => {
+    for (const a of rainbow.current?.getAnimations() ?? []) a.updatePlaybackRate(pace);
+  }, [pace]);
+  const keys = (e: React.KeyboardEvent) => {
+    const up = ["ArrowUp", rtl ? "ArrowLeft" : "ArrowRight"];
+    const down = ["ArrowDown", rtl ? "ArrowRight" : "ArrowLeft"];
+    const i = up.includes(e.key) ? Math.min(last, at + 1) : down.includes(e.key) ? Math.max(0, at - 1)
+      : e.key === "Home" ? 0 : e.key === "End" ? last : e.key === "Delete" || e.key === "Backspace" ? home : null;
+    if (i === null) return;
+    e.preventDefault();
+    pick(i);
+  };
+  // Faint marks where the levels past low end (low's is under the name), and the name, drawn twice: on the bar, and on
+  // the fill over it, so where the fill ends inside the name its two parts take the two colours.
+  const marks = LEVELS.slice(1).map((l, i) => <span key={l} className="effort-mark" style={{ insetInlineStart: `calc(${end(i + 1) * 100}% - 19px)` }} />);
+  return (
+    <div className="effort">
+      <div className="effort-head">
+        <p className="model-panel-title">{t("chat.effort")}</p>
+        {shown === home
+          ? <span className="effort-note">{t(mine ? "chat.effortMine" : "chat.effortClaude")}</span>
+          : <button type="button" className="effort-back" onClick={() => pick(home)}>{t("chat.effortBack")}</button>}
+      </div>
+      <div
+        ref={track} className={`effort-track${drag !== null ? " dragging" : ""}`} role="slider" tabIndex={0}
+        aria-label={t("chat.effort")} aria-valuemin={0} aria-valuemax={last} aria-valuenow={shown} aria-valuetext={name}
+        onKeyDown={keys}
+        onPointerDown={(e) => { if (e.button) return; pressed.current = true; e.currentTarget.setPointerCapture(e.pointerId); pick(stop(along(e.clientX))); }}
+        onPointerMove={(e) => {
+          const x = along(e.clientX);
+          if (!pressed.current) { setNear(stop(x)); return; }
+          setDrag(x);
+          pick(stop(x));
+        }}
+        onPointerUp={() => { pressed.current = false; setDrag(null); }}
+        onPointerCancel={() => { pressed.current = false; setDrag(null); }}
+        onPointerLeave={() => setNear(-1)}
+      >
+        <span className="effort-ghost" style={{ clipPath: clip(near >= 0 && !pressed.current ? end(near) : 0) }} />
+        {marks}
+        <span key={`b-${name}`} className="effort-name" aria-hidden="true">{name}</span>
+        <span className="effort-fill" style={{ clipPath: clip(f) }}>
+          <span ref={rainbow} className="effort-rainbow" />
+          <span key={`f-${name}`} className="effort-name" aria-hidden="true">{name}</span>
+        </span>
+      </div>
+    </div>
+  );
 }
 
-// How hard Claude thinks in the new conversation, beside the model (Sean 2026-11-17: "בחירת חכמה כאילו LOW MEDIUM HIGH
-// VERY HIGH"): the user's own default, or a level the SDK takes as effort; very high is its xhigh.
-const EFFORTS = ["", "low", "medium", "high", "xhigh"];
-function EffortPicker({ value, onChange }: { value: string; onChange: (e: string) => void }) {
-  const { t } = useApp();
-  return <Select compact className="circle" label={t("chat.effort")} value={value} onChange={onChange} options={EFFORTS.map((e) => ({ value: e, label: t(`chat.efforts.${e || "default"}`), icon: `effort-${e || "default"}` }))} />;
+// The model and how hard it thinks, in one quiet button of words at the box's end, as ChatGPT's "High ⌄" ("Opus ·
+// גבוהה"), where two round buttons crowded it (Sean 2026-11-17: "נהיה שם ממש עומס בכפתורים"). It opens a panel over
+// the box: the models as rows, the one in use ticked, and the level of thinking as a slider (EffortSlider). Escape,
+// the button again, or a press outside closes it.
+function ModelMenu({ model, effort, onModel, onEffort }: { model: string; effort: string; onModel: (m: string) => void; onEffort: (e: string) => void }) {
+  const { s, t } = useApp();
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const panel = useId();
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const shut = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    addEventListener("pointerdown", away);
+    addEventListener("keydown", shut);
+    return () => { removeEventListener("pointerdown", away); removeEventListener("keydown", shut); };
+  }, [open]);
+  const key = MODELS.find(([m]) => m === model)?.[1] ?? "default";
+  const words = `${t(`chat.modelShort.${key}`)}${effort ? ` · ${t(`chat.effortsShort.${effort}`)}` : ""}`;
+  return (
+    <div className="model-menu" ref={box}>
+      <button type="button" className={`model-menu-btn${open ? " open" : ""}`} aria-expanded={open} aria-controls={panel} aria-label={`${t("chat.modelMenu")}: ${words}`} onClick={() => setOpen(!open)}>
+        <span dir="auto">{words}</span><Icon name="down" />
+      </button>
+      {open && (
+        <div className="model-panel" id={panel} role="dialog" aria-label={t("chat.modelMenu")}>
+          <p className="model-panel-title">{t("chat.model")}</p>
+          {MODELS.map(([m, k]) => (
+            <button key={k} type="button" className={`model-option${m === model ? " on" : ""}`} aria-pressed={m === model} onClick={() => onModel(m)}>
+              <Icon name={`model-${k}`} /><span dir="auto">{t(`chat.models.${k}`)}</span>{m === model && <Icon name="check" />}
+            </button>
+          ))}
+          <EffortSlider value={effort} mine={s.claudeEfforts?.[model]} onChange={onEffort} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 // The list button, for a window too narrow to show the list beside the conversation.
@@ -542,19 +725,25 @@ function NewConversation({ onList }: { onList: () => void }) {
   };
   return (
     <div className={`chat-new${temporary ? " temporary" : ""}`}>
-      <div className="chat-top"><ListButton onList={onList} /><TemporaryToggle on={temporary} onChange={setTemporary} /></div>
+      <div className="chat-top"><ListButton onList={onList} /><ThemePicker /><TemporaryToggle on={temporary} onChange={setTemporary} /></div>
       <div className="chat-new-body">
         <div className="chat-new-head">
           {temporary ? <><h1>{t("chat.temporary.title")}</h1><p className="chat-temp-note">{t("chat.temporary.note")}</p></> : <Hello />}
         </div>
         <Composer
           text={text} setText={setText} onSend={(files) => { go(text.trim(), files)?.catch(() => {}); }} placeholder={t("chat.newPlaceholder")} input={input} autoFocus glow="halo" temporary={temporary}
-          tools={plain ? null : <><AccessPicker value={access} onChange={setAccess} />{!codex && <><ModelPicker value={model} onChange={setModel} /><EffortPicker value={effort} onChange={setEffort} /></>}</>}
+          tools={plain ? null : <>{!codex && <ModelMenu model={model} effort={effort} onModel={setModel} onEffort={setEffort} />}<AccessPicker value={access} onChange={setAccess} /></>}
           warn={!plain && access === "full" ? <FullWarn /> : ""} hint={codex ? t("chat.ai.codex", MAKERS[first]) : plain ? t("chat.ai.plain", MAKERS[first]) : ""}
         />
         <div className="chat-starts" role="group" aria-label={t("chat.suggest")}>
+          {/* Rows under the box, as ChatGPT's suggestions: an icon, the start's name and what it does, quiet until hovered
+              (Sean 2026-11-17: "הייתי עושה משהו בשורות אולי יותר כמו ה CHATGPT עם אייקונים"). */}
           {STARTS.map(([command, more]) => (
-            <button key={command} type="button" className="chat-start" disabled={busy} onClick={() => begin(command, more)}>{t(`tools.commands.${command}`)[0]}</button>
+            <button key={command} type="button" className="chat-start" disabled={busy} onClick={() => begin(command, more)}>
+              <Icon name={START_ICONS[command] ?? "ai"} />
+              <span className="chat-start-name">{t(`tools.commands.${command}`)[0]}</span>
+              <span className="chat-start-note">{t(`tools.commands.${command}`)[1]}</span>
+            </button>
           ))}
         </div>
       </div>
@@ -1192,6 +1381,7 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
           {(plain || (session?.agent && session.agent !== "claude")) && session?.engine && <span className="chat-model"><bdi>{session.engine}</bdi></span>}
           {status !== "idle" && <span className={`chat-state ${status}`}>{t(stopping ? "session.stopping" : `session.${status}`)}</span>}
           {status === "idle" && background.length > 0 && <span className="chat-state running">{t("session.background")}</span>}
+          <ThemePicker />
         </header>
       )}
       <div className="log-frame">
@@ -1268,9 +1458,12 @@ export function Chat({ id }: { id: string }) {
     return () => removeEventListener("keydown", shut);
   }, [lists]);
   const open = () => { if (narrow()) setLists(true); else hide(false); };
+  // The scene behind the chat and the colours that go with it (chat-theme.tsx), the plain chat by default.
+  const [theme] = useChatTheme();
   return (
-    <div className={`chat ${lists ? "lists-open" : ""} ${hidden ? "threads-hidden" : ""}`}>
+    <div className={`chat ${lists ? "lists-open" : ""} ${hidden ? "threads-hidden" : ""}`} data-chat-theme={theme}>
       <div className="chat-main">
+        <ChatBackdrop theme={theme} />
         {!loaded ? null
           : id === "new" || !s.sessions.length ? <NewConversation onList={open} />
           : exists ? <Conversation key={id} id={id} onList={open} />

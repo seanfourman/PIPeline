@@ -9,6 +9,7 @@ import { DICTS, translate } from "./ui/i18n";
 import { tabIcon } from "./icon";
 import { foxPixels, ICON, ICON_COLORS, Pip } from "./ui/pip";
 import { commandWords, friendlyTitle } from "./ui/app";
+import { CHAT_THEMES, isTheme } from "./ui/chat-themes";
 import { langDir, Markdown } from "./ui/kit";
 
 const paths = (value: unknown, prefix = ""): string[] =>
@@ -188,6 +189,13 @@ describe("Pip's answers", () => {
     expect(html).toContain("</a>: דף המשרות</li>");
     expect(html).toContain('<li><bdi dir="ltr">Python, FastAPI</bdi></li>');
     expect(html).toContain('<p dir="rtl">Diorama');
+  });
+
+  test("every chat theme has its name in both languages, and only those are themes", () => {
+    for (const { id } of CHAT_THEMES) for (const lang of ["he", "en"] as const) expect(String(translate(lang, `chat.theme.names.${id}`))).not.toStartWith("chat.");
+    expect(isTheme("stars")).toBe(true);
+    expect(isTheme("neon")).toBe(false);
+    expect(CHAT_THEMES[0].id).toBe("plain");
   });
 
   test("a message that is a command shows as the command's name, without its options", () => {

@@ -1,7 +1,7 @@
 // The frame: shared state, language, theme, the sidebar, Pip's notices, and which screen shows.
 import React, { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { translate, type Lang } from "./i18n";
-import { api, copyText, desktopSystem, errorText, goTo, Icon, isComputer, macCommand, ROUTED, type ApiError } from "./kit";
+import { AiNewChat, api, copyText, desktopSystem, errorText, goTo, Icon, isComputer, macCommand, ROUTED, type ApiError } from "./kit";
 import { AccountDialog } from "./accounts";
 import { FloatBar } from "./floatbar";
 import { Pip, PipMark, type Mood } from "./pip";
@@ -33,6 +33,9 @@ export type AppState = {
   // signed in with the account, through Codex (clis.ts).
   aiKeys: Record<string, boolean>;
   aiLogins?: Record<string, boolean>;
+  // The level Claude thinks at when none is picked, by model ("" the default one), from the user's Claude Code
+  // settings (agent.ts defaultEfforts); a model missing has none set.
+  claudeEfforts?: Record<string, string>;
   // The account's name on this computer (auth.ts), and the introduction's state: whether it is done, the name
   // employers see (user/profile.json), and the documents it put in user/documents/ (server.ts).
   account?: string;
@@ -72,7 +75,8 @@ type Ctx = {
   addAccount: (how: "join" | "create") => void;
 };
 
-const AppContext = createContext<Ctx>(null as unknown as Ctx);
+// Exported for a page drawn on its own with sample state, as a preview of a screen.
+export const AppContext = createContext<Ctx>(null as unknown as Ctx);
 export const useApp = () => useContext(AppContext);
 
 const EMPTY: AppState = { applications: [], jobs: [], saved: [], files: [], sessions: [], settings: { markets: [], areas: [], roles: [], automation: {} }, presets: {}, profileReady: true, aiKeys: {}, intro: { done: true, name: "", documents: { cv: [], linkedin: [] } } };
@@ -171,7 +175,7 @@ function Sidebar() {
         {NAV.slice(0, SHOWN).map(row)}
         {more.length > 0 && <More here={more.some(([id]) => id === current)}>{more.map(row)}</More>}
       </div>
-      <a className="btn post" href="/chat/new" aria-label={t("chat.new")}><Icon name="plus" /><span>{t("chat.new")}</span></a>
+      <AiNewChat label={t("chat.new")} />
       <AccountMenu />
     </nav>
   );

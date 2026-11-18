@@ -360,12 +360,12 @@ const he = {
   },
   chat: {
     new: "שיחה חדשה", notFound: "השיחה לא נמצאה.", list: "שיחות", openList: "כל השיחות", closeList: "סגירת רשימת השיחות",
-    search: "חיפוש בשיחות", results: "מה נמצא", searchNone: "לא נמצאה שיחה", pinned: "מוצמדות", projects: "פרויקטים", newProject: "פרויקט חדש",
+    search: "חיפוש בשיחות", closeSearch: "סגירת החיפוש", results: "מה נמצא", searchNone: "לא נמצאה שיחה", pinned: "מוצמדות", projects: "פרויקטים", newProject: "פרויקט חדש",
     projectName: "שם הפרויקט", projectEmpty: "עוד אין כאן שיחות", menu: "אפשרויות לשיחה", projectMenu: "אפשרויות לפרויקט", rename: "שינוי שם",
     pin: "הצמדה", unpin: "ביטול הצמדה", moveTo: "העברה לפרויקט", noProject: "בלי פרויקט", archive: "העברה לארכיון", unarchive: "החזרה מהארכיון",
     delete: "מחיקה", deleteAsk: "למחוק את השיחה?", deleteProjectAsk: "למחוק? השיחות בו יישארו", cancel: "ביטול", back: "חזרה",
     archived: "ארכיון ({n})", archiveEmpty: "הארכיון ריק", hideList: "הסתרת השיחות", showList: "הצגת השיחות",
-    runs: "הריצה היומית ({n})", runsEmpty: "הריצה היומית עוד לא רצה",
+    runs: "הריצה היומית ({n})", runsTitle: "הריצה היומית", runsEmpty: "הריצה היומית עוד לא רצה",
     groups: { today: "היום", yesterday: "אתמול", week: "בשבוע האחרון", earlier: "קודם" },
     // The line over a new conversation's box: one of these at random, for the time of day or for any time; {name} is
     // the name from the settings, and lines with it are left out without one.
@@ -376,17 +376,22 @@ const he = {
       night: ["עדיין ערים, {name}?", "לילה שקט. מה על הפרק?", "ינשופי לילה? גם אני כאן", "שעה טובה לחשוב בשקט", "לילה, {name}. נתחיל?"],
       any: ["במה נעבוד היום?", "מה על הפרק?", "קורות חיים, משרה או ראיון?", "איזו משרה כובשים היום?"],
     },
-    newPlaceholder: "אפשר לכתוב חופשי, או להדביק קישור למשרה…", suggest: "או להתחיל מכאן",
+    newPlaceholder: "לשאול את פיפ כל דבר, או להדביק קישור למשרה", suggest: "או להתחיל מכאן",
     models: { default: "ברירת המחדל שלך", opus: "Opus 5.5", sonnet: "Sonnet 5.5, חסכוני יותר", haiku: "Haiku 5.5, הכי חסכוני" },
-    model: "מודל",
-    effort: "רמת חשיבה",
-    efforts: { default: "ברירת המחדל שלך", low: "נמוכה, הכי מהירה", medium: "בינונית", high: "גבוהה", xhigh: "גבוהה מאוד, הכי יסודית" },
+    model: "מודל", modelMenu: "מודל ורמת חשיבה",
+    modelShort: { default: "אוטומטי", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" },
+    effortsShort: { default: "רגילה", low: "נמוכה", medium: "בינונית", high: "גבוהה", xhigh: "גבוהה מאוד" },
+    effort: "רמת חשיבה", effortMine: "ברירת המחדל שלך", effortClaude: "ברירת המחדל של Claude", effortBack: "חזרה לברירת המחדל",
     ai: {
       plain: "השיחה עם {name}, ה-AI הראשי מההגדרות. הוא רק משוחח: לא רואה את הקבצים בפרויקט ולא מריץ פעולות. מה שכותבים ומצרפים כאן נשלח ל-{company}. הגשה, הכנה לראיון ופקודה שמתחילה ב-/ עובדות עם Claude.",
       codex: "השיחה עם {name}. הוא עובד בפרויקט כמו Claude, עם אותם אישורים ואותה רמת גישה.",
     },
     switched: "{from} לא הצליח לענות, אז {to} ממשיך.",
     claudeLimit: "הגעת למגבלת השימוש של Claude.", claudeResets: "היא מתאפסת:",
+    theme: {
+      button: "ערכת נושא", title: "ערכת נושא לצ'אט", light: "בהיר", dark: "כהה",
+      names: { plain: "נקי", meadow: "אחו בבוקר", rain: "יום גשום", sunset: "שקיעה", forest: "יער בלילה", snow: "שלג", stars: "לילה של כוכבים", christmas: "פיפ סנטה" },
+    },
     access: {
       label: "רמת גישה", ask: "לשאול אותי", askNote: "אבקש אישור לפני כל פעולה רגישה.",
       auto: "אוטומטי בפרויקט", autoNote: "עורך קבצים בפרויקט בלי לשאול. שואל לפני פקודות, מחיקות ושליחה החוצה.",
@@ -412,7 +417,7 @@ const he = {
       toggle: "שיחה זמנית", off: "חזרה לשיחה רגילה", title: "שיחה זמנית",
       note: "השיחה לא נשמרת בשום מקום ונמחקת כשיוצאים ממנה. קבצים שאכתוב או אשנה בה, כמו קורות חיים, כן נשארים.",
     },
-    message: "אפשר לכתוב כאן…", send: "שליחה", stop: "עצירה",
+    message: "לשאול את פיפ כל דבר", send: "שליחה", stop: "עצירה",
     steps: "{n} צעדים", step: "צעד אחד", working: "עובד…",
     // What Pip says he is up to while no step shows it: one funny word at a time, a new one every few seconds, like
     // Claude Code's spinner ("Combobulating…"). One word each, Sean's ask.
@@ -1044,12 +1049,12 @@ const en: Dict = {
   },
   chat: {
     new: "New conversation", notFound: "Conversation not found.", list: "Conversations", openList: "All conversations", closeList: "Close the conversation list",
-    search: "Search conversations", results: "Found", searchNone: "No conversation found", pinned: "Pinned", projects: "Projects", newProject: "New project",
+    search: "Search conversations", closeSearch: "Close the search", results: "Found", searchNone: "No conversation found", pinned: "Pinned", projects: "Projects", newProject: "New project",
     projectName: "Project name", projectEmpty: "No conversations here yet", menu: "Conversation options", projectMenu: "Project options", rename: "Rename",
     pin: "Pin", unpin: "Unpin", moveTo: "Move to project", noProject: "No project", archive: "Archive", unarchive: "Unarchive",
     delete: "Delete", deleteAsk: "Delete this conversation?", deleteProjectAsk: "Delete? Its conversations stay", cancel: "Cancel", back: "Back",
     archived: "Archive ({n})", archiveEmpty: "The archive is empty", hideList: "Hide conversations", showList: "Show conversations",
-    runs: "Daily runs ({n})", runsEmpty: "The daily run hasn't run yet",
+    runs: "Daily runs ({n})", runsTitle: "Daily run", runsEmpty: "The daily run hasn't run yet",
     groups: { today: "Today", yesterday: "Yesterday", week: "Past week", earlier: "Earlier" },
     hello: {
       morning: ["Good morning, {name}", "Good morning! Where do we start?", "First coffee, first job?", "New day, new jobs", "Morning, {name}. What's the plan?"],
@@ -1058,17 +1063,22 @@ const en: Dict = {
       night: ["Still up, {name}?", "A quiet night. What's on the table?", "Night owls? I'm here too", "A good hour to think in peace", "Night, {name}. Shall we start?"],
       any: ["What shall we work on today?", "What's on the table?", "A CV, a job, or an interview?", "Which job are we landing today?"],
     },
-    newPlaceholder: "Write anything, or paste a link to a job…", suggest: "Or start here",
+    newPlaceholder: "Ask Pip anything, or paste a link to a job", suggest: "Or start here",
     models: { default: "Your default", opus: "Opus 5.5", sonnet: "Sonnet 5.5, uses less", haiku: "Haiku 5.5, uses least" },
-    model: "Model",
-    effort: "Thinking",
-    efforts: { default: "Your default", low: "Low, fastest", medium: "Medium", high: "High", xhigh: "Very high, most thorough" },
+    model: "Model", modelMenu: "Model and thinking",
+    modelShort: { default: "Auto", opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" },
+    effortsShort: { default: "Normal", low: "Low", medium: "Medium", high: "High", xhigh: "Very high" },
+    effort: "Thinking", effortMine: "Your default", effortClaude: "Claude's default", effortBack: "Back to default",
     ai: {
       plain: "This conversation is with {name}, the primary AI in the settings. It only chats: it can't see the project's files or run anything. What you write and attach here goes to {company}. Applying, interview prep and a command starting with / work with Claude.",
       codex: "This conversation is with {name}. It works in the project as Claude does, with the same approvals and the same access.",
     },
     switched: "{from} couldn't answer, so {to} carries on.",
     claudeLimit: "Claude's usage limit is reached.", claudeResets: "It resets:",
+    theme: {
+      button: "Theme", title: "Chat theme", light: "Light", dark: "Dark",
+      names: { plain: "Plain", meadow: "Morning meadow", rain: "Rainy day", sunset: "Sunset", forest: "Forest at night", snow: "Snow", stars: "Starry night", christmas: "Santa Pip" },
+    },
     access: {
       label: "Access", ask: "Ask me", askNote: "I ask for approval before anything sensitive.",
       auto: "Automatic in the project", autoNote: "Edits files in the project without asking. Asks before commands, deleting and sending anything out.",

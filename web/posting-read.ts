@@ -86,6 +86,9 @@ type PageNode = { name: string; attrs: string; kids: (PageNode | string)[]; out?
 const VOID_TAGS = new Set(["br", "img", "input", "meta", "link", "hr", "wbr", "source", "area", "base", "col", "embed", "param", "track"]);
 const BLOCK_TAGS = new Set(["p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "tr", "section", "article", "header", "footer", "table", "thead", "tbody", "blockquote", "pre", "dd", "dt", "dl", "nav", "main", "aside", "figure", "form", "fieldset", "address", "td", "th"]);
 const ENDS_ITSELF = new Set(["p", "li", "dd", "dt", "tr", "td", "th", "option"]);
+// What may stand in a page's head. Anything else opening there ends the head, as browsers read it: a page that never
+// closed its head had its whole body read inside it, as chrome.
+const HEAD_KIDS = new Set(["title", "meta", "link", "base", "style", "script", "noscript", "template"]);
 const CHROME_TAGS = new Set(["head", "nav", "header", "footer", "aside", "button", "select", "dialog", "label"]);
 const CHROME_ROLES = /^(navigation|banner|contentinfo|complementary|dialog|alertdialog|menu|menubar|search)$/i;
 const CHROME_NAMES = /(^|[\s_-])(nav|navbar|navigation|menu|menus|topbar|footer|header|breadcrumbs?|cookies?|consent|banner|sidebar|share|sharing|social|related|recommended|similar|modal|popup|login|signup|newsletter|skip|advert)(?=$|[\s_-])/i;
@@ -111,11 +114,14 @@ const hiddenClass = (classes: string[]) =>
   classes.some((c) => c === "sr-only" || c === "visually-hidden" || c === "invisible")
   || (classes.includes("d-none") && !classes.some((c) => /^d-(?:sm|md|lg|xl|xxl)-(?!none)/.test(c)))
   || (classes.includes("hidden") && !classes.some((c) => /^(?:sm|md|lg|xl|2xl):(?!hidden)/.test(c)));
+// The hidden attribute by its name, not a value with the word in it (style="overflow: hidden !important").
 const hiddenNode = (attrs: string) =>
-  /(?:^|\s)hidden(?=[\s=/]|$)/i.test(attrs) || /^true$/i.test(attrOf(attrs, "aria-hidden"))
+  /(?:^|\s)hidden(?=[\s=/]|$)/i.test(attrs.replace(/"[^"]*"|'[^']*'/g, '""')) || /^true$/i.test(attrOf(attrs, "aria-hidden"))
   || /display\s*:\s*none|visibility\s*:\s*hidden/i.test(attrOf(attrs, "style")) || hiddenClass(attrOf(attrs, "class").split(/\s+/));
-// Never the job, by what it is: hidden, or a page's chrome by its tag or its role.
-const chromeTag = (n: PageNode) => hiddenNode(n.attrs) || CHROME_TAGS.has(n.name) || CHROME_ROLES.test(attrOf(n.attrs, "role"));
+// Never the job, by what it is: hidden, or a page's chrome by its tag or its role. The page itself, its html and its
+// body, is never out: sites hide it until their scripts run, and it is still the page.
+const chromeTag = (n: PageNode) => n.name !== "html" && n.name !== "body"
+  && (hiddenNode(n.attrs) || CHROME_TAGS.has(n.name) || CHROME_ROLES.test(attrOf(n.attrs, "role")));
 // Chrome by its name only, which a wrapper of the whole page can carry too.
 const chromeName = (n: PageNode) => {
   const names = `${attrOf(n.attrs, "class")} ${attrOf(n.attrs, "id")}`;
@@ -138,6 +144,8 @@ function pageTree(html: string): PageNode {
       continue;
     }
     const node: PageNode = { name, attrs: m[3], kids: [] };
+    const head = stack.findIndex((s) => s.name === "head");
+    if (head > 0 && !HEAD_KIDS.has(name)) stack.length = head;
     if (VOID_TAGS.has(name)) { top().kids.push(node); continue; }
     if (ENDS_ITSELF.has(name) && top().name === name) stack.pop();
     else if (BLOCK_TAGS.has(name) && top().name === "p") stack.pop();
@@ -182,20 +190,23 @@ export function mainContent(html: string): string | null {
   const page = weight.get(root)!.text;
   each(root, (n) => { if (n !== root && chromeName(n) && weight.get(n)!.text < page / 2) n.out = true; });
   weigh(root, false);
+  // The body, through what is in: one inside something out was never weighed. An element never weighed has no words.
   const find = (n: PageNode, name: string): PageNode | null => {
     if (n.name === name) return n;
+    if (n.out) return null;
     for (const k of n.kids) if (typeof k !== "string") { const f = find(k, name); if (f) return f; }
     return null;
   };
+  const words = (n: PageNode) => weight.get(n)?.text ?? 0;
   let part = find(root, "body") ?? root;
   for (;;) {
-    const total = weight.get(part)!.text;
+    const total = words(part);
     let best: PageNode | null = null;
-    for (const k of part.kids) if (typeof k !== "string" && !k.out && (!best || weight.get(k)!.text > weight.get(best)!.text)) best = k;
-    if (!best || TEXTUAL.has(best.name) || weight.get(best)!.text < DOMINANT * total) break;
+    for (const k of part.kids) if (typeof k !== "string" && !k.out && (!best || words(k) > words(best))) best = k;
+    if (!best || TEXTUAL.has(best.name) || words(best) < DOMINANT * total) break;
     part = best;
   }
-  if (weight.get(part)!.text < MIN_PART) return null;
+  if (part.out || words(part) < MIN_PART) return null;
   // Inside it, a block of more words in links than out of them, and not many of either, is a list of links.
   const linky = (n: PageNode) => {
     const w = weight.get(n);

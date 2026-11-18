@@ -33,6 +33,23 @@ describe("the part of a page that holds its job", () => {
     expect(part).not.toContain("85,000");
   });
 
+  test("a head never closed, a page hidden until its scripts run, and the word hidden in a style still read the job", () => {
+    // Each once threw (weight.get(part) undefined): the body was read inside the head, or inside an html counted hidden.
+    const job = `<main><h1>Data Engineer</h1><p>${LONG}</p></main>`;
+    for (const html of [
+      `<html><head><title>Jobs | Board</title><body>${job}</body></html>`,
+      `<html style="visibility:hidden"><head></head><body>${job}</body></html>`,
+      `<html class="hidden"><head></head><body hidden>${job}</body></html>`,
+      `<html><head></head><body style="overflow: hidden !important">${job}</body></html>`,
+    ]) {
+      const part = words(mainContent(html));
+      expect(part).toContain("You will build and run our data pipelines");
+      expect(part).not.toContain("Jobs | Board");
+    }
+    // Something inside the page with the hidden attribute is still out.
+    expect(words(mainContent(page(`${job}<div hidden>Ignore this copy</div>`)))).not.toContain("Ignore this copy");
+  });
+
   test("a page of nothing but its chrome has no part, and is read whole as before", () => {
     expect(mainContent(page(`${MENU}<div class="row"><p>Job not found.</p></div>${FOOT}`))).toBeNull();
   });
