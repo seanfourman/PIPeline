@@ -10,6 +10,7 @@
 // or a search of the user's own isn't going, and never twice at once.
 import { levelGate, STUDENT } from "./experience";
 import type { Group } from "./groups";
+import { chip, jobCard, mailPage, sectionHead } from "./mail-html";
 import type { Settings } from "./settings";
 
 // posted: the day the posting was published, YYYY-MM-DD, when its source gives one.
@@ -173,6 +174,11 @@ const WORDS = {
     open: "פתיחת המשרה",
     list: "כל המשרות באתר המקומי",
     footer: "נשלח מההתראות החיות של פיפ. אפשר לכבות אותן בהגדרות.",
+    kind: "התראה חיה",
+    titleOne: "משרה חדשה בשבילך",
+    lead: (known: number) => `פורסמו עכשיו, וכדאי להגיש ראשונים.${known ? ` ${known === 1 ? "אחת מהן" : `${known} מהן`} בהייטק או בחברה מוכרת.` : ""}`,
+    leadOne: (group: Group) => (group === "known" ? "פורסמה עכשיו, בהייטק או בחברה מוכרת. כדאי להגיש ראשונים." : "פורסמה עכשיו, וכדאי להגיש ראשונים."),
+    today: "פורסמה היום",
   },
   en: {
     groups: { known: "High-tech and known companies", other: "Low-tech and unknown companies" },
@@ -183,6 +189,11 @@ const WORDS = {
     open: "Open the job",
     list: "All the jobs on the local site",
     footer: "Sent by Pip's live alerts. They can be turned off in the settings.",
+    kind: "Live alert",
+    titleOne: "A new job for you",
+    lead: (known: number) => `Just published, and worth applying early.${known ? ` ${known === 1 ? "One of them is" : `${known} of them are`} at a high-tech or known company.` : ""}`,
+    leadOne: (group: Group) => (group === "known" ? "Just published, at a high-tech or known company. Worth applying early." : "Just published, and worth applying early."),
+    today: "Published today",
   },
 };
 
@@ -204,7 +215,22 @@ export function alertText(jobs: AlertJob[], lang: "he" | "en", list: string) {
   const body = [...sections, `${w.list}: ${list}`, "", w.footer].join("\n");
   const headline = ordered.length === 1 ? w.headline(first.group) : w.headlineMany(ordered.length);
   const notice = ordered.slice(0, 3).map(line).join("\n");
-  return { subject, body, headline, notice, open: ordered.length === 1 ? first.url : list };
+  // The same as a page: the jobs as cards under their group's name, each with its day and a button to open it.
+  const today = new Date().toLocaleDateString("en-CA");
+  const card = (j: AlertJob) => jobCard({
+    title: j.title, company: j.company, location: j.location, url: j.url, lang, action: w.open,
+    chips: j.posted ? [chip(j.posted === today ? w.today : j.posted, j.posted === today ? "green" : "plain")] : [],
+  });
+  const parts = (["known", "other"] as const).flatMap((g) => {
+    const these = ordered.filter((j) => j.group === g);
+    return these.length ? [sectionHead(w.groups[g], ordered.length > 1 ? these.length : null, lang), ...these.map(card)] : [];
+  });
+  const html = mailPage({
+    lang, kind: w.kind, title: ordered.length === 1 ? w.titleOne : w.many(ordered.length, 0),
+    lead: ordered.length === 1 ? w.leadOne(first.group) : w.lead(known), preheader: notice.replace(/\n/g, " | "),
+    parts, link: { label: w.list, url: list }, footer: w.footer,
+  });
+  return { subject, body, html, headline, notice, open: ordered.length === 1 ? first.url : list };
 }
 
 // ---------- the computer's notice ----------

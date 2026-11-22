@@ -5,7 +5,7 @@ import { BOARDS, pageFetcher, searchBoard, type Board, type Fetch } from "./boar
 import { REPO } from "./policy";
 import { boardOn, ownName } from "./portals";
 import { levelGate } from "./experience";
-import { jobGroup } from "./groups";
+import { jobGroup, jobIndustry } from "./groups";
 import type { createAutoScores } from "./match";
 import { boardQueries } from "./roles";
 import { inEnglish, linkedinPlace, REMOTE, type Area, type Market, type Settings } from "./settings";
@@ -90,10 +90,17 @@ export function withoutJobSiteCopies<T extends { url: string; title: string; com
   return jobs.filter((j) => !gone.has(j));
 }
 
+// The area the home base is in, among those the settings list, for the jobs near home on Pip's treasure.
+export function homeArea(settings: Pick<Settings, "home" | "areas">): Area | null {
+  if (!settings.home) return null;
+  return settings.areas.find((a) => a.tier !== "far" && classifyLocation(settings.home, [a]) !== "unknown") ?? null;
+}
+
 function seenJobs(settings: Settings, auto?: AutoScores) {
   const { areas, seniority } = settings;
   const seen: Record<string, any> = readJson(path.join(REPO, "user", "job_scraper", "seen_jobs.json"))?.seen ?? {};
   const scoreOf = auto?.scorer(settings);
+  const home = homeArea(settings);
   return withoutJobSiteCopies(Object.entries(seen).map(([key, j]) => {
     // Above the level searched for: left out before scoring for the years its posting asks or its senior title
     // (rank_state.py's "filtered", written as it was read), or a senior title seen here, for a junior search.
@@ -128,6 +135,9 @@ function seenJobs(settings: Settings, auto?: AutoScores) {
     portalId: String(j.portal_id ?? "") || undefined,
     // A high-tech company's or a known employer's, or another's (groups.ts), for the list's filter.
     group: jobGroup({ portalId: String(j.portal_id ?? ""), company: String(j.company ?? ""), url: String(j.url ?? "") }),
+    // Its employer's industry (groups.ts), and whether it is in the home base's area, for Pip's treasure (ui/loot.ts).
+    industry: jobIndustry({ portalId: String(j.portal_id ?? ""), company: String(j.company ?? ""), url: String(j.url ?? "") }),
+    home: home ? classifyLocation(String(j.location ?? ""), [home]) !== "unknown" : false,
     };
   }));
 }

@@ -82,6 +82,9 @@ AGENT_STATUSES = ("scored", "expired", "unreachable")
 # words (web/experience.ts): it asks for more years than a junior search keeps, or its title is a senior one.
 FILTERED = "filtered"
 FILTER_REASONS = ("years", "senior")
+# Why the web app took a job off the list as closed, when it says (web/postings.ts): its site closed it, its deadline
+# passed, or it was posted too long ago. Kept on the entry as expired_reason.
+EXPIRED_REASONS = ("closed", "deadline", "old")
 
 # The values the two veto gates may take (rank.md Step 2). Step 5's veto is an
 # exact match on "FAIL", so any other spelling would shortlist a deal-breaker.
@@ -511,6 +514,8 @@ def cmd_apply(args) -> int:
             entry["status"] = "expired"
             for field in (*RETRY_FIELDS, "expired_reason"):
                 entry.pop(field, None)
+            if result.get("reason") in EXPIRED_REASONS:
+                entry["expired_reason"] = result["reason"]
             expired.append(
                 {"key": key, "title": entry.get("title"), "company": entry.get("company"), "url": entry.get("url")}
             )

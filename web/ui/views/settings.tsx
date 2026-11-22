@@ -4,6 +4,7 @@ import { AREA_NAMES_EN, type Lang } from "../i18n";
 import { api, Btn, Card, External, Field, Icon, Page, Spinner } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
 import { Select } from "../select";
+import { HOME_COUNTS, HOME_DAYS, HOME_ORDERS, homeJobsFrom } from "../home-jobs";
 import { fromList, listedRole, matchListed, ROLE_FIELDS, roleQuery } from "../../roles";
 import { readBase64 } from "./chat";
 import { PixelArt } from "./home";
@@ -212,6 +213,35 @@ function Alerts({ draft, update }: { draft: any; update: Update }) {
         </p>
       )}
     </Card>
+  );
+}
+
+// Which jobs the home page shows (ui/home-jobs.ts): from how many days back, how many and in what order. The home
+// page's line under its heading links here (#home-jobs), and the page comes to it.
+function HomeJobsCard({ draft, update }: { draft: any; update: Update }) {
+  const { t } = useApp();
+  const ref = useRef<HTMLDivElement>(null);
+  const choice = homeJobsFrom(draft.homeJobs);
+  const set = (key: string, value: unknown) => update((d) => { d.homeJobs = { ...choice, [key]: value }; });
+  useEffect(() => { if (location.hash === "#home-jobs") ref.current?.scrollIntoView({ block: "start" }); }, []);
+  return (
+    <div ref={ref} id="home-jobs">
+      <Card className="stack">
+        <h2>{t("settings.homeJobs.title")}</h2>
+        <p className="note">{t("settings.homeJobs.note")}</p>
+        <div className="fields">
+          <Field label={t("settings.homeJobs.days")} hint={choice.days === 1 ? t("settings.homeJobs.dayHint") : undefined}>
+            <Select value={String(choice.days)} onChange={(v) => set("days", Number(v))} options={HOME_DAYS.map((n) => ({ value: String(n), label: t(`settings.homeJobs.dayOptions.${n}`) }))} />
+          </Field>
+          <Field label={t("settings.homeJobs.count")}>
+            <Select value={String(choice.count)} onChange={(v) => set("count", Number(v))} options={HOME_COUNTS.map((n) => ({ value: String(n), label: t("settings.homeJobs.countOption", { n }) }))} />
+          </Field>
+          <Field label={t("settings.homeJobs.order")}>
+            <Select value={choice.order} onChange={(v) => set("order", v)} options={HOME_ORDERS.map((o) => ({ value: o, label: t(`settings.homeJobs.orders.${o}`) }))} />
+          </Field>
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -485,6 +515,8 @@ export function Settings() {
       </Card>
       <AiKeys primary={draft.aiPrimary} onPrimary={(id) => set("aiPrimary", id)} />
       <Remote />
+
+      <HomeJobsCard draft={draft} update={update} />
 
       <Card className="stack">
         <MarketsEditor draft={draft} update={update} title={<h2>{t("settings.markets")}</h2>} />

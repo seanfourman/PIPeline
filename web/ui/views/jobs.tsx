@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { store, stored, useApp, type AppState } from "../app";
 import { ActLabel, AiSky, api, Icon, safeUrl, Spaced, ThinBar, useGoSlot } from "../kit";
 import { SaveNote, useAutoSave } from "../autosave";
@@ -6,8 +6,11 @@ import { useMore } from "../more";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
 import { jobId } from "../jobid";
+import { LOOT, treasure, type Loot, type Treasure } from "../loot";
 import { MAKERS, useFirstAi } from "./chat";
 import { openJob, sendOpen } from "./job";
+import { LootArt, LootBackdrop } from "./loot";
+import { ROOMS, type Room } from "../vault";
 import { areaName, AreasEditor, marketLabel, MarketsEditor } from "./settings";
 
 // score is the AI's, when the user asked for one; auto the automatic one (match.ts), by the job's posting, or by its title
@@ -281,9 +284,13 @@ function ResultsEnd({ count, hidden }: { count: number; hidden: number }) {
 }
 
 // What Pip found that is still worth a look, in the areas wanted, the best scored first (the AI's score, else the
-// automatic one): not what the AI skipped, nor the expired.
-export const pipFound = (jobs: Record<string, any>[]) => jobs.filter((j) => j.tier !== "far" && j.status !== "skipped" && j.status !== "expired")
-  .sort((a, b) => (shownScore(b) ?? -1) - (shownScore(a) ?? -1) || String(b.date).localeCompare(String(a.date)));
+// automatic one): not what was skipped, nor one left out by a check (its place, its language, or the years or the
+// level it asks: Sean 2026-11-22, "אל תראה משרות לא רלוונטיות בכלל"), nor one closed or past its deadline.
+export const pipFound = (jobs: Record<string, any>[]) => {
+  const today = new Date().toLocaleDateString("en-CA");
+  return jobs.filter((j) => j.tier !== "far" && !j.veto && j.status !== "skipped" && j.status !== "expired" && !(j.deadline && String(j.deadline).slice(0, 10) < today))
+    .sort((a, b) => (shownScore(b) ?? -1) - (shownScore(a) ?? -1) || String(b.date).localeCompare(String(a.date)));
+};
 
 // Behind the search, only gradients, as if alive: a forest rainbow (the --sky colours, a sunny forest's by day and
 // the night forest's at night) as six clouds that drift, turn and stretch round a breathing glow, blending as they
@@ -1018,7 +1025,8 @@ type Saved = AppState["saved"][number];
 // A job Pip found: gate is the check it failed when it was left out: its place or its language (the ranking's), or the
 // years it asks (years) or its senior title, above a junior search; portal is where it was found (seen_jobs.json).
 // group: a high-tech company's or a known employer's ("known"), or another's (groups.ts).
-export type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string; years?: number | null; portal?: string; fit?: string; group?: "known" | "other" };
+// industry: its employer's (portals.ts), and home: whether it is in the home base's area, for Pip's treasure (ui/loot.ts).
+export type Found = Job & { key: string; deadline?: string; veto?: boolean; gate?: string; years?: number | null; portal?: string; fit?: string; group?: "known" | "other"; industry?: string; home?: boolean };
 
 // The background runs the page waits on, by their conversations' titles (server.ts).
 const RANK = "/rank";
@@ -1028,13 +1036,12 @@ const SMART = "/job-scraper";
 // 45, and less below that.
 export const bandOf = (score: number) => (score >= 75 ? "strong" : score >= 60 ? "good" : score >= 45 ? "fair" : "low");
 
-// The groups Pip's list is shown in, in this order: the strong fits; the good and fair ones; the rest; those with
-// nothing to go on yet; and those left out, for their place, their language or the level they ask. A job goes by its
-// score, the AI's or the automatic one; one with neither (a Pip from before) by the fit the smart search gave it as it
-// was found (scraper.ts: high, medium, low), so the list is in its order, the best first.
-const GROUPS = ["strong", "worth", "less", "waiting", "out"] as const;
+// The groups Pip's list is shown in, in this order: the strong fits; the good and fair ones; the rest; and those with
+// nothing to go on yet (those left out by a check aren't on it, pipFound). A job goes by its score, the AI's or the
+// automatic one; one with neither (a Pip from before) by the fit the smart search gave it as it was found
+// (scraper.ts: high, medium, low), so the list is in its order, the best first.
+const GROUPS = ["strong", "worth", "less", "waiting"] as const;
 function groupOf(job: Found): (typeof GROUPS)[number] {
-  if (job.veto) return "out";
   const score = shownScore(job);
   if (score === null) return job.fit === "high" ? "strong" : job.fit === "medium" ? "worth" : job.fit === "low" ? "less" : "waiting";
   const band = bandOf(score);
@@ -1068,13 +1075,15 @@ export function daysTo(date: string | undefined) {
   return Math.round((new Date(+m[1], +m[2] - 1, +m[3]).getTime() - today.getTime()) / 86_400_000);
 }
 
-// What a job Pip found says in its chips: that it couldn't be opened, or why the ranking left it out; that it
-// closes within the week; how long ago it was posted; and its area.
-function FoundChips({ job }: { job: Found }) {
+// What a job Pip found says in its chips: that it is gold or hidden treasure (marks, ui/loot.ts); that it couldn't be
+// opened, or why the ranking left it out; that it closes within the week; how long ago it was posted; and its area.
+function FoundChips({ job, marks }: { job: Found; marks?: Loot[] }) {
   const { t, s } = useApp();
   const days = daysTo(job.deadline);
   const showTier = Boolean(job.tier) && !(job.tier === "unknown" && !s.settings.areas?.length);
   return <>
+    {marks?.includes("gold") && <span className="result-chip loot-chip gold"><LootArt id="coinSmall" />{t("loot.chip.gold")}</span>}
+    {marks?.includes("gems") && <span className="result-chip loot-chip gems"><LootArt id="gemSmall" />{t("loot.chip.gems")}</span>}
     {job.status === "unreachable" && <span className="result-chip warn">{t("jobs.flags.unreachable")}</span>}
     {job.veto && (job.gate === "location" || job.gate === "language" || job.gate === "senior") && <span className="result-chip bad">{t(`jobs.flags.${job.gate}`)}</span>}
     {job.veto && job.gate === "years" && <span className="result-chip bad">{typeof job.years === "number" ? t("jobs.flags.years", { n: job.years }) : t("jobs.flags.yearsSome")}</span>}
@@ -1206,8 +1215,9 @@ export function FoundEmpty({ searching }: { searching: boolean }) {
 // Pip's list and the saved one, each filtered on its own: words in a job's title, company or place; then, for Pip's,
 // how well it fits (its group), its area, how lately it was posted, where it was found, whether it closes within the
 // week, and the order. Kept for the visit, as the search's results are, so the page left and come back to keeps them.
-type Filters = { q: string; fit: string; company: string; area: string; days: string; source: string; closing: string; sort: string };
-const NO_FILTERS: Filters = { q: "", fit: "all", company: "all", area: "all", days: "all", source: "all", closing: "all", sort: "fit" };
+// loot: one of Pip's treasure's piles (ui/loot.ts), or all of his finds.
+type Filters = { q: string; loot: string; fit: string; company: string; area: string; days: string; source: string; closing: string; sort: string };
+const NO_FILTERS: Filters = { q: "", loot: "all", fit: "all", company: "all", area: "all", days: "all", source: "all", closing: "all", sort: "fit" };
 const MINE_DEFAULT: Filters = { ...NO_FILTERS, sort: "new" };
 const filtersKept: Record<"found" | "mine", Filters> = { found: { ...NO_FILTERS }, mine: { ...MINE_DEFAULT } };
 // How the search and filters show, while Sean picks one of three quiet ways (user/mockups/my-jobs): q1, a slim
@@ -1242,6 +1252,11 @@ function filterFound(jobs: Found[], f: Filters) {
   return f.sort === "new" ? [...list].sort((a, b) => String(b.date).localeCompare(String(a.date))) : list;
 }
 
+// Pip's list as its filters leave it: the treasure's pile asked for, or all of it, filtered as above.
+function foundShown(found: Found[], loot: Treasure<Found>, f: Filters) {
+  return filterFound(f.loot === "all" ? found : loot.piles[f.loot as Loot] ?? [], f);
+}
+
 function filterMine(jobs: Saved[], f: Filters) {
   const words = f.q.trim().toLowerCase();
   const list = jobs.filter((j) => has(words, j.title, j.company, j.location) && (f.days === "all" || within(ageOf(j.date), Number(f.days))));
@@ -1251,14 +1266,16 @@ function filterMine(jobs: Saved[], f: Filters) {
 type Option = [string, string, number?];
 type Filter = { key: keyof Filters; label: string; options: Option[] };
 
-// The filters a list has, each a row of choices, with how many jobs each would leave for Pip's groups and areas.
-function useFilters(tab: "found" | "mine", jobs: Found[]): Filter[] {
+// The filters a list has, each a row of choices, with how many jobs each would leave for Pip's treasure, groups and
+// areas.
+function useFilters(tab: "found" | "mine", jobs: Found[], loot: Treasure<Found>): Filter[] {
   const { t } = useApp();
   const days: Filter = { key: "days", label: t("jobs.filters.posted"), options: [["all", t("jobs.filters.anyTime")], ...["1", "7", "14", "30"].map((v): Option => [v, t(`jobs.days.d${v}`)])] };
   if (tab === "mine") return [days, { key: "sort", label: t("jobs.filters.sort"), options: [["new", t("jobs.filters.bySaved")], ["posted", t("jobs.filters.byPosted")]] }];
   const count = (test: (j: Found) => boolean) => jobs.filter(test).length;
   const sources = [...new Set(jobs.map(sourceOf))].sort((a, b) => (a === "other" ? 1 : b === "other" ? -1 : a.localeCompare(b)));
   return [
+    { key: "loot", label: t("loot.filter"), options: [["all", t("jobs.filters.all")], ...LOOT.map((id): Option => [id, t(`loot.piles.${id}.name`), loot.piles[id].length]).filter((o) => o[2])] },
     { key: "fit", label: t("jobs.filters.fit"), options: [["all", t("jobs.filters.all")], ...GROUPS.map((g): Option => [g, t(`jobs.groups.${g}`), count((j) => groupOf(j) === g)]).filter((o) => o[2])] },
     { key: "company", label: t("jobs.filters.company"), options: [["all", t("jobs.filters.all")], ["known", t("jobs.filters.known"), count((j) => j.group === "known")], ["other", t("jobs.filters.unknown"), count((j) => j.group !== "known")]] },
     { key: "area", label: t("jobs.filters.area"), options: [["all", t("jobs.filters.all")], ...(["near", "ok", "edge", "unknown"] as const).map((a): Option => [a, t(`tiers.${a}`), count((j) => j.tier === a)]).filter((o) => o[2])] },
@@ -1450,10 +1467,10 @@ export function useRankOne() {
 // One of Pip's found jobs as a row: its score in a round tile (the AI's, else the automatic one; fresh: just come in;
 // out: ruled out), or, with neither, the company's initial; and, until the AI has scored it, a button to have the AI
 // rank it now. The found list's, and a company's jobs on the companies page.
-export function FoundRow({ job, index, fresh = false, rankOne }: { job: Found; index: number; fresh?: boolean; rankOne: ReturnType<typeof useRankOne> }) {
+export function FoundRow({ job, index, fresh = false, rankOne, marks }: { job: Found; index: number; fresh?: boolean; rankOne: ReturnType<typeof useRankOne>; marks?: Loot[] }) {
   const score = shownScore(job);
   return (
-    <JobRow job={job} index={index} chips={<FoundChips job={job} />}
+    <JobRow job={job} index={index} chips={<FoundChips job={job} marks={marks} />}
       rank={typeof job.score === "number" ? undefined : { busy: rankOne.busy(job.key), onRank: () => rankOne.rank(job.key) }}
       lead={score !== null
         ? <Score score={score} kind={scoreKind(job)} fresh={fresh} out={Boolean(job.veto)} />
@@ -1461,25 +1478,35 @@ export function FoundRow({ job, index, fresh = false, rankOne }: { job: Found; i
   );
 }
 
-function FoundList({ f, onClear }: { f: Filters; onClear: () => void }) {
+// A pile of the treasure shown alone (f.loot) is one list in its own order, under its item, name, count and what it
+// holds; its jobs that are gold or hidden say so in their chips everywhere.
+function FoundList({ f, onClear, found, loot }: { f: Filters; onClear: () => void; found: Found[]; loot: Treasure<Found> }) {
   const { s, t } = useApp();
-  const found = pipFound(s.jobs) as Found[];
   const searching = s.sessions.some((x) => x.title === SMART && x.status === "running");
   const fresh = useFreshScores(found);
   const rankOne = useRankOne();
-  const list = filterFound(found, f);
-  const grouped = f.sort === "fit";
+  const list = foundShown(found, loot, f);
+  const pile = f.loot !== "all" && (LOOT as readonly string[]).includes(f.loot) ? (f.loot as Loot) : null;
+  const grouped = f.sort === "fit" && !pile;
   const groups = grouped ? GROUPS.map((g) => [g, list.filter((j) => groupOf(j) === g)] as const).filter(([, l]) => l.length > 0) : [["all", list] as const];
   const ordered = groups.flatMap(([group, l]) => l.map((job) => [group, job] as const));
   const at = useMore(ordered.length, JOBS_STEP, JSON.stringify(f));
   if (!found.length) return <FoundEmpty searching={searching} />;
   const shown = ordered.slice(0, at.shown);
   let index = 0;
-  const row = (job: Found) => <FoundRow key={job.key} job={job} index={rising(index++)} fresh={fresh.has(job.key)} rankOne={rankOne} />;
+  const row = (job: Found) => <FoundRow key={job.key} job={job} index={rising(index++)} fresh={fresh.has(job.key)} rankOne={rankOne} marks={loot.marks.get(job.key)} />;
   return (
     <>
       {!list.length && <NoneLeft onClear={onClear} />}
-      {grouped ? groups.filter(([group]) => shown.some(([g]) => g === group)).map(([group, l]) => (
+      {pile && list.length > 0 ? (
+        <section className="saved-group loot-shown" aria-labelledby="loot-shown-head">
+          <h2 id="loot-shown-head" className="saved-group-head loot-shown-head">
+            <LootArt id={pile} className="small" />{t(`loot.piles.${pile}.name`)}<span className="saved-group-count">{list.length}</span>
+            <small className="loot-shown-note">{t(`loot.piles.${pile}.note`)}</small>
+          </h2>
+          <div className="results">{shown.map(([, job]) => row(job))}</div>
+        </section>
+      ) : grouped ? groups.filter(([group]) => shown.some(([g]) => g === group)).map(([group, l]) => (
         <section key={group} className="saved-group" aria-labelledby={`saved-group-${group}`}>
           <h2 id={`saved-group-${group}`} className="saved-group-head">
             {t(`jobs.groups.${group}`)}<span className="saved-group-count">{l.length}</span>
@@ -1492,32 +1519,86 @@ function FoundList({ f, onClear }: { f: Filters; onClear: () => void }) {
   );
 }
 
+// Pip's haul, the third list (SavedJobs): what he recommends, in three rooms, picked with buttons like the lists' own:
+// the gold, the jobs he thinks are worth the most right now, one a company; high-tech; and outside high-tech
+// (ui/loot.ts). The room's jobs are rows like the other lists', best first, more as the list is scrolled down. The
+// arrow keys go from room to room. Behind it all, his vault (LootBackdrop, views/loot.tsx).
+function LootRooms({ loot, room, onRoom }: { loot: Treasure<Found>; room: Room; onRoom: (r: Room) => void }) {
+  const { t } = useApp();
+  const rankOne = useRankOne();
+  const jobs = loot.rooms[room];
+  const at = useMore(jobs.length, JOBS_STEP, room);
+  const keys = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const step = (e.key === "ArrowLeft") === (getComputedStyle(e.currentTarget).direction === "rtl") ? 1 : -1;
+    const next = ROOMS[(ROOMS.indexOf(room) + step + ROOMS.length) % ROOMS.length];
+    onRoom(next);
+    requestAnimationFrame(() => document.getElementById(`loot-room-${next}`)?.focus());
+  };
+  return (
+    <>
+      <div className="saved-tabs loot-rooms" role="tablist" aria-label={t("loot.rooms.label")} onKeyDown={keys}>
+        {ROOMS.map((r) => (
+          <button key={r} type="button" role="tab" id={`loot-room-${r}`} aria-controls="loot-room" aria-selected={room === r} tabIndex={room === r ? 0 : -1}
+            className={`seek-pill saved-tab loot-room ${room === r ? "on" : ""}`} onClick={() => onRoom(r)}>
+            {t(`loot.rooms.${r}.door`)}<span className="saved-count">{loot.rooms[r].length}</span>
+          </button>
+        ))}
+      </div>
+      <section id="loot-room" key={room} role="tabpanel" aria-labelledby={`loot-room-${room}`} className="saved-group loot-list">
+        <h2 className="saved-group-head">
+          {t(`loot.rooms.${room}.name`)}<span className="saved-group-count">{jobs.length}</span>
+          <small className="loot-shown-note">{t(`loot.rooms.${room}.note`)}</small>
+        </h2>
+        {jobs.length > 0 ? (
+          <div className="results">
+            {jobs.slice(0, at.shown).map((job, i) => (
+              <FoundRow key={job.key} job={job} index={rising(i)} rankOne={rankOne} marks={room === "gold" ? undefined : loot.marks.get(job.key)} />
+            ))}
+          </div>
+        ) : <p className="loot-empty">{t("loot.empty")}</p>}
+        <div ref={at.end} className="more-end" aria-hidden="true" />
+      </section>
+    </>
+  );
+}
+
 // My jobs, a tab of their own in the sidebar, in the jobs page's look: the forest rainbow's moving sky behind a
-// question-sized title, and under it the two lists, Pip's haul and the jobs the user saved, as two glass buttons that
-// say how many each has, the open one in ink; then the open list's search and filters (ListBar), and the list, as
-// wide as the search's results. The open list is the page's own, not the address's (which stays /saved): Pip's,
-// unless an address from a link names the saved one, and changed only by the two buttons, so saving or removing a job
-// never switches it. The arrow keys go from one button to the other. Opened, a list's rows rise in.
+// question-sized title, and under it the three lists, all of Pip's finds, the jobs the user saved and Pip's haul, as
+// glass buttons that say how many each has, the open one in ink; then the open list's search and filters (ListBar),
+// and the list, as wide as the search's results. Pip's haul has his vault behind it instead of the sky, and its rooms
+// instead of the search. The open list is the page's own, not the address's (which stays /saved): all of Pip's finds,
+// unless an address from a link names another, and changed only by the buttons, so saving or removing a job never
+// switches it. The arrow keys go from button to button. Opened, a list's rows rise in.
+type SavedTab = "found" | "mine" | "loot";
+const SAVED_TABS: readonly SavedTab[] = ["found", "mine", "loot"];
 export function SavedJobs() {
   const { s, t, arg } = useApp();
   const mine = s.saved ?? [];
-  const found = pipFound(s.jobs) as Found[];
-  const [tab, setTab] = useState<"found" | "mine">(arg === "mine" ? "mine" : "found");
+  const found = useMemo(() => pipFound(s.jobs) as Found[], [s.jobs]);
+  const loot = useMemo(() => treasure(found, firmScore, { studentJobs: s.settings.studentJobs }), [found, s.settings.studentJobs]);
+  const [tab, setTab] = useState<SavedTab>(arg === "mine" || arg === "loot" ? arg : "found");
+  const [room, setRoom] = useState<Room>("gold");
   const [, redraw] = useState(0);
-  const f = filtersKept[tab];
-  const change = (next: Filters) => { filtersKept[tab] = next; redraw((n) => n + 1); };
-  const clear = () => change({ ...(tab === "mine" ? MINE_DEFAULT : NO_FILTERS) });
-  const filters = useFilters(tab, found);
-  const shown = tab === "found" ? filterFound(found, f).length : filterMine(mine, f).length;
+  // The list the search and filters are for: Pip's haul has none of its own, so it keeps all of his finds'.
+  const list = tab === "mine" ? "mine" : "found";
+  const f = filtersKept[list];
+  const change = (next: Filters) => { filtersKept[list] = next; redraw((n) => n + 1); };
+  const clear = () => change({ ...(list === "mine" ? MINE_DEFAULT : NO_FILTERS) });
+  const filters = useFilters(list, found, loot);
+  const shown = list === "found" ? foundShown(found, loot, f).length : filterMine(mine, f).length;
+  const haul = useMemo(() => new Set(ROOMS.flatMap((r) => loot.rooms[r].map((j) => j.key))).size, [loot]);
   useLayoutEffect(() => { if (location.pathname !== "/saved") history.replaceState(null, "", "/saved"); }, []);
   const keys = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
     e.preventDefault();
-    const other = tab === "mine" ? "found" : "mine";
-    setTab(other);
-    requestAnimationFrame(() => document.getElementById(`saved-tab-${other}`)?.focus());
+    const step = (e.key === "ArrowLeft") === (getComputedStyle(e.currentTarget).direction === "rtl") ? 1 : -1;
+    const next = SAVED_TABS[(SAVED_TABS.indexOf(tab) + step + SAVED_TABS.length) % SAVED_TABS.length];
+    setTab(next);
+    requestAnimationFrame(() => document.getElementById(`saved-tab-${next}`)?.focus());
   };
-  const tabButton = (id: "mine" | "found", label: string, n: number) => (
+  const tabButton = (id: SavedTab, label: string, n: number) => (
     <button
       type="button" role="tab" id={`saved-tab-${id}`} aria-controls="saved-panel" aria-selected={tab === id} tabIndex={tab === id ? 0 : -1}
       className={`seek-pill saved-tab ${tab === id ? "on" : ""}`} onClick={() => setTab(id)}
@@ -1525,25 +1606,28 @@ export function SavedJobs() {
       {label}<span className="saved-count">{n}</span>
     </button>
   );
-  const bar = (tab === "mine" ? mine.length : found.length) > 0 && (
-    <ListBar key={tab} tab={tab} filters={filters} value={f} onChange={change} shown={shown} total={tab === "mine" ? mine.length : found.length} />
+  const bar = tab !== "loot" && (list === "mine" ? mine.length : found.length) > 0 && (
+    <ListBar key={list} tab={list} filters={filters} value={f} onChange={change} shown={shown} total={list === "mine" ? mine.length : found.length} />
   );
   return (
-    <div className={`page jobs-page saved-page look-${LOOK}`}>
+    <div className={`page jobs-page saved-page look-${LOOK} ${tab === "loot" ? "loot-on" : ""}`}>
+      <LootBackdrop on={tab === "loot"} room={room} />
       <div className="saved-top">
-        <Sky />
+        {tab !== "loot" && <Sky />}
         <h1 className="saved-title">{t("jobs.savedTitle")}</h1>
         <div className="saved-row">
           <div className="saved-tabs" role="tablist" aria-label={t("jobs.savedTitle")} onKeyDown={keys}>
             {tabButton("found", t("jobs.tabFound"), found.length)}
             {tabButton("mine", t("jobs.tabMine"), mine.length)}
+            {tabButton("loot", t("jobs.tabLoot"), haul)}
           </div>
           {LOOK === "q3" && bar}
         </div>
       </div>
       <div id="saved-panel" key={tab} role="tabpanel" aria-labelledby={`saved-tab-${tab}`} className="saved-panel">
         {LOOK !== "q3" && bar}
-        {tab === "mine" ? <MineList f={f} onClear={clear} /> : <FoundList f={f} onClear={clear} />}
+        {tab === "loot" ? <LootRooms loot={loot} room={room} onRoom={setRoom} />
+          : tab === "mine" ? <MineList f={f} onClear={clear} /> : <FoundList f={f} onClear={clear} found={found} loot={loot} />}
       </div>
     </div>
   );

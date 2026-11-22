@@ -1,8 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { applePosting, bezeqPosting, comeetPosting, elbitPosting, govPosting, greenhouseApi, greenhousePosting, jsonLdPosting, listedJob, mainContent, markedLines, nessApi, nessPosting, pageData, portalPlain, telegramEmbed, telegramPosting } from "./posting-read";
+import { applePosting, bezeqPosting, closedNotice, comeetPosting, elbitPosting, govPosting, greenhouseApi, greenhousePosting, jsonLdDates, jsonLdPosting, listedJob, mainContent, markedLines, namesJob, nessApi, nessPosting, pageData, pageWords, portalPlain, telegramEmbed, telegramPosting } from "./posting-read";
 import { jobId, plainUrl } from "./ui/jobid";
 
 const LONG = "You will build and run our data pipelines with Python and SQL, and work closely with the analytics team. ".repeat(4);
+
+describe("whether a job is still there", () => {
+  test("a page's days for Google, however short its posting, and none without a JobPosting", () => {
+    const ld = (o: object) => `<script type="application/ld+json">${JSON.stringify(o)}</script>`;
+    expect(jsonLdDates(ld({ "@type": "JobPosting", description: "x", datePosted: "2025-09-12", validThrough: "2025-11-17T23:59:59+02:00" }))).toEqual({ posted: "2025-09-12", deadline: "2025-11-17" });
+    expect(jsonLdDates(ld({ "@graph": [{ "@type": "Organization" }, { "@type": "JobPosting", datePosted: "2026-11-01" }] }))).toEqual({ posted: "2026-11-01" });
+    expect(jsonLdDates(ld({ "@type": "Organization" }) + "<p>no data</p>")).toEqual({});
+  });
+
+  test("a site's closing notice, never an open job's words that only sound like one", () => {
+    for (const t of ["המשרה הזאת סגורה כעת.", "המשרה כבר אינה פעילה", "משרה זו אוישה", "No longer accepting applications", "Sorry, this position has been filled.", "This job is no longer available", "The position is no longer available."]) expect(closedNotice(t)).toBe(true);
+    for (const t of ["We hire until the position is filled.", "The office is closed on Fridays.", "Applications close on 1 December.", "המשרה כוללת עבודה מול לקוחות", "No longer than two pages, please."]) expect(closedNotice(t)).toBe(false);
+  });
+
+  test("a page names a job by any good part of its title, anywhere in it, its characters decoded", () => {
+    expect(namesJob(pageWords("<title>Python Developer &amp; more</title>"), "Python Developer")).toBe(true);
+    expect(namesJob("האנליסט/ית להשקעות הלא סחירות אחראי/ת", "אנליסט/ית להשקעות הלא סחירות | אגף השקעות")).toBe(true);
+    expect(namesJob("We are hiring a Full Stack Developer", "מפתח/ת (Full Stack Developer)")).toBe(true);
+    expect(namesJob("Join our team: careers, culture, benefits", "NOC Engineer- Student Position")).toBe(false);
+    expect(namesJob("anything", "QA")).toBe(false);
+  });
+});
 
 describe("the part of a page that holds its job", () => {
   const words = (html: string | null) => (html ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();

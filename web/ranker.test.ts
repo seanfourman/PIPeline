@@ -90,6 +90,24 @@ describe("ranker", () => {
     expect(await fetchPosting({ key: "k", url: "javascript:alert(1)" }, run, never, scratch)).toMatchObject({ status: "unreachable" });
   });
 
+  test("keeps the days a page's data for Google gives, however short, and knows a job closed when its page says so", async () => {
+    // A job board's page that keeps its words in the page and only its dates in its data, as Jobify's does.
+    const html = `<html><head><script type="application/ld+json">{"@type":"JobPosting","title":"Junior Full Stack Developer","description":"Short.","datePosted":"2025-09-12","validThrough":"2025-11-17T23:59:59+02:00"}</script></head>`
+      + `<body><nav>Menu</nav><main><h1>Junior Full Stack Developer</h1><p>${POSTING}</p></main></body></html>`;
+    const page = (text: string): Run => async (argv) => {
+      if (argv.some((a) => a.endsWith("fetch_page.py"))) { writeFileSync(argv[argv.indexOf("--out") + 1], html); return { code: 0, out: "HTTP 200 size=10 saved=x", err: "" }; }
+      if (argv.includes("tools/posting_guard.py")) return { code: 0, out: guardOut(text), err: "" };
+      return { code: 2, out: "", err: "unexpected" };
+    };
+    const job = { key: "k", url: "https://jobify360.co.il/jobs/4299327946-in" };
+    expect(await fetchPosting(job, page(POSTING), never, scratch)).toMatchObject({ source: "page", facts: { posted: "2025-09-12", deadline: "2025-11-17" } });
+    for (const notice of ["המשרה הזאת סגורה כעת.", "משרה זו אינה פעילה", "No longer accepting applications", "This job is no longer available.", "This position has been filled."]) {
+      expect(await fetchPosting(job, page(`${notice}\n${POSTING}`), never, scratch)).toEqual({ status: "expired", fetch_error: "" });
+    }
+    // An open job's words that only sound like it are still the posting.
+    expect(await fetchPosting(job, page(`We review applications until the position is filled. The office is closed on Fridays.\n${POSTING}`), never, scratch)).toMatchObject({ source: "page" });
+  });
+
   test("reads an Elbit job from the file of all its jobs, and knows it closed once the file drops it", async () => {
     const file = JSON.stringify([{ jobId: 21218, jobTitle: "Junior Python Developer", openDate: "2026-11-11T11:46:00", description: POSTING, requirements: "", skills: "" }]);
     const fetched: string[] = [];

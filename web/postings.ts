@@ -6,14 +6,16 @@
 // answer, which scores it as /rank does and lays its posting out for the page. A job on Pip's list that a junior
 // search shouldn't see (three years or more asked, or a senior title) is left out of the list once read
 // (rank_state.py's "filtered"). The listed jobs not read yet are read in the background, one at a time and slowly
-// (crawl), so each has its automatic score (match.ts) and the list knows each one's years. Nothing here starts a
-// conversation.
+// (crawl), so each has its automatic score (match.ts) and the list knows each one's years. A job doesn't stay on the
+// list for ever: the background reading looks at each read job's page again every few days (recheck) and takes off
+// the list one its site has closed, and the jobs past their deadline or posted long ago leave it too (sweep). Nothing
+// here starts a conversation.
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ChatbotError } from "./chatbots";
 import { levelGate, requiredYears, type Years } from "./experience";
-import type { Facts } from "./posting-read";
+import { namesJob, type Facts } from "./posting-read";
 import { factsIn, skillsIn } from "./posting-words";
 import type { Auto } from "./match";
 import { fetchPosting, parseScore, postingLines, PYTHON, scoringPrompt, scoringSystem, type Fetched, type Run, type Steps, type Tidy } from "./ranker";
@@ -24,16 +26,17 @@ export type Basics = { url: string; title: string; company: string; location: st
 type Match = { score: number; verdict: string; location_verdict: string; language_gate: string; language_note?: string; strengths: string[]; gaps: string[]; at: string; by?: string };
 export type Posting = Basics & {
   id: string;
-  // v: the page reader's version a posting read whole from its page was read with (PAGE_READER).
-  read?: { at: string; status: "read" | "unreachable" | "expired"; error?: string; source?: string; guard?: string; lines?: string[]; facts?: Facts; years?: Years | null; v?: number };
+  // v: the page reader's version a posting read whole from its page was read with (PAGE_READER). missed: a later look
+  // at a page read before that couldn't read it (when, how many looks in a row, and why), the words read before kept.
+  read?: { at: string; status: "read" | "unreachable" | "expired"; error?: string; source?: string; guard?: string; lines?: string[]; facts?: Facts; years?: Years | null; v?: number; missed?: { at: string; n: number; error?: string } };
   tidy?: Tidy & { at: string; by?: string };
   match?: Match;
   ai?: { error: string; at: string };
 };
 export type Stage = "page" | "ai";
 // Why a job is read: opened (read if it needs to be), read again by the page's button, read and then given to the AI
-// (the user asked), or read in the background for the list.
-type Why = "open" | "again" | "ai" | "crawl";
+// (the user asked), read in the background for the list, or looked at again there to see it is still open.
+type Why = "open" | "again" | "ai" | "crawl" | "recheck";
 type Score = ReturnType<typeof parseScore>;
 
 // The framework's weights and bands (tools/rank_state.py's), for a job kept here rather than on the list.
@@ -59,6 +62,21 @@ const NOT_CRAWLED = /(^|\.)linkedin\.com$/i;
 const TURNED_AWAY = /\bHTTP (?:403|429|503|999)\b|robots\.txt/i;
 const REST_MS = 6 * 3600_000;
 const ROBOTS_REST_MS = 24 * 3600_000;
+// A listed job read before is looked at again when its last look is this old, to see its site still has it; a
+// Telegram post isn't, as a post stays up when its job is gone. Each round of the background reading looks for as
+// long as it is given (server.ts), the sites taken in turn, so one site's many jobs don't hold up the others.
+const RECHECK_MS = 3 * 86_400_000;
+const NOT_RECHECKED = /(^|\.)t\.me$/i;
+// How long a job stays on the list, in days from the earliest day known of it: the list's posted day, the one its
+// page's own data gives, or the day Pip first saw it. A job on its employer's own site stays past it while its page,
+// looked at again every few days, still has it; one whose page didn't read twice in a row then goes.
+const MAX_AGE_DAYS = 30;
+const MISSES_OUT = 2;
+// The list's statuses of a job still on it.
+const LISTED = new Set(["new", "ranked", "unreachable"]);
+const dayOf = (v: unknown) => /^\d{4}-\d{2}-\d{2}/.exec(String(v ?? ""))?.[0] ?? "";
+// When a page was last looked at: its read, or a later look that couldn't read it.
+const lastLook = (p: Posting) => Math.max(Date.parse(p.read?.at ?? "") || 0, Date.parse(p.read?.missed?.at ?? "") || 0);
 
 // A company or a role compared without case, marks or spaces, and without Hebrew's "/ת" ending ("מפתח/ת").
 const norm = (s: unknown) => String(s ?? "").toLowerCase().replace(/\/[תה](?=[^\p{L}]|$)/gu, "").replace(/[^\p{L}\p{N}]+/gu, "");
@@ -174,7 +192,24 @@ export function createPostings(d: Deps) {
       const stale = p.read && p.read.status !== "read" && Date.now() - Date.parse(p.read.at) > READ_AGAIN_MS;
       // A posting read by an older page reader, read again on opening; kept as it was unless this read gets its words.
       const older = why === "open" && outdated(p);
-      if (!p.read || stale || older || (why === "again" && p.read.status !== "read") || (why === "ai" && p.read.status !== "read")) {
+      if (why === "recheck" && p.read?.status === "read") {
+        reading.set(id, "page");
+        const got = await fetchPosting(job, d.run, AbortSignal.timeout(180_000), scratch);
+        // Closed: its site says so, the page is gone (a page read before that now isn't there at all), or the page
+        // that named the job no longer does anywhere in it (a closed job's address sent on to the site's list of jobs
+        // or its careers page). A page that didn't read for another reason says nothing: its words stay, and the miss
+        // is counted.
+        const before = p.read;
+        const gone = "status" in got
+          ? got.status === "expired" || /\bHTTP 404\b/.test(got.fetch_error)
+          : got.named === false && namesJob((before.lines ?? []).join("\n"), p.title);
+        if (gone) {
+          p.read = { ...before, status: "expired", at: today(), missed: undefined };
+          if (found) d.apply([{ key: found.key, status: "expired", reason: "closed" }]);
+        } else if ("status" in got) p.read = { ...before, missed: { at: today(), n: (before.missed?.n ?? 0) + 1, error: got.fetch_error || undefined } };
+        else keepRead(p, got);
+        save(p);
+      } else if (!p.read || stale || older || (why === "again" && p.read.status !== "read") || (why === "ai" && p.read.status !== "read")) {
         reading.set(id, "page");
         const got = await fetchPosting(job, d.run, AbortSignal.timeout(180_000), scratch);
         if (older && ("status" in got || got.whole)) { p.read = { ...p.read!, v: PAGE_READER }; save(p); return; }
@@ -307,17 +342,17 @@ export function createPostings(d: Deps) {
   // waits for it and then reads what is left, rather than nothing.
   let crawling: Promise<number> | null = null;
   const resting = new Map<string, number>();
-  async function crawl(stop: () => boolean = () => false, o: { steps?: Steps; wait?: boolean; until?: number } = {}) {
+  async function crawl(stop: () => boolean = () => false, o: { steps?: Steps; wait?: boolean; until?: number; recheck?: number } = {}) {
     if (crawling && !o.wait) return 0;
     while (crawling) await crawling.catch(() => 0);
     const run = readList(stop, o);
     crawling = run;
     try { return await run; } finally { if (crawling === run) crawling = null; }
   }
-  async function readList(stop: () => boolean, o: { steps?: Steps; until?: number }) {
+  async function readList(stop: () => boolean, o: { steps?: Steps; until?: number; recheck?: number }) {
     let read = 0;
+    const lastAt = new Map<string, number>();
     try {
-      const lastAt = new Map<string, number>();
       const waiting = Object.values(d.seen())
         .filter((e) => (e.status === "new" || e.status === "ranked") && /^https?:\/\//i.test(String(e.url ?? "")) && !NOT_CRAWLED.test(hostOf(String(e.url))))
         .map((e) => ({ e, id: jobId(String(e.url)) }))
@@ -345,10 +380,69 @@ export function createPostings(d: Deps) {
     } catch (err) {
       console.error("The background reading of the list stopped:", err);
     }
+    if (o.recheck && !stop()) read += await recheckList(stop, Math.min(Date.now() + o.recheck, o.until ?? Infinity), lastAt);
     return read;
   }
 
-  return { open, again, analyze, view, keepRanked, readJob, readNow, crawl, load, save };
+  // The listed jobs read before, each looked at again once its last look is RECHECK_MS old, the longest unlooked
+  // first, a site at a time in turn, at the background reading's pace, until stop or the time given runs out. A job
+  // its site has closed leaves the list as it is looked at (doRead); a site that turns the looks away rests.
+  async function recheckList(stop: () => boolean, until: number, lastAt: Map<string, number>) {
+    let looked = 0;
+    try {
+      const due = Object.values(d.seen())
+        .filter((e) => LISTED.has(String(e.status)) && /^https?:\/\//i.test(String(e.url ?? "")) && !NOT_CRAWLED.test(hostOf(String(e.url))) && !NOT_RECHECKED.test(hostOf(String(e.url))))
+        .map((e) => { const id = jobId(String(e.url)); return { e, id: id ?? "", p: id ? load(id) : null }; })
+        .filter((x): x is { e: Record<string, any>; id: string; p: Posting } => x.p?.read?.status === "read" && Date.now() - lastLook(x.p) >= RECHECK_MS)
+        .sort((a, b) => lastLook(a.p) - lastLook(b.p));
+      // A site at a time in turn: the first job of each site, then the second of each, and so on.
+      const bySite = new Map<string, typeof due>();
+      for (const x of due) { const host = hostOf(String(x.e.url)); bySite.set(host, [...(bySite.get(host) ?? []), x]); }
+      const turns: typeof due = [];
+      for (let i = 0; turns.length < due.length; i++) for (const list of bySite.values()) if (list[i]) turns.push(list[i]);
+      for (const { e, id } of turns) {
+        if (stop() || Date.now() >= until) break;
+        const host = hostOf(String(e.url));
+        if ((resting.get(host) ?? 0) > Date.now()) continue;
+        const wait = (lastAt.get(host) ?? 0) + (d.pace?.sameSite ?? SAME_SITE_MS) - Date.now();
+        if (wait > 0) await sleep(wait);
+        await readJob(id, "recheck");
+        lastAt.set(host, Date.now());
+        const error = load(id)?.read?.missed?.error ?? "";
+        if (TURNED_AWAY.test(error)) resting.set(host, Date.now() + (/robots/i.test(error) ? ROBOTS_REST_MS : REST_MS));
+        looked++;
+        await sleep(d.pace?.pause ?? CRAWL_PAUSE_MS);
+      }
+    } catch (err) {
+      console.error("The background look at the list's jobs stopped:", err);
+    }
+    return looked;
+  }
+
+  // Jobs that have had their day leave the list, closed (the list's status expired, with why): one past its deadline,
+  // the latest one known of it (the list's, or its page's own data's), or older than MAX_AGE_DAYS, unless it is on its
+  // employer's own site and its page still had it at its last looks (recheck). How many left.
+  function sweep(now = Date.now()) {
+    const day = new Date(now).toLocaleDateString("en-CA");
+    const ageOf = (d0: string) => (Date.parse(`${day}T12:00:00Z`) - Date.parse(`${d0}T12:00:00Z`)) / 86_400_000;
+    const rows: Record<string, unknown>[] = [];
+    for (const [key, e] of Object.entries(d.seen())) {
+      if (!LISTED.has(String(e.status))) continue;
+      const id = jobId(String(e.url ?? ""));
+      const p = id ? load(id) : null;
+      const facts = p?.read?.facts ?? {};
+      const deadline = [dayOf(e.deadline), dayOf(facts.deadline)].filter(Boolean).sort().pop();
+      if (deadline && deadline < day) { rows.push({ key, status: "expired", reason: "deadline" }); continue; }
+      const born = [dayOf(e.posted_date), dayOf(facts.posted), dayOf(e.first_seen)].filter(Boolean).sort()[0];
+      if (!born || ageOf(born) <= MAX_AGE_DAYS) continue;
+      if (e.portal === "careers-page" && (!p?.read || (p.read.status === "read" && (p.read.missed?.n ?? 0) < MISSES_OUT))) continue;
+      rows.push({ key, status: "expired", reason: "old" });
+    }
+    if (rows.length) d.apply(rows);
+    return rows.length;
+  }
+
+  return { open, again, analyze, view, keepRanked, readJob, readNow, crawl, sweep, load, save };
 }
 export type JobView = NonNullable<ReturnType<ReturnType<typeof createPostings>["view"]>>;
 

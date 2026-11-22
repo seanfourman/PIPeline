@@ -45,6 +45,16 @@ class BuildMessage(unittest.TestCase):
         self.assertEqual(message["Subject"], "חיפוש עבודה")
         self.assertIn("נוצרו קורות חיים", message.get_body().get_content())
 
+    def test_the_page_goes_beside_the_words_and_the_cv_stays_attached(self):
+        with tempfile.TemporaryDirectory() as folder:
+            pdf = Path(folder) / "cv.pdf"
+            pdf.write_bytes(b"%PDF-1.5 test")
+            message = send_mail.build_message(request(html="<p>נוצרו קורות חיים</p>", attachments=[{"path": str(pdf), "name": "cv.pdf"}]))
+            self.assertEqual(message.get_content_type(), "multipart/mixed")
+            self.assertIn("<p>נוצרו קורות חיים</p>", message.get_body(("html",)).get_content())
+            self.assertIn("נוצרו קורות חיים", message.get_body(("plain",)).get_content())
+            self.assertEqual(next(message.iter_attachments()).get_filename(), "cv.pdf")
+
     def test_the_password_is_not_in_the_message(self):
         self.assertNotIn("secret-app-password", send_mail.build_message(request()).as_string())
 

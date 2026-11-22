@@ -8,7 +8,8 @@ import { pathToFileURL } from "node:url";
 import { createSession, createTaskSession, defaultEfforts, deleteSession, getSession, isAccess, leaveProject, listSessions, runTask, runUnattended, searchSessions } from "./agent";
 import { AccountError, clearedCookie, createAuth, openedByHand, rememberedCookie, rememberedOf, sessionCookie, sessionOf } from "./auth";
 import { buildInterface, watchInterface } from "./build";
-import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail } from "./automation";
+import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail, testMailHtml } from "./automation";
+import { chip, jobCard, mailPage, sectionHead } from "./mail-html";
 import { askInOrder, ENGINE_NAMES, engineOrder } from "./ai";
 import { ChatbotError, forgetKeys, keyStatus, PROVIDERS, type Provider } from "./chatbots";
 import { cliSignedIn, cliStatus, openLogin } from "./clis";
@@ -175,9 +176,16 @@ const postings = createPostings({
   auto: (p) => { const settings = loadSettings(); return autoScores.of(p, classifyLocation(p.location, settings.areas), settings); },
 });
 // The list's postings read in the background (postings.ts crawl), so each job has its automatic score: a minute after
-// start, then every twenty minutes for what was found since; it pauses while a run over the list is going.
+// start, then every twenty minutes for what was found since; it pauses while a run over the list is going. Each round
+// first takes off the list the jobs past their deadline or too old (sweep), and after the new jobs looks again at the
+// pages of jobs read days ago for a quarter of an hour, so a job its site has closed leaves the list.
 const CRAWL_EVERY_MS = 20 * 60_000;
-const crawlList = () => { if (!listBusy) void postings.crawl(() => listBusy !== ""); };
+const RECHECK_FOR_MS = 15 * 60_000;
+const crawlList = () => {
+  if (listBusy) return;
+  try { postings.sweep(); } catch (err) { console.error("The list's old jobs were not swept:", err); }
+  void postings.crawl(() => listBusy !== "", { recheck: RECHECK_FOR_MS });
+};
 setTimeout(crawlList, 60_000);
 setInterval(crawlList, CRAWL_EVERY_MS);
 
@@ -695,7 +703,8 @@ async function api(req: Request, url: URL): Promise<Response> {
       const to = loadSettings().automation.email || readMailAccount()?.user;
       if (!to) throw new EditError("mail_account_missing");
       const words = mailWords(loadSettings());
-      return json({ result: await sendMail({ to, subject: words.testSubject, body: words.testBody, attachments: [] }) });
+      const html = testMailHtml(words.testTitle, words.testBody, words.kind, loadSettings().language);
+      return json({ result: await sendMail({ to, subject: words.testSubject, body: words.testBody, html, attachments: [] }) });
     }
     // A test of the live alerts: the computer's notice, and the email when an address is set.
     if (parts[1] === "alert-test") {
@@ -703,7 +712,18 @@ async function api(req: Request, url: URL): Promise<Response> {
       const he = language() === "he";
       const desktop = await desktopNotice(he ? "פיפ: התראת בדיקה" : "Pip: a test alert", he ? "כך תיראה התראה על משרה חדשה." : "This is how a new job's alert looks.", `http://localhost:${PORT}/jobs`);
       const to = settings.automation.email || readMailAccount()?.user;
-      const mail = to ? await sendMail({ to, subject: he ? "פיפ: התראת בדיקה" : "Pip: a test alert", body: he ? "אם המייל הזה הגיע, ההתראות החיות יגיעו לכאן." : "If this email reached you, the live alerts will reach you here.", attachments: [] }) : { status: "no_address" as const };
+      // The email as an alert looks, with a job made up for it, marked as an example.
+      const lang = he ? "he" : "en";
+      const html = mailPage({
+        lang, kind: he ? "התראת בדיקה" : "A test alert", title: he ? "ככה תיראה התראה" : "This is how an alert looks",
+        lead: he ? "אם המייל הזה הגיע, ההתראות החיות יגיעו לכאן. ככה תיראה בו משרה חדשה:" : "If this email reached you, the live alerts will reach you here. A new job will look like this:",
+        parts: [sectionHead(he ? "דוגמה" : "An example", null, lang), jobCard({
+          title: "Junior Backend Developer", company: he ? "חברה לדוגמה" : "An example company", location: he ? "תל אביב" : "Tel Aviv",
+          url: `http://localhost:${PORT}/jobs`, action: he ? "לדף המשרות" : "To the jobs page", lang, chips: [chip(he ? "פורסמה היום" : "Published today", "green")],
+        })],
+        footer: he ? "נשלח מההתראות החיות של פיפ. אפשר לכבות אותן בהגדרות." : "Sent by Pip's live alerts. They can be turned off in the settings.",
+      });
+      const mail = to ? await sendMail({ to, subject: he ? "פיפ: התראת בדיקה" : "Pip: a test alert", body: he ? "אם המייל הזה הגיע, ההתראות החיות יגיעו לכאן." : "If this email reached you, the live alerts will reach you here.", html, attachments: [] }) : { status: "no_address" as const };
       return json({ desktop, mail });
     }
   }
@@ -906,7 +926,7 @@ async function tellAlerts(jobs: AlertJob[]) {
   const text = alertText(jobs, language(), `http://localhost:${PORT}/jobs`);
   if (settings.alerts.desktop) await desktopNotice(text.headline, text.notice, text.open);
   const to = settings.automation.email || readMailAccount()?.user;
-  if (settings.alerts.email && to) await sendMail({ to, subject: text.subject, body: text.body, attachments: [] });
+  if (settings.alerts.email && to) await sendMail({ to, subject: text.subject, body: text.body, html: text.html, attachments: [] });
 }
 
 // Every request, from this computer's browser or passed on from the phone by the site (remote.ts).

@@ -133,6 +133,10 @@ describe("a run", () => {
     expect(mails[0].attachments[0].name).toBe("Dana Cohen - Resume.pdf");
     expect(mails[0].body).toContain("ציון ATS: 77");
     expect(mails[0].body).toContain("Added: Docker");
+    // The same as a page: the job as a card with its CV's score and the agent's words.
+    expect(mails[0].html).toContain("ציון ATS: 77");
+    expect(mails[0].html).toContain("Added: Docker");
+    expect(mails[0].html).toContain('href="https://x.co/1"');
     expect(automation.runs()[0].drafted).toHaveLength(1);
     expect(automation.runs()[0].finished).toBeTruthy();
     expect(automation.runs()[0].mail).toEqual({ status: "sent", detail: "me@x.co" });

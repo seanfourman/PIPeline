@@ -1,10 +1,12 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { store, stored, useApp, type AppState } from "../app";
 import { paintStill } from "../intro";
-import { Btn, goTo } from "../kit";
-import { useMore } from "../more";
+import { HOME_DAYS, homeJobs, homeJobsFrom, placeShort } from "../home-jobs";
+import { jobId } from "../jobid";
+import { api, Btn, goTo } from "../kit";
 import { Pip, PipAsleep, pixelPath } from "../pip";
-import { firmScore } from "./jobs";
+import { openJob, sendOpen } from "./job";
+import { firmScore, postedAgo } from "./jobs";
 
 // Small one-colour drawings in the banner's pixel blocks rather than a font's or an icon set's: the tick on a
 // stage passed, the numbers, and the pictures on the signs under the banner.
@@ -285,9 +287,6 @@ const PropArt = ({ kind }: { kind: Prop }) => {
 
 // How many squares fit across a shelf: as many as are at least ITEM_MIN wide, and never fewer than two.
 const ITEM_MIN = 180;
-// How many shelves show at first, and how many more each time the last comes near the bottom of the screen
-// (ui/more.tsx).
-const SHELVES_STEP = 3;
 function useColumns() {
   const ref = useRef<HTMLDivElement>(null);
   const [cols, setCols] = useState(4);
@@ -305,14 +304,12 @@ function useColumns() {
 type Job = Record<string, any>;
 type Place = { job: Job } | { prop: Prop } | { pip: true };
 
-// The best jobs as squares on wooden shelves with no sides: just a plank under each row. The last shelf's empty
-// places hold dust, a mushroom or a snail, with a cobweb under its end; with no jobs at all there is one low shelf
-// with Pip asleep on it.
+// The jobs as squares on wooden shelves with no sides: just a plank under each row, as many as the few jobs chosen
+// need (home-jobs.ts). The last shelf's empty places hold dust, a mushroom or a snail, with a cobweb under its end;
+// with no jobs at all there is one low shelf with Pip asleep on it.
 function Shelves({ jobs }: { jobs: Job[] }) {
   const [ref, cols] = useColumns();
-  // A few shelves, and more as the last comes near the bottom of the screen.
-  const at = useMore(jobs.length, cols * SHELVES_STEP);
-  const shown = jobs.slice(0, at.shown);
+  const shown = jobs;
   const count = Math.max(cols, Math.ceil(shown.length / cols) * cols);
   // Pip naps in the middle of an empty shelf; the things go round him in turn.
   const pipAt = jobs.length ? -1 : Math.floor((cols - 1) / 2);
@@ -339,34 +336,115 @@ function Shelves({ jobs }: { jobs: Job[] }) {
           </div>
         ))}
       </div>
-      <div ref={at.end} className="more-end" aria-hidden="true" />
     </>
   );
 }
 
 // A map pin for the place a job is in.
 const PIN = [".XXX.", "XX.XX", "XX.XX", ".XXX.", "..X.."];
+// A cog, for the rest of the choice of jobs; an arrow pointing on, to the right (turned round in Hebrew).
+const COG = ["..X.X..", ".XXXXX.", "XX...XX", ".X...X.", "XX...XX", ".XXXXX.", "..X.X.."];
+// A choice's round mark in pixels: a ring, and the one chosen filled round a hole.
+const RING = [".XXXX.", "X....X", "X....X", "X....X", "X....X", ".XXXX."];
+const RING_ON = [".XXXX.", "XXXXXX", "XX..XX", "XX..XX", "XXXXXX", ".XXXX."];
+// An old plank for the sign to the full list, abstract: slanted, its left end lower, warped a little, broken at that
+// end, a corner chipped and a chunk out of its foot, lit along its top and shaded along its foot, and a nail at each
+// end; nothing else on it (Sean 2026-11-20: cracks, a knot and weathering were "יותר מדי מידע", and the grain too, "עוד
+// יותר אבסטרקטי"). Drawn by script, so it is pixel art like the shelves.
+const OLD_SIGN = [
+  "...........................................................................OOOOOO...",
+  "..........................................OOOOOOOOOOO......OOOOOOOOOOOOOOOOLLLLLLOO.",
+  "..............................OOOOOOOOOOOOLLLLLLLLLLLOOOOOOLLLLLLLLLLLLLLLLWWWWWWLLO",
+  ".........................OOOOOLLLLLLLLLLLLWWWWWWWWWWWLLLLLLWWWWWWWWWWWWWWWWWWWWWWWWO",
+  ".........OOOOOOOOOOOOOOOOLLLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWO",
+  "....OOOOOLLLLLLLLLLLLLLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWHNWWWWWWWO",
+  "...OLLLLLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWNNWWWWWWWO",
+  "...OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWO",
+  "..OLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWO",
+  ".OLWWWWHNWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWO",
+  ".OWWWWWNNWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWO",
+  "OLWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSO",
+  "OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSO",
+  "OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSO.",
+  ".OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSSO.",
+  "..OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSO..",
+  "..OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSO...",
+  ".OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSO...",
+  "OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSWSSWWWWWWWWWWWWWWWSSSO....",
+  "OWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSWWSWWWWSWSWWWSSSOOSSWWWSWWSWSWWWSSSO.....",
+  "OSWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWSWSSSWSSWSSSSSSSSSSSSSWSSOO..OSSSSSSSSSSSSSOOO......",
+  "OSWWWWWWWWWWWWWWWWWWWWWWWSSSWSSSSSSSSSSSSSOOOOOOOOOOOSSSO.....OOOOOOOOOOOOO.........",
+  ".OSWWWWWWSSSSSWSSWWWSWSWSSSSSSOOOOOOOOOOOO...........OOO............................",
+  ".OSWSWSSWSSSSSSSSSSSSSSSSOOOOO......................................................",
+  "..OSSSSSSOOOOOOOOOOOOOOOO...........................................................",
+  "...OOOOOO...........................................................................",
+];
+const OLD_SIGN_COLORS = { O: "#3a2414", W: "#8f6a48", L: "#a98460", S: "#6f4f33", N: "#2a1c10", H: "#c9a27a" };
+
+// How far back the jobs go, as a row of choices under the heading's line, each with a round pixel mark before it, the
+// one chosen filled and its words in the forest's green (Sean 2026-11-20 chose these from four looks, user/mockups/
+// home-tabs: "ג הכי בכיוון"; a plain line of words came first, "לא יפה", then framed tabs). A click on another shows its
+// jobs at once and saves it (Settings.homeJobs). The cog at the end opens the rest of the choice on the settings page.
+function WhenTabs({ days, onPick }: { days: number; onPick: (d: number) => void }) {
+  const { t } = useApp();
+  const toChoice = (e: React.MouseEvent) => { e.preventDefault(); goTo("/settings#home-jobs"); };
+  return (
+    <div className="when-tabs" role="group" aria-label={t("settings.homeJobs.days")}>
+      {HOME_DAYS.map((d) => (
+        <button key={d} type="button" className="when-tab" aria-pressed={days === d} onClick={() => onPick(d)}>
+          <PixelArt className="when-mark" rows={days === d ? RING_ON : RING} />{t(`home.tabs.${d}`)}
+        </button>
+      ))}
+      <a className="when-tab when-cog" href="/settings#home-jobs" onClick={toChoice} aria-label={t("home.change")} title={t("home.change")}>
+        <PixelArt className="when-cog-art" rows={COG} />
+      </a>
+    </div>
+  );
+}
 
 // One job as a square on the shelf, everything together in its middle: the score in a pixel badge, the title, the
-// company, and the place by a pin.
+// company, the place by a pin, and how long ago it came out. A click opens the job's own page, as a list's row does
+// (openJob, which tells the server the job first, so its page has it); a new tab or window opens it there.
 function Item({ job }: { job: Job }) {
+  const { t } = useApp();
+  const id = jobId(job.url);
+  const when = job.date ? postedAgo(job.date, t) : "";
+  const basics = { url: job.url, title: job.title, company: job.company, location: job.location, date: job.date };
+  const open = (e: React.MouseEvent) => {
+    if (!id) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { sendOpen(basics); return; }
+    e.preventDefault();
+    openJob(basics);
+  };
   return (
-    <a className="item" href="/saved/found" aria-label={`${firmScore(job)}: ${job.title}, ${job.company}`}>
+    <a className="item" href={id ? `/job/${id}` : "/saved/found"} onClick={open} onAuxClick={() => id && sendOpen(basics)}
+      aria-label={`${firmScore(job)}: ${job.title}, ${job.company}${when ? `, ${when}` : ""}`}>
       <span className="item-score"><Digits n={firmScore(job)!} /></span>
-      {/* The words run in their own language's direction inside each line. */}
-      <strong className="item-title"><bdi dir="auto">{job.title}</bdi></strong>
-      <span className="item-company"><bdi dir="auto">{job.company}</bdi></span>
-      {job.location && <span className="item-place"><PixelArt className="item-pin" rows={PIN} /><bdi dir="auto">{job.location}</bdi></span>}
+      {/* Each line runs in its own language's direction, so one cut short ends in "…" at its own end. */}
+      <strong className="item-title" dir="auto">{job.title}</strong>
+      <span className="item-company" dir="auto">{job.company}</span>
+      {job.location && <span className="item-place"><PixelArt className="item-pin" rows={PIN} /><span className="item-place-name" dir="auto">{placeShort(job.location)}</span></span>}
+      {when && <span className="item-when">{when}</span>}
     </a>
   );
 }
 
 export function Home() {
-  const { s, t } = useApp();
+  const { s, t, refresh } = useApp();
   const st = appStats(s);
-  // Every job with a firm score (the AI's, else the automatic one from its posting), best first, more shelves of them
-  // as the page is scrolled down (Shelves).
-  const top = s.jobs.filter((j) => firmScore(j) !== null && j.tier !== "far").sort((a, b) => firmScore(b)! - firmScore(a)!);
+  // A few of the best jobs of the last days, as the settings choose them (home-jobs.ts); the tabs under the heading
+  // pick how far back, the cog beside them the rest on the settings page.
+  // A time picked in the tabs shows at once, before the settings saved with it come back.
+  const saved = homeJobsFrom(s.settings.homeJobs);
+  const [days, setDays] = useState<number | null>(null);
+  useEffect(() => setDays(null), [saved.days]);
+  const choice = { ...saved, days: (days ?? saved.days) as typeof saved.days };
+  const pickDays = (d: number) => {
+    setDays(d);
+    api("settings", { ...s.settings, homeJobs: { ...saved, days: d } }).then(refresh, () => setDays(null));
+  };
+  const { shown: top, total } = homeJobs(s.jobs, s.applications, choice, firmScore);
+  const scored = s.jobs.some((j) => firmScore(j) !== null);
   const fresh = s.jobs.filter((j) => j.status === "new").length;
   // A plain card in the banner's colours: a pixel picture, the number in pixel digits, the words.
   const stat = (key: "sent" | "interview" | "offer" | "fresh", n: number, href: string) => (
@@ -389,15 +467,36 @@ export function Home() {
         </section>
         <section className="best">
           <div className="best-head">
-            <h2>{t("home.topJobs")}</h2>
+            <h2>{t(choice.order === "new" ? "home.newJobs" : "home.topJobs")}</h2>
             <PixelArt className="best-ledge" rows={LEDGE} />
-            {top.length > 0 && <a className="best-all" href="/saved/found">{t("home.allJobs")}</a>}
+            {scored && <WhenTabs days={choice.days} onPick={pickDays} />}
           </div>
           <Shelves jobs={top} />
+          {/* The way to the full list as an old wooden sign (Sean 2026-11-20, of a plain board there: "לא מספיק מגניב", a
+              rustic sign by a swamp in mind; then "עץ ישן ועקום", the boards before it too much like a button): a crooked
+              old plank in pixels, its words painted on in cream along its slant, saying how many more the list has
+              from the same days. Under the pointer Pip peeks out from behind it (Sean 2026-11-20 chose this, after a creak
+              and a lightening: "פיפ מציץ מאחורי השלט"); pressed, it goes down a block. */}
+          {top.length > 0 && (
+            <a className="oldsign" href="/saved/found">
+              <Pip className="oldsign-pip" />
+              <Sprite className="oldsign-board" rows={OLD_SIGN} colors={OLD_SIGN_COLORS} />
+              <span className="oldsign-words">
+                <strong>{t(total > top.length ? "home.toList" : "home.allJobs")}</strong>
+                {total > top.length && <span>{t("home.moreJobs", { n: total - top.length })}</span>}
+              </span>
+            </a>
+          )}
           {!top.length && (
             <div className="best-empty">
-              <p>{t("home.noJobs")}</p>
-              <a className="btn pixel" href="/jobs">{t("home.toJobs")}</a>
+              {scored ? (
+                <p>{t("home.noneLately", { when: t(`home.window.${choice.days}`).toLowerCase() })}</p>
+              ) : (
+                <>
+                  <p>{t("home.noJobs")}</p>
+                  <a className="btn pixel" href="/jobs">{t("home.toJobs")}</a>
+                </>
+              )}
             </div>
           )}
         </section>

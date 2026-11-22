@@ -250,6 +250,45 @@ export function jsonLdPosting(html: string, minChars = 300): Found | null {
   return null;
 }
 
+// The days schema.org's JobPosting gives, however short its description: when the job was posted and until when it
+// is open (validThrough), which a page keeps for Google even when its job's words are elsewhere. A job a year old,
+// found today, says so here.
+export function jsonLdDates(html: string): Pick<Facts, "posted" | "deadline"> {
+  for (const m of html.matchAll(/<script[^>]*type=["']?application\/ld\+json["']?[^>]*>([\s\S]*?)<\/script>/gi)) {
+    let data: unknown;
+    try { data = JSON.parse(m[1].trim()); } catch { continue; }
+    const items = [data].flat().flatMap((d: any) => (Array.isArray(d?.["@graph"]) ? d["@graph"] : [d]));
+    const it = (items as any[]).find((x) => [x?.["@type"]].flat().includes("JobPosting"));
+    if (it) return clean<Facts>({ posted: day(it.datePosted), deadline: day(it.validThrough) });
+  }
+  return {};
+}
+
+// What a page says when its job is closed, in Hebrew or English: the site's own notice, a whole phrase of it, never a
+// word like "closed" alone, which a posting can use of anything ("until the position is filled" is an open job's).
+const CLOSED_NOTICE = [
+  /המשרה\s+(?:הזאת\s+|הזו\s+|הזה\s+)?(?:כבר\s+)?(?:סגורה|נסגרה|אוישה|הוסרה|אינה\s+פעילה|לא\s+פעילה|אינה\s+זמינה|לא\s+זמינה|אינה\s+קיימת)/,
+  /משרה\s+זו\s+(?:כבר\s+)?(?:סגורה|נסגרה|אוישה|הוסרה|אינה\s+פעילה|לא\s+פעילה|אינה\s+זמינה)/,
+  /\bno\s+longer\s+accepting\s+applications\b/i,
+  /\bthis\s+(?:job|position|posting|vacancy|role|opening|job\s+posting)\s+(?:is\s+|has\s+been\s+)?(?:no\s+longer\s+(?:available|active|open)|closed|expired|removed|filled)\b/i,
+  /\b(?:job|position|posting)\s+is\s+no\s+longer\s+available\b/i,
+];
+export const closedNotice = (text: string) => CLOSED_NOTICE.some((re) => re.test(text));
+
+// Whether words name a job: one part of its title at least (a title is often two, "Analyst | Investments", which a
+// page writes apart), compared without case, marks or spaces, and without Hebrew's "/ת" and "/ית" endings. A part
+// shorter than five letters is no name.
+const plain = (s: unknown) => String(s ?? "").toLowerCase().replace(/\/(?:ת|ה|ית|יות)(?=[^\p{L}]|$)/gu, "").replace(/[^\p{L}\p{N}]+/gu, "");
+export const namesJob = (text: string, title: string) => {
+  const parts = [title, ...title.split(/\s[-–—|]\s|[|()[\],]|\s[-–—]|[-–—]\s/)].map(plain).filter((p) => p.length >= 5);
+  if (!parts.length) return false;
+  const words = plain(text);
+  return parts.some((p) => words.includes(p));
+};
+// Everything a page shows or keeps, its tags gone and its characters decoded: its title, its headings, its data. A
+// job's own page names the job somewhere in it even when the part read as its posting doesn't (postings.ts recheck).
+export const pageWords = (html: string) => decode(html.replace(/<[^>]+>/g, " "));
+
 // A Comeet position's page: its data (POSITION_DATA, given its value well after it is declared) holds each part
 // of the posting under its own name, with its job type, level and place of work.
 export function comeetPosting(html: string): Found | null {

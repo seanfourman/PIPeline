@@ -657,8 +657,49 @@ textarea { resize: vertical; width: 100%; }
 .best-head h2 { font-family: var(--pixel); font-size: 30px; font-weight: 800; line-height: 1.1; }
 /* The banner's block size: 39 blocks wide. */
 .best-ledge { display: block; width: calc(var(--px) * 39); max-width: 100%; height: auto; color: var(--accent); }
-.best-all { color: var(--accent); text-decoration: none; font-size: 15px; font-weight: 500; }
-.best-all:hover { text-decoration: underline; }
+/* Under the line, how far back the jobs go (WhenTabs in home.tsx): the choices in the pixel font with no frames, each
+   after a round pixel mark in the shelves' wood, the one chosen filled and its words in the forest's green; a cog at
+   the end, quieter, for the rest of the choice. */
+.when-tabs { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 24px; margin-top: 10px; }
+.when-tab {
+  display: inline-flex; align-items: center; gap: 8px; padding: 2px; border: 0; border-radius: 0; background: none; color: var(--board-ink-2);
+  cursor: pointer; text-decoration: none; font-family: var(--pixel); font-size: 20px; font-weight: 700; line-height: 1;
+}
+.when-tab:hover { color: var(--board-ink); }
+.when-tab[aria-pressed="true"] { color: var(--primary); cursor: default; }
+.when-tab:focus-visible { outline: 2px solid var(--board-ink); outline-offset: 4px; }
+.when-mark { display: block; flex: none; width: 14px; height: auto; color: var(--frame); }
+.when-tab[aria-pressed="true"] .when-mark { color: var(--primary); }
+.when-cog { opacity: 0.7; transition: opacity 0.15s ease; }
+.when-cog:hover { opacity: 1; }
+.when-cog-art { display: block; width: 18px; height: auto; }
+/* Under the shelves, the way to the full list as an old wooden sign: a crooked old plank in pixels, four screen
+   pixels to each of its, and its words painted on in cream with a dark edge, turned along the plank's slant (its left
+   end five of its pixels lower over 84, about 3.4 degrees). Under the pointer, or reached by the keyboard, Pip peeks
+   out from behind it: hidden behind the plank, three screen pixels to each of his, he rises over its top edge until his
+   eyes look over it and stops there, not past it and back (that bounce read as a jump, Sean 2026-11-20: "הוא קצת קופץ
+   באנימציה חזרה"), still but for his blinking, and sinks quickly again as the pointer leaves (a creak, rocking the sign,
+   and a lightening came first: "לא אוהב את ה SHAKE הזה", "ממש לא"). Pressed, the sign goes down a block. */
+.oldsign { position: relative; align-self: center; display: block; width: 336px; max-width: 100%; margin-top: 44px; text-decoration: none; font-weight: 400; }
+.oldsign-board { position: relative; z-index: 1; display: block; width: 100%; height: auto; }
+/* Behind the plank where its top edge is three of its pixels down: hidden, his top is under that edge. */
+.oldsign-pip { position: absolute; z-index: 0; top: 18px; left: 62%; width: 66px; transition: translate 0.2s cubic-bezier(0.4, 0, 1, 1); }
+.oldsign-pip .pip-bob { animation: none; }
+.oldsign-words {
+  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding-bottom: 2px;
+  z-index: 2; rotate: -3.4deg; pointer-events: none;
+}
+.oldsign-words strong {
+  color: #fff3d6; font-family: var(--pixel); font-size: 25px; font-weight: 800; line-height: 1.05; white-space: nowrap;
+  text-shadow: 2px 0 0 var(--edge), -2px 0 0 var(--edge), 0 2px 0 var(--edge), 0 -2px 0 var(--edge);
+}
+.oldsign-words span { color: #f6e2b3; font-family: var(--pixel); font-size: 17px; font-weight: 700; line-height: 1.05; white-space: nowrap; text-shadow: 0 2px 0 var(--edge); }
+.oldsign:active { translate: 0 var(--px); }
+.oldsign:focus-visible .oldsign-pip { translate: 0 -56px; }
+@media (hover: hover) and (pointer: fine) {
+  .oldsign:hover .oldsign-pip { translate: 0 -56px; transition: translate 0.38s cubic-bezier(0.23, 1, 0.32, 1) 0.05s; }
+}
+@media (prefers-reduced-motion: reduce) { .oldsign .oldsign-pip, .oldsign:hover .oldsign-pip { transition: none; } }
 /* The jobs on shelves with no sides: a plank under each row of squares, as many as the jobs need, in the banner's
    wood by day and its blue at night, lit along its top and shaded along its bottom. */
 .shelves { display: flex; flex-direction: column; gap: 26px; margin-top: 6px; }
@@ -689,8 +730,12 @@ textarea { resize: vertical; width: 100%; }
 .item-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; max-width: 100%; font-size: 15.5px; font-weight: 700; line-height: 1.3; }
 .item-company, .item-place { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--board-ink-2); font-size: 13.5px; }
 .item-place { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; }
+/* The place's words cut short with "…" at their own end, beside the pin. */
+.item-place-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Two screen pixels to each of the pin's. */
 .item-pin { flex: none; width: 10px; height: auto; }
+/* How long ago it came out, quiet, under the rest. */
+.item-when { margin-top: 2px; color: var(--board-ink-2); font-size: 12.5px; font-weight: 500; }
 /* An empty place, and what sits in it on the shelf, three screen pixels to each of theirs. On a shelf with jobs it
    is as tall as their squares; on a shelf with none, only as tall as Pip asleep, so an empty shelf stays low. */
 .place { position: relative; min-height: 92px; }
@@ -1332,8 +1377,8 @@ textarea { resize: vertical; width: 100%; }
 .saved-title { font-size: 32px; font-weight: 500; text-align: center; }
 /* The lists' buttons are the role buttons' glass; the open one is in ink, as a choice picked in the search's menu
    is, and stays as it is under the pointer. Each says how many its list has, a little fainter. */
-.saved-tabs { display: flex; gap: 10px; }
-.saved-tab.seek-pill { padding: 10px 22px; font-size: 15.5px; }
+.saved-tabs { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.saved-tab.seek-pill { padding: 10px 22px; font-size: 15.5px; white-space: nowrap; }
 .saved-tab.on, .saved-tab.on:hover { background: var(--ink); color: var(--bg); box-shadow: 0 8px 24px rgb(0 0 0 / 14%); backdrop-filter: none; cursor: default; }
 .saved-tab.on::before, .saved-tab.on::after { display: none; }
 /* The empty line right after a long list (ui/more.tsx): as it comes near the bottom of the screen, the list shows more. */
@@ -1421,6 +1466,35 @@ textarea { resize: vertical; width: 100%; }
 .saved-group { display: flex; flex-direction: column; }
 .saved-group-head { display: flex; align-items: center; gap: 8px; margin: 22px 12px 2px; color: var(--ink-2); font-size: 14px; font-weight: 600; }
 .saved-group-count { color: var(--ink-3); font-weight: 500; }
+
+/* Pip's treasure over his finds (views/loot.tsx). A pixel item is --s screen pixels a pixel, its own --w by --h. */
+.loot-art { display: block; flex: none; width: calc(var(--w) * var(--s, 3px)); height: calc(var(--h) * var(--s, 3px)); }
+.loot-sprite { display: block; width: 100%; height: 100%; }
+/* Pip's haul (jobs.tsx): his vault behind the page's top instead of the sky (LootBackdrop, views/loot.tsx), painted
+   on a canvas from the page's top, edge to edge, three screen pixels a pixel, its coins thinning out into the page
+   above the room's list (ui/vault.ts), which has room for them over it. The page's title stands on its wall in cream;
+   the rooms' buttons are the lists' own, a little smaller. With less motion asked for, the coins don't pour in: the
+   vault fades in. */
+.saved-page { isolation: isolate; }
+.loot-scene { position: absolute; top: 0; left: 0; z-index: -1; display: block; image-rendering: pixelated; pointer-events: none; }
+.loot-on .saved-title { color: #fff3d6; text-shadow: 0 2px 0 rgb(0 0 0 / 55%); }
+.loot-rooms { align-self: center; margin-bottom: 150px; }
+.saved-tab.seek-pill.loot-room { padding: 8px 18px; font-size: 14.5px; }
+.loot-list .saved-group-head { flex-wrap: wrap; }
+.loot-empty { margin: 18px 12px; color: var(--ink-3); font-size: 14.5px; }
+@media (prefers-reduced-motion: reduce) {
+  .loot-scene { animation: gallery-fade 0.2s ease both; }
+}
+/* A job's row says it is gold or a hidden find with a small item before the word; a pile shown alone has its item,
+   name and count over the list, and what it holds after them. */
+.result-chip.loot-chip { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
+.result-chip.loot-chip .loot-art { --s: 2px; }
+.result-chip.loot-chip.gold { background: #fff0c2; color: #7a4e0e; }
+.result-chip.loot-chip.gems { background: #dcf6ee; color: #146450; }
+.loot-shown-head { flex-wrap: wrap; row-gap: 2px; color: var(--ink); font-size: 15px; }
+.loot-shown-head .loot-art { --s: 2px; }
+.loot-shown-note { flex-basis: 100%; color: var(--ink-3); font-size: 13px; font-weight: 400; }
+}
 /* A job taken off the saved list, kept where it was until the page is left: its words and initial faded, its buttons
    as they are, the bookmark empty, to save it again. */
 .result.faded > :is(.result-mark, .result-text) { opacity: 0.45; transition: opacity 0.2s ease; }
@@ -1510,6 +1584,8 @@ textarea { resize: vertical; width: 100%; }
    them (the jobs search's results too). */
 @media (max-width: 520px) {
   .saved-top { gap: 18px; padding: 44px 16px 24px; }
+  .saved-tabs { gap: 8px; }
+  .saved-tab.seek-pill { padding: 9px 16px; font-size: 14.5px; }
   .saved-title { font-size: 26px; }
   .saved-panel { width: calc(100% - 32px); }
   .rank-pill { padding-inline-end: 16px; }

@@ -18,6 +18,9 @@ def build_message(request: dict) -> EmailMessage:
     message["To"] = request["to"]
     message["Subject"] = request["subject"]
     message.set_content(request["body"])
+    # The same as a page, which a mail program shows in place of the words when it can (web/mail-html.ts).
+    if request.get("html"):
+        message.add_alternative(request["html"], subtype="html")
     for attachment in request.get("attachments", []):
         kind = mimetypes.guess_type(attachment["name"])[0] or "application/octet-stream"
         main, sub = kind.split("/", 1)

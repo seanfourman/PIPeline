@@ -238,6 +238,88 @@ describe("postings", () => {
     expect(s.fetches()).toBe(1);
   });
 
+  test("looks again at read jobs' pages every few days: one its site closed leaves the list, a page that won't open keeps its words", async () => {
+    const DAY = 86_400_000;
+    const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+    // html: the page as its site gives it; text: the part of it read as the posting, as the guard cleans it.
+    const jobs: Record<string, { url: string; title: string; at: string; page: string; text?: string; html?: string }> = {
+      gone: { url: "https://careers.acme.example/jobs/1", title: "Data Engineer", at: ago(5), page: "HTTP 404 size=0 saved=x" },
+      down: { url: "https://careers.beta.example/jobs/2", title: "QA Engineer", at: ago(4), page: "HTTP 503 size=0 saved=x" },
+      // Sent on to the careers page, which doesn't name the job anywhere.
+      moved: { url: "https://careers.gamma.example/jobs/3", title: "Backend Developer", at: ago(4), page: "HTTP 200 size=10 saved=x", text: PAGE_TEXT, html: "<title>Careers</title><h1>Join us</h1>" },
+      // Still open: its heading names it, though the part read as its posting starts below it.
+      open: { url: "https://careers.delta.example/jobs/4", title: "Python Developer", at: ago(6), page: "HTTP 200 size=10 saved=x", text: PAGE_TEXT, html: "<title>Python Developer &amp; more</title><h1>Python Developer</h1><main>...</main>" },
+      fresh: { url: "https://careers.acme.example/jobs/5", title: "Data Analyst", at: ago(1), page: "HTTP 200 size=10 saved=x", text: PAGE_TEXT },
+      post: { url: "https://t.me/hitechjobsjunior/42", title: "Developer", at: ago(9), page: "HTTP 200 size=10 saved=x", text: PAGE_TEXT },
+      linked: { url: "https://il.linkedin.com/jobs/view/9", title: "Developer", at: ago(9), page: "HTTP 200 size=10 saved=x", text: PAGE_TEXT },
+    };
+    const fetched: string[] = [];
+    let last = "";
+    const run: Run = async (argv) => {
+      if (argv.some((a) => a.includes("fetch_page.py"))) {
+        last = argv[argv.indexOf("tools/fetch_page.py") + 1];
+        fetched.push(last);
+        const job = Object.values(jobs).find((j) => j.url === last)!;
+        if (job.html) writeFileSync(argv[argv.indexOf("--out") + 1], job.html);
+        return { code: 0, out: job.page, err: "" };
+      }
+      if (argv.some((a) => a.includes("posting_guard.py"))) return { code: 0, out: guardOut(Object.values(jobs).find((j) => j.url === last)!.text ?? ""), err: "" };
+      return { code: 2, out: "", err: "unexpected" };
+    };
+    const seen = Object.fromEntries(Object.entries(jobs).map(([key, j]) => [key, { url: j.url, title: j.title, company: "Co", status: "new", portal: "careers-page" }]));
+    const s = setup({ run, seen: () => seen });
+    for (const j of Object.values(jobs)) {
+      const id = jobId(j.url)!;
+      writeFileSync(path.join(s.dir, `${id}.json`), JSON.stringify({ id, url: j.url, title: j.title, company: "Co", location: "", read: { at: j.at, status: "read", source: "page", lines: ["Menu", `## ${j.title}`, "Old words"] } }));
+    }
+    expect(await s.postings.crawl(undefined, { recheck: 60_000 })).toBe(4);
+    // Neither the job looked at a day ago, nor a Telegram post, nor LinkedIn; the longest unlooked first.
+    expect(fetched).toEqual([jobs.open.url, jobs.gone.url, jobs.down.url, jobs.moved.url]);
+    expect(s.applied).toEqual([{ key: "gone", status: "expired", reason: "closed" }, { key: "moved", status: "expired", reason: "closed" }]);
+    const read = (key: string) => s.postings.load(jobId(jobs[key].url)!)!.read!;
+    expect(read("gone")).toMatchObject({ status: "expired", lines: ["Menu", "## Data Engineer", "Old words"] });
+    expect(read("down")).toMatchObject({ status: "read", at: jobs.down.at, lines: ["Menu", "## QA Engineer", "Old words"], missed: { n: 1, error: "HTTP 503" } });
+    expect(read("open").status).toBe("read");
+    expect(read("open").lines![0]).toBe("Menu");
+    expect(read("open").at).not.toBe(jobs.open.at);
+    // Looked at now, none is due again.
+    fetched.length = 0;
+    expect(await s.postings.crawl(undefined, { recheck: 60_000 })).toBe(0);
+    expect(fetched).toEqual([]);
+  });
+
+  test("the jobs past their deadline or posted long ago leave the list, unless their employer's own page still has them", () => {
+    const now = Date.parse("2026-11-22T10:00:00Z");
+    const seen: Record<string, Record<string, any>> = {
+      oldLinkedIn: { url: "https://il.linkedin.com/jobs/view/1", status: "new", portal: "linkedin-search", posted_date: "2026-10-01", first_seen: "2026-11-01" },
+      passed: { url: "https://jobs.a.example/2", status: "ranked", portal: "drushim-search", posted_date: "2026-11-15", deadline: "2026-11-20" },
+      board: { url: "https://jobify360.co.il/jobs/3", status: "new", portal: "jobify360.co.il", posted_date: null, first_seen: "2026-11-08" },
+      pageOld: { url: "https://jobs.b.example/4", status: "new", portal: "websearch", posted_date: null, first_seen: "2026-11-10" },
+      ownOpen: { url: "https://careers.c.example/5", status: "new", portal: "careers-page", posted_date: "2026-08-01", first_seen: "2026-11-01" },
+      ownMissed: { url: "https://careers.d.example/6", status: "new", portal: "careers-page", posted_date: "2026-08-01", first_seen: "2026-11-01" },
+      ownUnread: { url: "https://careers.e.example/7", status: "new", portal: "careers-page", posted_date: "2026-08-01", first_seen: "2026-11-01" },
+      recent: { url: "https://jobs.f.example/8", status: "new", portal: "alljobs-search", posted_date: "2026-11-01", deadline: "2026-11-22" },
+      skipped: { url: "https://jobs.g.example/9", status: "skipped", posted_date: "2026-01-01" },
+    };
+    const s = setup({ seen: () => seen });
+    const keep = (key: string, read: Record<string, unknown>) => {
+      const id = jobId(seen[key].url)!;
+      writeFileSync(path.join(s.dir, `${id}.json`), JSON.stringify({ id, url: seen[key].url, title: "T", company: "C", location: "", read: { at: "2026-11-21T00:00:00Z", status: "read", ...read } }));
+    };
+    keep("board", { facts: { posted: "2025-09-12", deadline: "2025-11-17" } });
+    keep("pageOld", { facts: { posted: "2026-09-01" } });
+    keep("ownOpen", {});
+    keep("ownMissed", { missed: { at: "2026-11-22T00:00:00Z", n: 2 } });
+    expect(s.postings.sweep(now)).toBe(5);
+    expect(s.applied).toEqual([
+      { key: "oldLinkedIn", status: "expired", reason: "old" },
+      { key: "passed", status: "expired", reason: "deadline" },
+      { key: "board", status: "expired", reason: "deadline" },
+      { key: "pageOld", status: "expired", reason: "old" },
+      { key: "ownMissed", status: "expired", reason: "old" },
+    ]);
+  });
+
   test("a ranking run keeps each job's posting for its page, and sections past the last line are cut to it", () => {
     const s = setup();
     const score = { ...ANSWER, posting: { ...ANSWER.posting, sections: [{ title: "All", from: 2, to: 99, list: false }, { title: "Past", from: 40, to: 41, list: false }], facts: {}, skills: [] } };

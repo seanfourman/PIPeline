@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { ChatbotError } from "./chatbots";
 import { levelGate, requiredYears } from "./experience";
-import { greenhouseApi, greenhousePosting, hotJob, hotPosting, listedJob, mainContent, markedLines, nessApi, nessPosting, pageData, portalPlain, telegramEmbed, textPosting, type Facts } from "./posting-read";
+import { closedNotice, greenhouseApi, greenhousePosting, hotJob, hotPosting, jsonLdDates, listedJob, mainContent, namesJob, pageWords, markedLines, nessApi, nessPosting, pageData, portalPlain, telegramEmbed, textPosting, type Facts } from "./posting-read";
 import { REPO } from "./policy";
 import { HOT_JOBS, jsonPoster, type Post } from "./boards";
 import { ownName, redmatchJob, textJob } from "./portals";
@@ -41,7 +41,8 @@ export type Steps = { start: (id: string, target: string, name?: string) => void
 type Job = { key: string; title?: string; company?: string; url?: string; portal?: string };
 // source is where the words came from: the portal's detail command, a site's API, a page's own data, or its text.
 // whole: the page read whole, menus and all, as no part of it held the job's words (posting-read.ts mainContent).
-export type Fetched = { text: string; guard: string; findings?: Record<string, unknown> | null; source?: "portal" | "api" | "data" | "page"; facts?: Facts; whole?: boolean }
+// named: whether the page, anywhere in it, names the job's title (when it was read from a page and the title known).
+export type Fetched = { text: string; guard: string; findings?: Record<string, unknown> | null; source?: "portal" | "api" | "data" | "page"; facts?: Facts; whole?: boolean; named?: boolean }
   | { status: "expired" | "unreachable"; fetch_error: string };
 
 // A tool in the project, its output as text; stopped or too slow, it is killed.
@@ -79,7 +80,12 @@ export function guarded(out: string) {
 // that gets this far without text is unreachable, and the next run tries it again. A page that keeps its posting
 // in its own data (posting-read.ts), or a site that gives it through its API, is read from there, and the guard
 // cleans that HTML as it would the page. Headings and list items keep their marks (posting_guard.py --marks).
+// Words that carry the site's notice that the job is closed (posting-read.ts closedNotice) are a closed job's.
 export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scratch: string, post?: Post): Promise<Fetched> {
+  const got = await readPosting(job, run, signal, scratch, post);
+  return !("status" in got) && closedNotice(got.text) ? { status: "expired", fetch_error: "" } : got;
+}
+async function readPosting(job: Job, run: Run, signal: AbortSignal, scratch: string, post?: Post): Promise<Fetched> {
   const url = String(job.url ?? "");
   if (!/^https?:\/\//i.test(url)) return { status: "unreachable", fetch_error: "no posting URL" };
   const cli = job.portal && /^[a-z0-9-]+$/.test(job.portal) ? path.join(".agents", "skills", job.portal, "cli", "src", "cli.ts") : "";
@@ -145,6 +151,11 @@ export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scra
     if (status >= 400) return { status: "unreachable", fetch_error: `HTTP ${status}` };
     let body = "";
     try { body = readFileSync(file, "utf8"); } catch { /* the guard reads the file itself */ }
+    // The days the page's data for Google gives (posting-read.ts jsonLdDates), under what its own reader found; and
+    // whether the page names the job anywhere in it.
+    const dates = body ? jsonLdDates(body) : {};
+    const named = body && job.title ? { named: namesJob(pageWords(body), job.title) } : {};
+    const withDates = (facts?: Facts) => { const all = { ...dates, ...facts }; return { ...named, ...(Object.keys(all).length ? { facts: all } : {}) }; };
     const fromList = listed && body ? listed.read(body) : written && body ? textPosting(body, written) : null;
     if (fromList === "closed") return { status: "expired", fetch_error: "" };
     const found = body ? (ness ? nessPosting(body) : listed || written ? fromList : api ? greenhousePosting(body) : pageData(body, target)) : null;
@@ -154,7 +165,7 @@ export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scra
       const clean = guarded((await run([PYTHON, "tools/posting_guard.py", "--in", held, "--html", "--json", "--marks"], { signal })).out);
       rmSync(held, { force: true });
       // A Telegram post can be a line or two; a page's own data shorter than that is not the posting.
-      if (clean.text.length >= (target === url ? 120 : 20)) return { ...clean, source: api ? "api" : "data", facts: found.facts };
+      if (clean.text.length >= (target === url ? 120 : 20)) return { ...clean, source: api ? "api" : "data", ...withDates(found.facts) };
     }
     if (api) return { status: "unreachable", fetch_error: `${ness ? "Ness" : listed ? listed.name : "Greenhouse"} gave no posting text` };
     // The whole list is never read as one job's posting.
@@ -167,10 +178,10 @@ export async function fetchPosting(job: Job, run: Run, signal: AbortSignal, scra
       writeFileSync(held, part);
       const clean = guarded((await run([PYTHON, "tools/posting_guard.py", "--in", held, "--html", "--json", "--marks"], { signal })).out);
       rmSync(held, { force: true });
-      if (clean.text.length >= 200) return { ...clean, source: "page", ...(found ? { facts: found.facts } : {}) };
+      if (clean.text.length >= 200) return { ...clean, source: "page", ...withDates(found?.facts) };
     }
     const clean = guarded((await run([PYTHON, "tools/posting_guard.py", "--in", file, "--html", "--json", "--marks"], { signal })).out);
-    return clean.text.length >= 200 ? { ...clean, source: "page", whole: true, ...(found ? { facts: found.facts } : {}) } : { status: "unreachable", fetch_error: "the page had almost no text" };
+    return clean.text.length >= 200 ? { ...clean, source: "page", whole: true, ...withDates(found?.facts) } : { status: "unreachable", fetch_error: "the page had almost no text" };
   } finally {
     rmSync(file, { force: true });
   }

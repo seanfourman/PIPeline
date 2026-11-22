@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { alertText, createWatcher, desktopNotice, justPublished, noticeCommand, worthTelling, type AlertJob, type NewJob } from "./alerts";
-import { forgetKnown, jobGroup, plainName } from "./groups";
+import { forgetKnown, jobGroup, jobIndustry, plainName } from "./groups";
 import { EMPTY_SETTINGS, type Settings } from "./settings";
 
 const job = (title: string, extra: Partial<NewJob> = {}): NewJob => ({ title, company: "", url: `https://jobs.example/${encodeURIComponent(title)}`, location: "תל אביב", ...extra });
@@ -213,6 +213,23 @@ describe("the live alerts", () => {
     expect(one.open).toBe("https://jobs.example/Junior%20Backend%20Developer");
   });
 
+  test("the same alert as a page: each job a card with its link, a job's words escaped, the page in its language's direction", () => {
+    const jobs: AlertJob[] = [
+      { ...job("QA <b>Engineer</b>", { company: "Shefa & Sons", location: "חדרה" }), group: "other" },
+      { ...job("Junior Backend Developer", { company: "One Zero", location: "Tel Aviv" }), group: "known", url: "javascript:alert(1)" },
+    ];
+    const { html } = alertText(jobs, "he", "http://localhost:4174/jobs");
+    expect(html).toContain('<html lang="he" dir="rtl">');
+    expect(html).toContain("QA &lt;b&gt;Engineer&lt;/b&gt;");
+    expect(html).toContain("Shefa &amp; Sons");
+    expect(html).not.toContain("<b>Engineer");
+    expect(html).toContain('href="https://jobs.example/QA%20%3Cb%3EEngineer%3C%2Fb%3E"');
+    expect(html).not.toContain("javascript:");
+    expect(html.indexOf("הייטק וחברות מוכרות")).toBeLessThan(html.indexOf("לואו טק וחברות לא מוכרות"));
+    expect(html).toContain('href="http://localhost:4174/jobs"');
+    expect(alertText([jobs[0]], "en", "http://localhost:4174/jobs").html).toContain('<html lang="en" dir="ltr">');
+  });
+
   test("the computer's notice keeps the job's words out of the command, and opens only a web address", async () => {
     const win = noticeCommand('Pip: <script>"', "line one\nline two\nline three", "https://jobs.example/1", "win32")!;
     expect(win.cmd.slice(0, 2)).toEqual(["powershell.exe", "-NoProfile"]);
@@ -242,6 +259,18 @@ describe("a job's group", () => {
     // A job board's own id isn't an employer's.
     expect(jobGroup({ portalId: "jobnet", company: "חברה דיסקרטית" }, found)).toBe("other");
     expect(jobGroup({ company: "Shefa Logistics", url: "https://il.linkedin.com/jobs/view/1" }, found)).toBe("other");
+    forgetKnown();
+  });
+
+  test("a job's industry is its employer's on the portals page, by portal or name; a tech platform's is high-tech", () => {
+    forgetKnown();
+    const found = () => [{ id: "found-acme", kind: "employer" as const, how: "read" as const, he: "Acme AI", en: "Acme AI", industry: "hightech" as const, url: "https://acme.example" }];
+    expect(jobIndustry({ portalId: "clalit" }, found)).toBe("health");
+    expect(jobIndustry({ company: "מכבי שירותי בריאות" }, found)).toBe("health");
+    expect(jobIndustry({ company: "Elbit Systems Ltd." }, found)).toBe("defense");
+    expect(jobIndustry({ company: "Acme AI" }, found)).toBe("hightech");
+    expect(jobIndustry({ company: "Tiny Startup", url: "https://jobs.lever.co/tiny/1" }, found)).toBe("hightech");
+    expect(jobIndustry({ company: "Shefa Logistics", url: "https://il.linkedin.com/jobs/view/1" }, found)).toBe("");
     forgetKnown();
   });
 

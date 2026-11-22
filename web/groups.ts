@@ -5,7 +5,7 @@
 // Teamtailor, HiBob) is high-tech too. Anything else, a board's or a search's job at a company the list doesn't know,
 // is the other group.
 import { foundPortals } from "./discover";
-import { PORTALS, type Portal } from "./portals";
+import { PORTALS, type Industry, type Portal } from "./portals";
 
 export type Group = "known" | "other";
 
@@ -20,8 +20,8 @@ const NOISE = new Set([
 export const plainName = (name: string) => name.toLowerCase().replace(/בע["״']?מ/g, " בעמ ").replace(/["'״׳.,()\-–|/]/g, " ")
   .split(/\s+/).filter((w) => w && !NOISE.has(w)).join(" ");
 
-// The known employers, read again every ten minutes, as the recruiting platforms' finds grow.
-let kept: { at: number; ids: Set<string>; names: Set<string> } | null = null;
+// The known employers, read again every ten minutes, as the recruiting platforms' finds grow, each with its industry.
+let kept: { at: number; ids: Map<string, Industry>; names: Map<string, Industry> } | null = null;
 function known(found: () => Portal[]) {
   if (kept && Date.now() - kept.at < 10 * 60_000) return kept;
   let more: Portal[] = [];
@@ -29,8 +29,8 @@ function known(found: () => Portal[]) {
   const employers = [...PORTALS.filter((p) => p.kind === "employer"), ...more];
   return (kept = {
     at: Date.now(),
-    ids: new Set(employers.map((p) => p.id)),
-    names: new Set(employers.flatMap((p) => [plainName(p.he), plainName(p.en)]).filter((n) => n.length >= 2)),
+    ids: new Map(employers.map((p) => [p.id, p.industry])),
+    names: new Map(employers.flatMap((p) => [plainName(p.he), plainName(p.en)].filter((n) => n.length >= 2).map((n) => [n, p.industry] as const))),
   });
 }
 export const forgetKnown = () => { kept = null; };
@@ -42,4 +42,17 @@ export function jobGroup(job: { portalId?: string; company?: string; url?: strin
   if (name && k.names.has(name)) return "known";
   try { if (PLATFORMS.test(new URL(job.url ?? "").hostname)) return "known"; } catch { /* no address */ }
   return "other";
+}
+
+// The industry of a job's employer (portals.ts), for Pip's treasure on the list of his finds (ui/loot.ts): the
+// employer it was read for, or one on the portals page by its name; a job on a recruiting platform is high-tech's.
+// Empty when nothing tells.
+export function jobIndustry(job: { portalId?: string; company?: string; url?: string }, found: () => Portal[] = foundPortals): Industry | "" {
+  const k = known(found);
+  const byId = job.portalId ? k.ids.get(job.portalId) : undefined;
+  if (byId) return byId;
+  const byName = k.names.get(plainName(job.company ?? ""));
+  if (byName) return byName;
+  try { if (PLATFORMS.test(new URL(job.url ?? "").hostname)) return "hightech"; } catch { /* no address */ }
+  return "";
 }

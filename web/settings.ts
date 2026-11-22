@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { INDUSTRIES, INDUSTRY_IDS, portalById, webPortals, type OwnPortal, type PortalSettings } from "./portals";
 import { fromList, listedRole, matchListed, type Role } from "./roles";
+import { HOME_JOBS, homeJobsFrom, type HomeJobs } from "./ui/home-jobs";
 import { APP_DIR } from "./user";
 
 export type Tier = "near" | "ok" | "edge" | "far";
@@ -34,6 +35,8 @@ export type Settings = {
   // The quick search's own choices on the jobs page, kept from one visit to the next: how recent, which market
   // ("all" or a code), the work type ("" follows workMode), and which areas show. Only the page uses these.
   quickSearch: { days: "1" | "7" | "14" | "30"; market: string; mode: "" | "any" | "remote" | "hybrid" | "onsite"; areas: "relevant" | "listed" | "all" };
+  // Which jobs the home page shows (ui/home-jobs.ts): from how many days back, how many, and in what order.
+  homeJobs: HomeJobs;
   // Whether the introduction for a new user was finished or put aside (ui/views/welcome.tsx).
   introDone: boolean;
   // The industries wanted (portals.ts INDUSTRIES), none meaning all; whether employers outside high-tech (health
@@ -55,6 +58,7 @@ export const EMPTY_SETTINGS: Settings = {
   automation: { enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "" },
   alerts: { enabled: false, email: true, desktop: true, every: 15 },
   quickSearch: { days: "14", market: "all", mode: "", areas: "relevant" },
+  homeJobs: HOME_JOBS,
   introDone: false,
   industries: [], lowTech: true, portals: { off: [], mine: [] },
 };
@@ -202,6 +206,7 @@ export function validateSettings(input: any): Settings {
       mode: pick(input?.quickSearch?.mode, ["", "any", "remote", "hybrid", "onsite"] as const),
       areas: pick(input?.quickSearch?.areas, ["relevant", "listed", "all"] as const),
     },
+    homeJobs: homeJobsFrom(input?.homeJobs),
     introDone: input?.introDone === true,
     industries: [...new Set((Array.isArray(input?.industries) ? input.industries : []).map(String))].filter((i) => INDUSTRY_IDS.includes(i)),
     // On unless switched off, so settings saved before it existed get it.

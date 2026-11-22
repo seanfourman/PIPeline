@@ -6,6 +6,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import os from "node:os";
 import path from "node:path";
 import { cardLine, inUserFolder, readAts, readCard } from "./data";
+import { agentWords, chip, jobCard, mailPage, para, warnBox } from "./mail-html";
 import { REPO } from "./policy";
 import type { Settings } from "./settings";
 import { APP_DIR, cvFileName } from "./user";
@@ -36,7 +37,8 @@ type State = { lastRunDate: string; lastSlot?: string; tried: string[]; runs: Ru
 // score is the AI's, when the user asked for one; auto the automatic one, by the job's posting or its title alone (autoBasis).
 type Job = { title: string; company: string; url: string; status: string; score: number | null; auto?: number | null; autoBasis?: string; tier: string; veto?: boolean };
 type Application = Record<string, any>;
-type Mail = { to: string; subject: string; body: string; attachments: { path: string; name: string }[] };
+// html: the same as a page, which a mail program shows in place of body when it can (mail-html.ts).
+type Mail = { to: string; subject: string; body: string; html?: string; attachments: { path: string; name: string }[] };
 
 export type Deps = {
   loadSettings: () => Settings;
@@ -79,6 +81,15 @@ const WORDS = {
     steps: { search: "חיפוש", portals: "פורטלים", read: "קריאת המשרות", rank: "דירוג", apply: "הגשה", stopped: "הריצה נעצרה" },
     testSubject: "חיפוש עבודה: מייל בדיקה",
     testBody: "אם הגיע אליך המייל הזה, הריצה היומית תוכל לשלוח לך קורות חיים.",
+    kind: "הריצה היומית",
+    heading: (n: number) => (n === 1 ? "קורות חיים חדשים מחכים לך" : `${n} קורות חיים חדשים מחכים לך`),
+    headingNone: "היום בלי קורות חיים חדשים",
+    lead: "הקבצים מצורפים למייל. כדאי לעבור על כל אחד ולשלוח אותו בעצמך.",
+    leadNone: "מה שקרה בכל שלב מופיע בשיחות, באתר המקומי.",
+    open: "פתיחת המשרה",
+    attached: "קורות החיים מצורפים",
+    overall: "ציון כללי",
+    testTitle: "המייל מגיע",
   },
   en: {
     title: { search: "Daily run: search", portals: "Daily run: portals", read: "Daily run: reading the jobs", apply: "Daily run: " },
@@ -95,6 +106,15 @@ const WORDS = {
     steps: { search: "Search", portals: "Portals", read: "Reading the jobs", rank: "Ranking", apply: "Application", stopped: "The run stopped" },
     testSubject: "Job search: test email",
     testBody: "If this email reached you, the daily run can send you CVs.",
+    kind: "Daily run",
+    heading: (n: number) => (n === 1 ? "A new CV is waiting for you" : `${n} new CVs are waiting for you`),
+    headingNone: "No new CVs today",
+    lead: "The files are attached. Go through each one and send it yourself.",
+    leadNone: "What happened at each step is in the conversations on the local site.",
+    open: "Open the job",
+    attached: "CV attached",
+    overall: "Overall score",
+    testTitle: "Email works",
   },
 };
 export const mailWords = (settings: Settings) => WORDS[settings.language];
@@ -159,6 +179,33 @@ export function leftToday(settings: Settings, runs: Run[], now: Date) {
   return settings.automation.maxPerDay - drafted;
 }
 
+// A job the run tried, for the email's page: its CV's scores and what the agent said, or why no CV came out.
+type Tried = { company: string; title: string; url: string; cv: boolean; ats?: number | null; overall?: number | null; text: string };
+
+// The run's email as a page (mail-html.ts): the CVs that came out as cards, each with its scores and the agent's
+// words, then the jobs that got none and the steps that did not finish.
+function mailHtml(run: Run, tried: Tried[], words: (typeof WORDS)["he" | "en"], lang: "he" | "en") {
+  const failed = run.steps.filter((s) => !s.ok).map((s) => `${words.steps[s.step]}${s.company ? ` ${s.company}` : ""}: ${s.note ?? words.unfinished}`);
+  const parts = tried.map((j) => jobCard({
+    title: j.title, company: j.company, url: j.url, lang, action: words.open,
+    chips: j.cv
+      ? [chip(words.attached, "green"), chip(`${words.ats}: ${j.ats ?? words.noScore}`), ...(j.overall != null ? [chip(`${words.overall}: ${j.overall}`)] : [])]
+      : [chip(words.noCv.replace(/\.$/, ""), "amber")],
+    note: j.text.trim() ? agentWords(j.text) : undefined,
+  }));
+  if (failed.length) parts.push(warnBox(words.failed.replace(/:$/, ""), failed, lang));
+  if (!tried.length && !failed.length) parts.push(para(words.none, lang, { muted: true, top: 16 }));
+  return mailPage({
+    lang, kind: words.kind, title: run.drafted.length ? words.heading(run.drafted.length) : words.headingNone,
+    lead: run.drafted.length ? words.lead : words.leadNone, preheader: run.drafted.join(" | "), parts, footer: words.footer,
+  });
+}
+
+// A test email's page: the same frame, saying it came.
+export function testMailHtml(title: string, text: string, kind: string, lang: "he" | "en", footer = "") {
+  return mailPage({ lang, kind, title, lead: text, footer });
+}
+
 function mailBody(run: Run, details: string[], words: (typeof WORDS)["he" | "en"]) {
   const failed = run.steps.filter((s) => !s.ok).map((s) => `- ${words.steps[s.step]}${s.company ? ` ${s.company}` : ""}: ${s.note ?? words.unfinished}`);
   return [
@@ -219,6 +266,7 @@ export function createAutomation(deps: Deps) {
       const limit = trigger === "schedule" ? leftToday(settings, before, now()) : settings.automation.maxPerDay;
       const picks = pickJobs(jobs, applications, read().tried, settings, limit);
       const details: string[] = [];
+      const tried: Tried[] = [];
       const attachments: Mail["attachments"] = [];
       for (const job of picks) {
         const title = `${words.title.apply}${job.company}`;
@@ -234,6 +282,7 @@ export function createAutomation(deps: Deps) {
         const heading = `\n${job.company}: ${job.title}\n${job.url}`;
         if (!name || !existsSync(pdf)) {
           details.push(`${heading}\n${words.noCv} ${result.text.slice(0, 600)}`);
+          tried.push({ company: job.company, title: job.title, url: job.url, cv: false, text: result.text.slice(0, 600) });
           continue;
         }
         entry.drafted.push(`${job.company}: ${job.title}`);
@@ -242,6 +291,7 @@ export function createAutomation(deps: Deps) {
         const card = readCard(`user/cv/main_${name}.tex`, root);
         const scores = card ? `\n${words.card}: ${cardLine(card, settings.language)}` : "";
         details.push(`${heading}\n${words.ats}: ${ats?.score ?? words.noScore}${scores}\n${result.text.slice(0, 1500)}`);
+        tried.push({ company: job.company, title: job.title, url: job.url, cv: true, ats: ats?.score ?? null, overall: card?.overall ?? null, text: result.text.slice(0, 1500) });
       }
       // The day's first run always emails, so the candidate hears even of a day with nothing new; a later run
       // emails only when it drafted something.
@@ -249,7 +299,7 @@ export function createAutomation(deps: Deps) {
       if (entry.drafted.length || firstToday) {
         const to = settings.automation.email || readMailAccount()?.user;
         entry.mail = to
-          ? await deps.sendMail({ to, subject: words.subject(entry.drafted.length), body: mailBody(entry, details, words), attachments })
+          ? await deps.sendMail({ to, subject: words.subject(entry.drafted.length), body: mailBody(entry, details, words), html: mailHtml(entry, tried, words, settings.language), attachments })
           : { status: "no_address" };
       }
     } catch (err) {

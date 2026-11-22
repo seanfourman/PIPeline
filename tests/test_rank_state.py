@@ -505,6 +505,18 @@ class Apply(RankStateCase):
         self.assertEqual(self.read_state()["a"]["status"], "expired")
         self.assertEqual([r["key"] for r in out["expired"]], ["a"])
 
+    def test_expired_keeps_why_the_web_app_says(self):
+        self.write_state({"a": entry(), "b": entry(), "c": entry()})
+        self.run_tool("apply", "--results", self.results([
+            {"key": "a", "status": "expired", "reason": "old"},
+            {"key": "b", "status": "expired", "reason": "anything"},
+            {"key": "c", "status": "expired"},
+        ]))
+        state = self.read_state()
+        self.assertEqual(state["a"]["expired_reason"], "old")
+        self.assertNotIn("expired_reason", state["b"])
+        self.assertNotIn("expired_reason", state["c"])
+
     def test_null_deadline_does_not_erase_a_stored_one(self):
         """Absence is not a correction: a fetch that degraded to a listing page
         returns no deadline, and blanking the stored date would also put the
