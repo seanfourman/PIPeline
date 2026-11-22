@@ -50,8 +50,9 @@ const READ_AGAIN_MS = 24 * 3600_000;
 // when its job is opened, its old words kept if the page no longer answers.
 const PAGE_READER = 2;
 const outdated = (p: Posting | null) => Boolean(p?.read?.status === "read" && p.read.source === "page" && !p.tidy && (p.read.v ?? 1) < PAGE_READER);
-// Jobs read at once; more opened meanwhile wait their turn.
-const AT_ONCE = 2;
+// Jobs read at once; more opened meanwhile wait their turn. The background looks take two of them (RECHECKERS), so a
+// job opened meanwhile is read at once.
+const AT_ONCE = 3;
 // The background reading's pace: a pause after each job, and at least this long between two pages of one site.
 // LinkedIn isn't read in the background at all: it turns away a reader that comes too often.
 const CRAWL_PAUSE_MS = 1500;
@@ -67,6 +68,10 @@ const ROBOTS_REST_MS = 24 * 3600_000;
 // long as it is given (server.ts), the sites taken in turn, so one site's many jobs don't hold up the others.
 const RECHECK_MS = 3 * 86_400_000;
 const NOT_RECHECKED = /(^|\.)t\.me$/i;
+// The looks go two at a time, each through its own sites, so a site still has one look at a time. A job opened is
+// looked at then when its last look is this old, LinkedIn's too, and leaves the list there and then if it is closed.
+const RECHECKERS = 2;
+const OPEN_RECHECK_MS = 6 * 3600_000;
 // How long a job stays on the list, in days from the earliest day known of it: the list's posted day, the one its
 // page's own data gives, or the day Pip first saw it. A job on its employer's own site stays past it while its page,
 // looked at again every few days, still has it; one whose page didn't read twice in a row then goes.
@@ -77,6 +82,9 @@ const LISTED = new Set(["new", "ranked", "unreachable"]);
 const dayOf = (v: unknown) => /^\d{4}-\d{2}-\d{2}/.exec(String(v ?? ""))?.[0] ?? "";
 // When a page was last looked at: its read, or a later look that couldn't read it.
 const lastLook = (p: Posting) => Math.max(Date.parse(p.read?.at ?? "") || 0, Date.parse(p.read?.missed?.at ?? "") || 0);
+// Whether a page's own data says the job closed before today (its validThrough), as a job board's page for a job
+// closed a year ago still does while it shows the job's words.
+const pastDeadline = (facts?: Facts) => Boolean(facts?.deadline && dayOf(facts.deadline) < new Date().toLocaleDateString("en-CA"));
 
 // A company or a role compared without case, marks or spaces, and without Hebrew's "/ת" ending ("מפתח/ת").
 const norm = (s: unknown) => String(s ?? "").toLowerCase().replace(/\/[תה](?=[^\p{L}]|$)/gu, "").replace(/[^\p{L}\p{N}]+/gu, "");
@@ -207,17 +215,39 @@ export function createPostings(d: Deps) {
           p.read = { ...before, status: "expired", at: today(), missed: undefined };
           if (found) d.apply([{ key: found.key, status: "expired", reason: "closed" }]);
         } else if ("status" in got) p.read = { ...before, missed: { at: today(), n: (before.missed?.n ?? 0) + 1, error: got.fetch_error || undefined } };
-        else keepRead(p, got);
+        else {
+          keepRead(p, got);
+          // Its page's data says it closed: closed too, its words kept.
+          if (pastDeadline(p.read!.facts)) {
+            p.read!.status = "expired";
+            if (found) d.apply([{ key: found.key, status: "expired", reason: "deadline" }]);
+          }
+        }
         save(p);
       } else if (!p.read || stale || older || (why === "again" && p.read.status !== "read") || (why === "ai" && p.read.status !== "read")) {
         reading.set(id, "page");
         const got = await fetchPosting(job, d.run, AbortSignal.timeout(180_000), scratch);
-        if (older && ("status" in got || got.whole)) { p.read = { ...p.read!, v: PAGE_READER }; save(p); return; }
+        // Read again for an older reader's words and found closed, closed; found whole, the old words stay and the
+        // look counts; not read, a miss.
+        if (older && ("status" in got || got.whole)) {
+          const before = p.read!;
+          if ("status" in got && got.status === "expired") {
+            p.read = { ...before, status: "expired", at: today(), v: PAGE_READER };
+            if (found) d.apply([{ key: found.key, status: "expired", reason: "closed" }]);
+          } else p.read = "status" in got
+            ? { ...before, v: PAGE_READER, missed: { at: today(), n: (before.missed?.n ?? 0) + 1, error: got.fetch_error || undefined } }
+            : { ...before, v: PAGE_READER, at: today(), missed: undefined };
+          save(p);
+          return;
+        }
         keepRead(p, got);
+        // A posting whose page's data says it closed before today is a closed job's, its words kept.
+        const lapsed = p.read!.status === "read" && pastDeadline(p.read!.facts);
+        if (lapsed) p.read!.status = "expired";
         // A listed job found closed leaves the list; one that wouldn't open counts a try, but only when the user
         // opened it: a site turning away the background reading says nothing of the job.
         if (found && (p.read!.status === "expired" || (p.read!.status === "unreachable" && why !== "crawl"))) {
-          d.apply([{ key: found.key, status: p.read!.status, fetch_error: p.read!.error ?? "" }]);
+          d.apply([{ key: found.key, status: p.read!.status, fetch_error: p.read!.error ?? "", ...(lapsed ? { reason: "deadline" } : {}) }]);
         }
         save(p);
       }
@@ -252,14 +282,16 @@ export function createPostings(d: Deps) {
   };
   const needsRead = (p: Posting | null) => !p?.read || (p.read.status !== "read" && Date.now() - Date.parse(p.read.at) > READ_AGAIN_MS);
 
-  // A job opened: kept, and read when it needs to be. No AI.
+  // A job opened: kept, and read when it needs to be, or looked at again when its last look is OPEN_RECHECK_MS old, so
+  // a job its site has closed says so on its page and leaves the list as it is opened. No AI.
   function open(basics: Basics) {
     const p = keepBasics(basics);
     if (!p) return null;
-    if (needsRead(p) || outdated(p)) {
+    const why: Why | null = needsRead(p) || outdated(p) ? "open" : p.read?.status === "read" && Date.now() - lastLook(p) >= OPEN_RECHECK_MS ? "recheck" : null;
+    if (why) {
       // Marked as being read before the answer goes, so the page shows it from the start.
       if (!reading.has(p.id)) reading.set(p.id, "page");
-      void readJob(p.id, "open");
+      void readJob(p.id, why);
     }
     return view(p.id);
   }
@@ -398,21 +430,27 @@ export function createPostings(d: Deps) {
       // A site at a time in turn: the first job of each site, then the second of each, and so on.
       const bySite = new Map<string, typeof due>();
       for (const x of due) { const host = hostOf(String(x.e.url)); bySite.set(host, [...(bySite.get(host) ?? []), x]); }
-      const turns: typeof due = [];
-      for (let i = 0; turns.length < due.length; i++) for (const list of bySite.values()) if (list[i]) turns.push(list[i]);
-      for (const { e, id } of turns) {
-        if (stop() || Date.now() >= until) break;
-        const host = hostOf(String(e.url));
-        if ((resting.get(host) ?? 0) > Date.now()) continue;
-        const wait = (lastAt.get(host) ?? 0) + (d.pace?.sameSite ?? SAME_SITE_MS) - Date.now();
-        if (wait > 0) await sleep(wait);
-        await readJob(id, "recheck");
-        lastAt.set(host, Date.now());
-        const error = load(id)?.read?.missed?.error ?? "";
-        if (TURNED_AWAY.test(error)) resting.set(host, Date.now() + (/robots/i.test(error) ? ROBOTS_REST_MS : REST_MS));
-        looked++;
-        await sleep(d.pace?.pause ?? CRAWL_PAUSE_MS);
-      }
+      // The sites dealt out to the lookers in turn, each looker taking its sites a job at a time in turn.
+      const sites = [...bySite.values()];
+      const look = async (mine: (typeof due)[]) => {
+        const turns: typeof due = [];
+        const count = mine.reduce((n, list) => n + list.length, 0);
+        for (let i = 0; turns.length < count; i++) for (const list of mine) if (list[i]) turns.push(list[i]);
+        for (const { e, id } of turns) {
+          if (stop() || Date.now() >= until) break;
+          const host = hostOf(String(e.url));
+          if ((resting.get(host) ?? 0) > Date.now()) continue;
+          const wait = (lastAt.get(host) ?? 0) + (d.pace?.sameSite ?? SAME_SITE_MS) - Date.now();
+          if (wait > 0) await sleep(wait);
+          await readJob(id, "recheck");
+          lastAt.set(host, Date.now());
+          const error = load(id)?.read?.missed?.error ?? "";
+          if (TURNED_AWAY.test(error)) resting.set(host, Date.now() + (/robots/i.test(error) ? ROBOTS_REST_MS : REST_MS));
+          looked++;
+          await sleep(d.pace?.pause ?? CRAWL_PAUSE_MS);
+        }
+      };
+      await Promise.all(Array.from({ length: RECHECKERS }, (_, k) => look(sites.filter((_, i) => i % RECHECKERS === k))));
     } catch (err) {
       console.error("The background look at the list's jobs stopped:", err);
     }

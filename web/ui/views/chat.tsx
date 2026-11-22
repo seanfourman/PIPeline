@@ -111,7 +111,18 @@ function ThreadMenu({ thread, projects, onRename, onDelete }: { thread: Thread; 
   );
 }
 
-// One conversation in the list: its title leading to it, a dot while it works, waits or stopped, and its ⋯. Renaming,
+// What a conversation in the list shows while it isn't done (Sean picked them, 2026-11-22): Pip's paw prints walking
+// while he works, the way the loading screen's do, one paw waving while he waits for your answer, a red dot when it
+// stopped.
+const PAW = "M2 0h2v2h-2zM5 0h2v2h-2zM0 2h2v2h-2zM7 2h2v2h-2zM3 3h3v1h-3zM2 4h5v1h-5zM1 5h7v2h-7zM2 7h2v1h-2zM5 7h2v1h-2z";
+const Paw = () => <svg viewBox="0 0 9 8" shapeRendering="crispEdges" aria-hidden="true"><path d={PAW} fill="currentColor" /></svg>;
+function ThreadMark({ status, label }: { status: string; label: string }) {
+  if (status === "running") return <span className="thread-mark paws" role="img" aria-label={label}><Paw /><Paw /><Paw /></span>;
+  if (status === "waiting") return <span className="thread-mark wave" role="img" aria-label={label}><Paw /></span>;
+  return <span className={`thread-dot ${status}`} role="img" aria-label={label} />;
+}
+
+// One conversation in the list: its title leading to it, a mark while it works, waits or stopped, and its ⋯. Renaming,
 // the title becomes a field (Enter or leaving it saves, Escape keeps the old one); deleting, the row asks first.
 // A title with what was searched for marked in it, wherever it falls, in any case of letters.
 function Marked({ text, q }: { text: string; q: string }) {
@@ -142,11 +153,11 @@ function ThreadRow({ thread, current, projects, onPick, mark = "" }: { thread: T
     </div>
   );
   return (
-    <div className={`thread ${thread.id === current ? "current" : ""}`}>
+    <div className={`thread thread-row ${thread.id === current ? "current" : ""}`}>
       <a className="thread-link" href={`/chat/${thread.id}`} aria-current={thread.id === current ? "page" : undefined} onClick={onPick}>
         <span className="thread-title" dir="auto"><Marked text={title} q={mark} /></span>
       </a>
-      {thread.status !== "idle" && <span className={`thread-dot ${thread.status}`} role="img" aria-label={t(`session.${thread.status}`)} />}
+      {thread.status !== "idle" && <ThreadMark status={thread.status} label={t(`session.${thread.status}`)} />}
       <ThreadMenu thread={thread} projects={projects} onRename={() => { setName(thread.title); setMode("rename"); }} onDelete={() => setMode("delete")} />
     </div>
   );
@@ -286,7 +297,7 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
       </nav>
     );
   }
-  // The daily run's row: when it last ran at its end, or a dot while one is at work.
+  // The daily run's row: when it last ran at its end, or Pip's paw prints while one is at work.
   const lastRun = runs.length ? runs.reduce((a, b) => (b.createdAt > a.createdAt ? b : a)) : undefined;
   const runDay = lastRun ? groupOf(lastRun.createdAt) : undefined;
   const runWhen = !lastRun ? "" : runDay === "today" ? new Date(lastRun.createdAt).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" })
@@ -320,7 +331,7 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
         <button type="button" className={`thread threads-place ${shelf === "runs" ? "current" : ""}`} aria-pressed={shelf === "runs"} onClick={() => setShelf(shelf === "runs" ? "" : "runs")}>
           <Icon name="runs" />
           <span className="thread-title">{t("chat.runsTitle")}</span>
-          {runBusy ? <span className="thread-dot running" role="img" aria-label={t("session.running")} /> : runWhen && <span className="threads-place-when" dir="ltr">{runWhen}</span>}
+          {runBusy ? <ThreadMark status="running" label={t("session.running")} /> : runWhen && <span className="threads-place-when" dir="ltr">{runWhen}</span>}
         </button>
         <a className="thread threads-place" href="/files"><Icon name="files" /><span className="thread-title">{t("nav.files")}</span></a>
         <a className="thread threads-place" href="/tools"><Icon name="tools" /><span className="thread-title">{t("nav.tools")}</span></a>
@@ -460,7 +471,7 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
       <VoiceGlow v={voice} shape={glow} box={frame} />
       <div
         ref={frame}
-        className={`composer-box ${tall ? "tall" : ""} ${ready || stopping ? "typing" : ""} ${slotOpen ? "slot-open" : ""} ${over ? "over" : ""}`}
+        className={`composer-box ${tall ? "tall" : ""} ${ready || stopping ? "typing" : ""} ${slotOpen ? "slot-open" : ""} ${over ? "over" : ""} ${temporary ? "temp" : ""}`}
         onDragOver={(e) => { if (hasFiles(e)) { e.preventDefault(); setOver(true); } }}
         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver(false); }}
         onDrop={(e) => { if (!hasFiles(e)) return; e.preventDefault(); setOver(false); add(e.dataTransfer.files); }}
@@ -683,10 +694,11 @@ function Hello() {
 }
 
 // Whether the new conversation is temporary: a round button at the top of the page, its dashed bubble, named on hover.
-function TemporaryToggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
+// It hands itself over too, for the wave that leaves it (NewConversation).
+function TemporaryToggle({ on, onChange }: { on: boolean; onChange: (v: boolean, from: HTMLElement) => void }) {
   const { t } = useApp();
   return (
-    <button type="button" className={`chat-temp${on ? " on" : ""}`} aria-pressed={on} aria-label={t("chat.temporary.toggle")} onClick={() => onChange(!on)}>
+    <button type="button" className={`chat-temp${on ? " on" : ""}`} aria-pressed={on} aria-label={t("chat.temporary.toggle")} onClick={(e) => onChange(!on, e.currentTarget)}>
       <Icon name="temporary" /><ActLabel>{t(on ? "chat.temporary.off" : "chat.temporary.toggle")}</ActLabel>
     </button>
   );
@@ -703,6 +715,19 @@ function NewConversation({ onList }: { onList: () => void }) {
   const [busy, setBusy] = useState(false);
   // A temporary conversation (Sean 2026-11-12: "צאט INCOGNITO... חד פעמי שנמחק"), picked at the top of the page.
   const [temporary, setTemporary] = useState(false);
+  // Switching it (Sean 2026-11-22, "תוסיף אנימציה כשעוברים לשיחה זמנית משהו מגניב"): a dashed ring, the button's own
+  // bubble, washes out from the button over the page as it turns on and gathers back into it as it turns off; the
+  // greeting drifts up and away like vapour while the temporary page's words come into focus, and the box to write in
+  // closes a dashed line round itself (styles.css, .chat-temp-wave).
+  const page = useRef<HTMLDivElement>(null);
+  const [wave, setWave] = useState<{ n: number; on: boolean; x: number; y: number; far: number } | null>(null);
+  const flip = (on: boolean, from: HTMLElement) => {
+    setTemporary(on);
+    const box = page.current?.getBoundingClientRect(), at = from.getBoundingClientRect();
+    if (!box) return;
+    const x = at.left + at.width / 2 - box.left, y = at.top + at.height / 2 - box.top;
+    setWave((w) => ({ n: (w?.n ?? 0) + 1, on, x, y, far: Math.hypot(Math.max(x, box.width - x), Math.max(y, box.height - y)) }));
+  };
   const input = useRef<HTMLTextAreaElement>(null);
   const first = useFirstAi();
   // ChatGPT signed in with its account works in the project as Claude does, through Codex (codex.ts), with the same
@@ -724,11 +749,20 @@ function NewConversation({ onList }: { onList: () => void }) {
     requestAnimationFrame(() => input.current?.focus());
   };
   return (
-    <div className={`chat-new${temporary ? " temporary" : ""}`}>
-      <div className="chat-top"><ListButton onList={onList} /><ThemePicker /><TemporaryToggle on={temporary} onChange={setTemporary} /></div>
+    <div ref={page} className={`chat-new${temporary ? " temporary" : ""}`}>
+      {wave && (
+        <svg key={wave.n} className={`chat-temp-wave ${wave.on ? "out" : "in"}`} aria-hidden="true" style={{ "--far": `${wave.far}px` } as React.CSSProperties}
+          onAnimationEnd={(e) => { if (e.target === e.currentTarget.lastElementChild && e.animationName.endsWith("fade")) setWave(null); }}>
+          <circle cx={wave.x} cy={wave.y} r="19" /><circle cx={wave.x} cy={wave.y} r="19" />
+        </svg>
+      )}
+      <div className="chat-top"><ListButton onList={onList} /><ThemePicker /><TemporaryToggle on={temporary} onChange={flip} /></div>
       <div className="chat-new-body">
+        {/* Both faces in one place, the one not shown faded out in it, so switching crosses between them and the box
+            under them stays where it is. */}
         <div className="chat-new-head">
-          {temporary ? <><h1>{t("chat.temporary.title")}</h1><p className="chat-temp-note">{t("chat.temporary.note")}</p></> : <Hello />}
+          <div className="chat-new-face hello" aria-hidden={temporary}><Hello /></div>
+          <div className="chat-new-face temp" aria-hidden={!temporary}><h1>{t("chat.temporary.title")}</h1><p className="chat-temp-note">{t("chat.temporary.note")}</p></div>
         </div>
         <Composer
           text={text} setText={setText} onSend={(files) => { go(text.trim(), files)?.catch(() => {}); }} placeholder={t("chat.newPlaceholder")} input={input} autoFocus glow="halo" temporary={temporary}
@@ -1379,8 +1413,6 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
             ? <h1 className="chat-title chat-title-temp"><Icon name="temporary" />{t("chat.temporary.title")}</h1>
             : <h1 className="chat-title" dir="auto">{session ? friendlyTitle(session.title, t) : ""}</h1>}
           {(plain || (session?.agent && session.agent !== "claude")) && session?.engine && <span className="chat-model"><bdi>{session.engine}</bdi></span>}
-          {status !== "idle" && <span className={`chat-state ${status}`}>{t(stopping ? "session.stopping" : `session.${status}`)}</span>}
-          {status === "idle" && background.length > 0 && <span className="chat-state running">{t("session.background")}</span>}
           <ThemePicker />
         </header>
       )}

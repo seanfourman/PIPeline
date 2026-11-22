@@ -254,16 +254,22 @@ describe("postings", () => {
       linked: { url: "https://il.linkedin.com/jobs/view/9", title: "Developer", at: ago(9), page: "HTTP 200 size=10 saved=x", text: PAGE_TEXT },
     };
     const fetched: string[] = [];
-    let last = "";
+    // Two looks go at once: each job's page and its cleaning are in the read's own scratch folder.
+    const byFolder = new Map<string, string>();
     const run: Run = async (argv) => {
       if (argv.some((a) => a.includes("fetch_page.py"))) {
-        last = argv[argv.indexOf("tools/fetch_page.py") + 1];
-        fetched.push(last);
-        const job = Object.values(jobs).find((j) => j.url === last)!;
-        if (job.html) writeFileSync(argv[argv.indexOf("--out") + 1], job.html);
+        const url = argv[argv.indexOf("tools/fetch_page.py") + 1];
+        const out = argv[argv.indexOf("--out") + 1];
+        fetched.push(url);
+        byFolder.set(path.dirname(out), url);
+        const job = Object.values(jobs).find((j) => j.url === url)!;
+        if (job.html) writeFileSync(out, job.html);
         return { code: 0, out: job.page, err: "" };
       }
-      if (argv.some((a) => a.includes("posting_guard.py"))) return { code: 0, out: guardOut(Object.values(jobs).find((j) => j.url === last)!.text ?? ""), err: "" };
+      if (argv.some((a) => a.includes("posting_guard.py"))) {
+        const url = byFolder.get(path.dirname(argv[argv.indexOf("--in") + 1]));
+        return { code: 0, out: guardOut(Object.values(jobs).find((j) => j.url === url)?.text ?? ""), err: "" };
+      }
       return { code: 2, out: "", err: "unexpected" };
     };
     const seen = Object.fromEntries(Object.entries(jobs).map(([key, j]) => [key, { url: j.url, title: j.title, company: "Co", status: "new", portal: "careers-page" }]));
@@ -273,8 +279,9 @@ describe("postings", () => {
       writeFileSync(path.join(s.dir, `${id}.json`), JSON.stringify({ id, url: j.url, title: j.title, company: "Co", location: "", read: { at: j.at, status: "read", source: "page", lines: ["Menu", `## ${j.title}`, "Old words"] } }));
     }
     expect(await s.postings.crawl(undefined, { recheck: 60_000 })).toBe(4);
-    // Neither the job looked at a day ago, nor a Telegram post, nor LinkedIn; the longest unlooked first.
-    expect(fetched).toEqual([jobs.open.url, jobs.gone.url, jobs.down.url, jobs.moved.url]);
+    // Neither the job looked at a day ago, nor a Telegram post, nor LinkedIn; two at a time, the longest unlooked first.
+    expect(fetched.slice(0, 2)).toEqual([jobs.open.url, jobs.gone.url]);
+    expect([...fetched].sort()).toEqual([jobs.open.url, jobs.gone.url, jobs.down.url, jobs.moved.url].sort());
     expect(s.applied).toEqual([{ key: "gone", status: "expired", reason: "closed" }, { key: "moved", status: "expired", reason: "closed" }]);
     const read = (key: string) => s.postings.load(jobId(jobs[key].url)!)!.read!;
     expect(read("gone")).toMatchObject({ status: "expired", lines: ["Menu", "## Data Engineer", "Old words"] });
@@ -286,6 +293,28 @@ describe("postings", () => {
     fetched.length = 0;
     expect(await s.postings.crawl(undefined, { recheck: 60_000 })).toBe(0);
     expect(fetched).toEqual([]);
+  });
+
+  test("a job opened hours after its last look is looked at then, and leaves the list when its page's data says it closed", async () => {
+    const html = `<script type="application/ld+json">{"@type":"JobPosting","datePosted":"2025-09-12","validThrough":"2025-11-17"}</script><h1>Data Engineer</h1>`;
+    const run: Run = async (argv) => {
+      if (argv.some((a) => a.includes("fetch_page.py"))) { writeFileSync(argv[argv.indexOf("--out") + 1], html); return { code: 0, out: "HTTP 200 size=10 saved=x", err: "" }; }
+      if (argv.some((a) => a.includes("posting_guard.py"))) return { code: 0, out: guardOut(PAGE_TEXT), err: "" };
+      return { code: 2, out: "", err: "unexpected" };
+    };
+    const seen = { k: { url: JOB.url, title: JOB.title, company: JOB.company, status: "new" } };
+    const s = setup({ run, seen: () => seen });
+    const id = jobId(JOB.url)!;
+    const write = (at: string) => writeFileSync(path.join(s.dir, `${id}.json`), JSON.stringify({ id, ...JOB, read: { at, status: "read", source: "page", v: 2, lines: ["## Data Engineer", "Old words"] } }));
+    // Looked at an hour ago: opened, nothing is read.
+    write(new Date(Date.now() - 3600_000).toISOString());
+    expect(s.postings.open(JOB)!.reading).toBeNull();
+    // Seven hours ago: looked at as it opens, and found closed by its page's own data.
+    write(new Date(Date.now() - 7 * 3600_000).toISOString());
+    expect(s.postings.open(JOB)!.reading).toBe("page");
+    await s.postings.readJob(id, "recheck");
+    expect(s.postings.view(id)!.posting.status).toBe("expired");
+    expect(s.applied).toEqual([{ key: "k", status: "expired", reason: "deadline" }]);
   });
 
   test("the jobs past their deadline or posted long ago leave the list, unless their employer's own page still has them", () => {

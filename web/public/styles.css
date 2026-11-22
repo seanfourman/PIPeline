@@ -103,6 +103,9 @@ fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 legend { padding: 0; }
 :focus-visible { outline: 3px solid var(--cta); outline-offset: 2px; }
 .icon { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+/* The ⋯ dots are tiny rings, which a screen draws with a pale pixel at their middle, so they looked hollow (Sean
+   2026-11-22, "ה 3 נקודות ריקות בפנים"): filled, they are solid. */
+.icon-dots { fill: currentColor; }
 /* In Hebrew some icons that point a way are turned round, as the page is: the speech bubble's tail, the search
    glass's handle, the way out. */
 [dir="rtl"] :is(.icon-chat, .icon-jobs, .icon-logout, .icon-open) { transform: scaleX(-1); }
@@ -1638,7 +1641,9 @@ select.status { font-weight: 600; }
    slides in over the page from its far side (below). */
 .chat { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 275px; height: 100%; }
 .chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.threads { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 8px 12px 14px; border-inline-start: 1px solid var(--line); background: var(--bg); }
+/* The list runs down to the window's bottom edge, not cut off above a white strip (Sean 2026-11-22, "למה יש לבן כזה
+   למטה?"): its room at the end is inside what scrolls, and the archive's way keeps its own below it. */
+.threads { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 8px 12px 0; border-inline-start: 1px solid var(--line); background: var(--bg); }
 /* A new conversation (AiNewChat in kit.tsx), the sidebar's main button, across it (in the conversation list's head
    until Sean 2026-11-18: "שם את הכפתור הזה שעשינו ב SIDEBAR הימני"): its ground the AI's own (AiSky: clouds of the forest's rainbow drifting
    over the sky's blue, as behind the microphone, quickening while hovered); over it a pill of the page's own colour a
@@ -1683,7 +1688,7 @@ select.status { font-weight: 600; }
 }
 @media (prefers-reduced-motion: reduce) { .new-chat-hole path, .new-chat:hover .new-chat-hole path { transition: none; } }
 .threads-scroll { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.threads-list { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+.threads-list { flex: 1; min-height: 0; padding-bottom: 14px; overflow-y: auto; scrollbar-width: none; }
 /* The slim bar out at the list's outer edge, in its margin, past the conversations and their ⋯, not over them. */
 .threads-scroll > .thin-bar { inset-inline-end: -11px; }
 .thread-group { display: flex; flex-direction: column; gap: 1px; padding-top: 16px; }
@@ -1697,12 +1702,27 @@ select.status { font-weight: 600; }
 .thread-title, .chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [dir="rtl"] :is(.thread-title, .chat-title) { text-align: right; }
 [dir="ltr"] :is(.thread-title, .chat-title) { text-align: left; }
-/* A conversation working pulses in blue; one waiting for you is amber, one that stopped red. */
+/* A conversation at work shows Pip's paw prints lighting up one after another, walking the way the language reads, as
+   the loading screen's do; one waiting for you, one paw waving every two seconds; one that stopped, a red dot. */
+.thread-mark { flex: none; display: inline-flex; align-items: center; }
+.thread-mark.paws { --turn: 90deg; gap: 2px; color: var(--accent); }
+[dir="rtl"] .thread-mark.paws { --turn: -90deg; }
+.thread-mark.paws svg { width: 9px; height: 8px; opacity: 0.18; transform: rotate(var(--turn)); animation: thread-step 1.2s steps(1) infinite; }
+.thread-mark.paws svg:nth-child(2) { translate: 0 2px; animation-delay: 0.2s; }
+.thread-mark.paws svg:nth-child(3) { animation-delay: 0.4s; }
+@keyframes thread-step { 0% { opacity: 1; } 55% { opacity: 0.18; } }
+.thread-mark.wave svg { width: 12px; height: 11px; color: var(--warn); transform-origin: 50% 100%; animation: thread-wave 2s ease-in-out infinite; }
+@keyframes thread-wave { 0%, 50%, 100% { transform: rotate(0); } 60% { transform: rotate(-18deg); } 70% { transform: rotate(14deg); } 80% { transform: rotate(-12deg); } 90% { transform: rotate(6deg); } }
 .thread-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
-.thread-dot.running { background: var(--live); animation: pulse 1.4s ease-in-out infinite; }
-.thread-dot.waiting { background: var(--warn); }
 .thread-dot.error { background: var(--bad); }
-@keyframes pulse { 50% { opacity: 0.35; } }
+/* Conversations read left to right in a Hebrew page too, since most of their titles are English (Sean 2026-11-22):
+   the title at the left, its mark and ⋯ at the right, the paws walking right. The groups' names stay where Hebrew puts
+   them. The row isn't given dir="ltr", so its ⋯ menu stays Hebrew. */
+[dir="rtl"] .thread.thread-row { flex-direction: row-reverse; }
+[dir="rtl"] .thread.thread-row .thread-title { text-align: left; }
+[dir="rtl"] .thread.thread-row .thread-more { margin-inline: -6px 0; }
+.thread.thread-row .thread-mark { direction: ltr; }
+[dir="rtl"] .thread.thread-row .thread-mark.paws { --turn: 90deg; }
 .threads-shade { display: none; }
 
 /* The list's head: the search's round button and the one that hides the list, at its end; the search opens out of its
@@ -1794,7 +1814,7 @@ select.status { font-weight: 600; }
 .threads-place-when { flex: none; color: var(--ink-3); font-size: 12.5px; }
 /* The archive, at the list's foot. */
 .threads-archive {
-  display: flex; flex: none; align-items: center; gap: 10px; min-height: 40px; padding-inline: 12px; border: 0; border-radius: 10px; background: none;
+  display: flex; flex: none; align-items: center; gap: 10px; min-height: 40px; margin-bottom: 14px; padding-inline: 12px; border: 0; border-radius: 10px; background: none;
   color: var(--ink-2); font: inherit; font-size: 14px; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease;
 }
 .threads-archive:hover { background: var(--hover-soft); color: var(--ink); }
@@ -1827,20 +1847,38 @@ select.status { font-weight: 600; }
    begun, its title is its dashed bubble and what it is. */
 .chat-temp {
   position: relative; display: grid; flex: none; place-items: center; width: 38px; height: 38px; margin-inline-start: auto; border: 0; border-radius: 50%;
-  background: none; color: var(--ink-2); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+  background: none; color: var(--ink-2); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease, scale 0.15s cubic-bezier(0.23, 1, 0.32, 1);
 }
+.chat-temp:active { scale: 0.9; }
 .chat-temp:hover { background: var(--hover-soft); color: var(--ink); }
 .chat-temp.on { background: var(--ink); color: var(--surface); }
 .chat-temp.on:hover { background: color-mix(in srgb, var(--ink) 84%, var(--surface)); color: var(--surface); }
-.chat-temp .icon { width: 20px; height: 20px; }
+/* Switched, its dashed bubble turns a whole round, overshooting a little as it lands. */
+.chat-temp .icon { width: 20px; height: 20px; transition: rotate 0.6s cubic-bezier(0.34, 1.4, 0.64, 1); }
+.chat-temp.on .icon { rotate: 360deg; }
+/* The wave (NewConversation's flip): two dashed rings, the second finer and a beat behind, washing out from the button
+   over the whole page as it turns on, fading as they go; turning off, they come in from the page's far corners and
+   gather into it. Over the page, never in its way. */
+.chat-temp-wave { position: absolute; inset: 0; z-index: 3; width: 100%; height: 100%; overflow: hidden; pointer-events: none; }
+.chat-temp-wave circle { fill: none; stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 7 8; opacity: 0; }
+.chat-temp-wave circle + circle { stroke-width: 1; }
+.chat-temp-wave.out circle { animation: temp-wave-grow 1s cubic-bezier(0.22, 0.8, 0.3, 1) both, temp-wave-fade 1s linear both; }
+.chat-temp-wave.in circle { animation: temp-wave-shrink 0.75s cubic-bezier(0.77, 0, 0.175, 1) both, temp-wave-infade 0.75s linear both; }
+.chat-temp-wave circle + circle, .chat-temp-wave.out circle + circle, .chat-temp-wave.in circle + circle { animation-delay: 0.12s; }
+@keyframes temp-wave-grow { from { r: 19px; } to { r: var(--far); } }
+@keyframes temp-wave-fade { from { opacity: 0.6; } to { opacity: 0; } }
+@keyframes temp-wave-shrink { from { r: var(--far); } to { r: 19px; } }
+@keyframes temp-wave-infade { from { opacity: 0; } 35% { opacity: 0.4; } to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-temp-wave { display: none; }
+  .chat-temp, .chat-temp .icon { transition: background-color 0.2s ease, color 0.2s ease; }
+  .chat-temp:active { scale: none; }
+  .chat-new-face, .chat-new-face[aria-hidden="true"], .chat-new-face .chat-temp-note { filter: none; translate: none; scale: none; }
+  .composer-box, .composer-box.temp { transition: border-color 0.2s ease, outline-color 0.3s ease; }
+}
 .chat-temp-note { max-width: 520px; margin: 0; color: var(--ink-3); font-size: 14px; line-height: 1.55; text-align: center; }
 .chat-title-temp { display: inline-flex; align-items: center; gap: 8px; }
 .chat-title-temp .icon { flex: none; width: 18px; height: 18px; color: var(--ink-2); }
-.chat-state { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: var(--hover-soft); font-size: 12.5px; font-weight: 600; }
-.chat-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.chat-state.running { color: var(--live); }
-.chat-state.waiting { color: var(--warn); }
-.chat-state.error { color: var(--bad); }
 /* A plain conversation says which AI answered it last, by its title; a switch to the next AI is a quiet line. */
 .switched-line { display: flex; align-items: center; gap: 7px; color: var(--ink-2); font-size: 13px; }
 .switched-line .icon { flex: none; width: 15px; height: 15px; color: var(--warn); }
@@ -2150,9 +2188,14 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
 .composer-box {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "attach text tools"; align-items: center; column-gap: 4px;
   min-height: 58px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
-  box-shadow: 0 6px 24px rgb(0 0 0 / 6%); transition: border-color 0.2s ease;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 6%); outline: 1.5px dashed transparent; outline-offset: 14px;
+  transition: border-color 0.2s ease, outline-color 0.3s ease, outline-offset 0.55s cubic-bezier(0.23, 1, 0.32, 1);
 }
 .composer-box:focus-within { border-color: var(--accent); }
+/* A temporary conversation's box is dashed, as the button's bubble: switched on, the dashed line closes in onto it from
+   around it, a moment after the wave leaves; in the conversation it stays so. */
+.composer-box.temp, .composer-box.temp:focus-within { border-color: transparent; outline-color: color-mix(in srgb, var(--ink) 45%, transparent); outline-offset: -1px; transition-delay: 0s, 0.1s, 0.1s; }
+.composer-box.temp:focus-within { outline-color: var(--accent); }
 .composer-box.tall { grid-template-areas: "files files files" "text text text" "attach . tools"; row-gap: 2px; padding-top: 10px; border-radius: 28px; }
 .composer-files { grid-area: files; }
 .composer textarea, .composer textarea:hover, .composer textarea:focus {
@@ -2259,7 +2302,24 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
    the middle. */
 .chat-new { display: flex; flex: 1; flex-direction: column; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable both-edges; }
 .chat-new-body { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding-bottom: 12vh; }
-.chat-new-head { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+/* The greeting and the temporary page's words share one place; switching, the one leaving drifts off out of focus,
+   the greeting up and growing like vapour, the temporary words down and shrinking, while the other comes into focus a
+   beat later, the note under it after it. Both sit down by the box, the greeting as close to it as it always was. */
+.chat-new-head { display: grid; justify-items: center; align-items: end; }
+.chat-new-face {
+  grid-area: 1 / 1; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  transition: opacity 0.4s cubic-bezier(0.23, 1, 0.32, 1) 0.08s, filter 0.4s cubic-bezier(0.23, 1, 0.32, 1) 0.08s, translate 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.08s,
+    scale 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.08s, visibility 0s;
+}
+.chat-new-face[aria-hidden="true"] {
+  opacity: 0; filter: blur(10px); visibility: hidden;
+  transition: opacity 0.3s cubic-bezier(0.23, 1, 0.32, 1), filter 0.3s cubic-bezier(0.23, 1, 0.32, 1), translate 0.35s cubic-bezier(0.23, 1, 0.32, 1),
+    scale 0.35s cubic-bezier(0.23, 1, 0.32, 1), visibility 0s linear 0.35s;
+}
+.chat-new-face.hello[aria-hidden="true"] { translate: 0 -18px; scale: 1.06; }
+.chat-new-face.temp[aria-hidden="true"] { translate: 0 12px; scale: 0.94; }
+.chat-new-face.temp .chat-temp-note { transition: opacity 0.4s cubic-bezier(0.23, 1, 0.32, 1) 0.16s, translate 0.5s cubic-bezier(0.23, 1, 0.32, 1) 0.16s; }
+.chat-new-face.temp[aria-hidden="true"] .chat-temp-note { opacity: 0; translate: 0 6px; transition-delay: 0s; }
 .chat-new h1 { font-size: 28px; text-align: center; }
 .chat-new .composer { padding-bottom: 0; }
 /* The starts under the box, as ChatGPT's suggestions: rows, each an icon, the start's name and in the quieter ink what
@@ -2729,8 +2789,9 @@ html.lite .smart-glow { animation: ai-glow-in 0.5s ease-out 0.35s backwards, ai-
 html.lite :is(.seek-pill, .role-fan-item):not(.on) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
 html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0 / 45%); }
 @media (prefers-reduced-motion: reduce) {
-  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .more-menu, .more-menu :is(a, button), .nav > button .icon, .account .icon, .act-label, .mine, .thread-dot, .typing-text, .threads, .steps-head > .icon, .composer-box, .chat-start, .peek-pip, .peek-say, .login-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
+  .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .more-menu, .more-menu :is(a, button), .nav > button .icon, .account .icon, .act-label, .mine, .thread-dot, .thread-mark svg, .typing-text, .threads, .steps-head > .icon, .composer-box, .chat-start, .peek-pip, .peek-say, .login-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
+  .thread-mark.paws svg { opacity: 1; }
   .pip-a { opacity: 1; }
 }
 

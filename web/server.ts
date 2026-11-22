@@ -2,7 +2,8 @@
 // First, so the user's folder is in place before any module below reads it.
 import "./switching";
 import "./upgrade";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, statSync, watch, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createSession, createTaskSession, defaultEfforts, deleteSession, getSession, isAccess, leaveProject, listSessions, runTask, runUnattended, searchSessions } from "./agent";
@@ -178,9 +179,9 @@ const postings = createPostings({
 // The list's postings read in the background (postings.ts crawl), so each job has its automatic score: a minute after
 // start, then every twenty minutes for what was found since; it pauses while a run over the list is going. Each round
 // first takes off the list the jobs past their deadline or too old (sweep), and after the new jobs looks again at the
-// pages of jobs read days ago for a quarter of an hour, so a job its site has closed leaves the list.
+// pages of jobs read days ago until the next round, so a job its site has closed leaves the list.
 const CRAWL_EVERY_MS = 20 * 60_000;
-const RECHECK_FOR_MS = 15 * 60_000;
+const RECHECK_FOR_MS = 18 * 60_000;
 const crawlList = () => {
   if (listBusy) return;
   try { postings.sweep(); } catch (err) { console.error("The list's old jobs were not swept:", err); }
@@ -197,19 +198,76 @@ const loggedIn = (id: string) => new Response(JSON.stringify({ ok: true }), { he
 // ---------- the accounts: several on this computer, and each on several computers (accounts.ts, sync.ts) ----------
 
 const COMPUTER = computerId();
-// Starts Pip again, to open another account: the server stops with RESTART, and the launcher starts it again
-// (installer/launcher.cs), as launchd does on a Mac on any stop that isn't clean. Run by hand, it has to be started again
-// by hand (a server it started itself would go with it on Windows).
+// Starts Pip again, to open another account or for its code changed (below): the server stops with RESTART, and the
+// launcher starts it again (installer/launcher.cs), as launchd does on a Mac on any stop that isn't clean, and so does
+// start-web.cmd. Run by hand otherwise, it has to be started again by hand (a server it started itself would go with
+// it on Windows).
 const RESTART = 75;
-function restart() {
+function restart(note = "Stopped to open another account: start Pip again to open it.") {
   setTimeout(() => {
     remote.stop();
-    if (process.env.PIP_LAUNCHER !== "1" && process.env.XPC_SERVICE_NAME !== "com.pip.server") console.log("Stopped to open another account: start Pip again to open it.");
+    if (process.env.PIP_LAUNCHER !== "1" && process.env.XPC_SERVICE_NAME !== "com.pip.server") console.log(note);
     process.exit(RESTART);
   }, 300);
 }
 // Something a restart would cut short: a conversation, a search, a ranking or the daily run at work.
 const working = () => listBusy !== "" || automation.isRunning() || listSessions().some((x) => x.status === "running");
+
+// Run from the repository, Pip starts itself again when its server's code changes, so a change to it shows without
+// starting it again by hand (Sean 2026-11-22): a few seconds after the last change to a file the server has loaded
+// (Bun's module cache; the interface, which the server builds again itself, build.ts, needs no restart), once nothing
+// is at work that a restart would cut short (a conversation at work or waiting for an answer, a search, a ranking or
+// the daily run), and only when the new code builds, so a change half made leaves this one running till the next. The
+// page is told it is updating first (/api/me), to wait quietly while Pip is away.
+const CODE_SETTLE_MS = 5000;
+let codeChangedAt = 0;
+let codeRestarting = false;
+if (existsSync(path.join(import.meta.dir, "..", ".git"))) {
+  const plainPath = (p: string) => path.resolve(p).toLowerCase();
+  const SELF = plainPath(path.join(import.meta.dir, "server.ts"));
+  // The files changed since the last start, by name, said in the window as Pip starts again.
+  const changedFiles = new Set<string>();
+  try {
+    watch(import.meta.dir, { recursive: true }, (_event, file) => {
+      if (!file || !/\.tsx?$/.test(String(file))) return;
+      const changed = plainPath(path.join(import.meta.dir, String(file)));
+      if (changed !== SELF && !Object.keys(require.cache).some((k) => plainPath(k) === changed)) return;
+      codeChangedAt = Date.now();
+      changedFiles.add(String(file).replaceAll("\\", "/"));
+    });
+  } catch { /* no watching here: started again by hand */ }
+  setInterval(async () => {
+    if (!codeChangedAt || codeRestarting || Date.now() - codeChangedAt < CODE_SETTLE_MS) return;
+    if (working() || listSessions().some((x) => x.status === "waiting")) return;
+    const seen = codeChangedAt;
+    codeRestarting = true;
+    let restarting = false;
+    try {
+      const out = mkdtempSync(path.join(os.tmpdir(), "pip-build-check-"));
+      const built = Bun.spawn([process.execPath, "build", path.join(import.meta.dir, "server.ts"), "--target=bun", "--outdir", out], { stdout: "ignore", stderr: "pipe" });
+      const ok = (await built.exited) === 0;
+      const why = ok ? "" : (await new Response(built.stderr as ReadableStream).text()).trim().split("\n").slice(-3).join(" ");
+      rmSync(out, { recursive: true, force: true });
+      if (codeChangedAt !== seen) return;
+      const files = [...changedFiles].join(", ");
+      if (!ok) {
+        console.error(`Pip's code changed (${files}) but doesn't build, so this one keeps running: ${why}`);
+        codeChangedAt = 0;
+        changedFiles.clear();
+        return;
+      }
+      console.log(`Pip's code changed (${files}): starting again with it.`);
+      updatingSince = Date.now();
+      restarting = true;
+      setTimeout(() => restart("Stopped to start again with the new code: start Pip again."), 4000);
+    } catch (err) {
+      console.error("Pip's code changed, but its check failed; this one keeps running:", err);
+      codeChangedAt = 0;
+    } finally {
+      if (!restarting) codeRestarting = false;
+    }
+  }, CODE_SETTLE_MS);
+}
 // Logins to other accounts that failed, within a quarter of an hour; past ten, no more tries for a while.
 let accountFails: number[] = [];
 const accountTries = () => (accountFails = accountFails.filter((t) => Date.now() - t < 15 * 60_000)).length;
