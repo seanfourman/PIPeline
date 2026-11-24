@@ -194,6 +194,13 @@ legend { padding: 0; }
 .more-menu.near hr { width: 100%; margin: 5px 0; border: 0; border-top: 1px solid var(--line); }
 .more-menu .danger { color: var(--bad); }
 .more-menu .menu-grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A delete asked in the menu (DeleteAsk in chat.tsx): the question, under it what would go in the quieter ink, on a
+   line of its own and ending in "…", rising in with the rows; its delete warms to a soft red under the pointer. */
+.more-menu .menu-ask { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px 14px 4px; }
+.more-menu .menu-ask strong { font-size: 14.5px; font-weight: 600; }
+.more-menu .menu-ask :is(bdi, span) { overflow: hidden; color: var(--ink-2); font-size: 13px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
+.more-menu:popover-open .menu-ask { animation: more-row 0.28s cubic-bezier(0.2, 0.8, 0.3, 1) 0.02s both; }
+.more-menu .menu-ask ~ .danger:hover { background: color-mix(in srgb, var(--bad) 9%, transparent); }
 .more-menu .menu-form { display: flex; align-items: center; gap: 6px; padding: 6px 10px 8px; }
 .more-menu .menu-form input {
   flex: 1; min-width: 0; height: 34px; padding-inline: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
@@ -780,6 +787,8 @@ textarea { resize: vertical; width: 100%; }
 .seek-sky { position: absolute; z-index: -1; top: calc(50% - 30px); left: 50%; width: 0; height: 0; pointer-events: none; transition: top 0.4s ease; }
 .seek.asked .seek-sky { top: 46px; }
 .seek-sky > span { position: absolute; left: 0; top: 0; border-radius: 50%; }
+/* Drawn without the graphics card, the same sky on one small canvas stretched to its size (ui/lite-sky.ts). */
+.seek-sky > .sky-canvas { position: absolute; left: 0; top: 0; }
 /* The glow in the middle, big, breathing, between moss and stream. */
 .sky-core {
   width: 900px; height: 560px; margin: -280px 0 0 -450px;
@@ -875,15 +884,16 @@ textarea { resize: vertical; width: 100%; }
    a lump of it pushes out a little and draws slowly back, as if something alive in it were trying to get out
    (useBlob in jobs.tsx), and it is round again once the pointer goes; the colours have room for that past it.
    Pressed, the circle melts into the colours it spreads over the box, the mark staying (below). */
-@property --chroma { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .seek-ai { position: relative; isolation: isolate; background: none; color: #fff; font: inherit; }
+/* The glow turns as a whole: round as it is, that looks the same as turning its colours, and costs nothing to draw,
+   where turning the colours blurred them anew every moment (very slow without the graphics card). */
 .seek-ai::before {
   content: ""; position: absolute; z-index: -1; inset: -3px; border-radius: inherit; filter: blur(9px); opacity: 0.55; transition: opacity 0.25s ease;
-  background: conic-gradient(from var(--chroma), var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3));
+  background: conic-gradient(var(--sky-3), var(--sky-6), var(--sky-5), var(--sky-4), var(--sky-1), var(--sky-2), var(--sky-3));
   animation: chroma 5s linear infinite;
 }
 .seek-ai .icon { filter: drop-shadow(0 1px 1px rgb(0 0 0 / 30%)); }
-@keyframes chroma { to { --chroma: 360deg; } }
+@keyframes chroma { to { rotate: 360deg; } }
 .seek-ai-lit {
   position: absolute; inset: -8px; z-index: -1; overflow: hidden; border-radius: inherit; pointer-events: none; background: var(--sky-3);
   clip-path: circle(22px);
@@ -1497,7 +1507,6 @@ textarea { resize: vertical; width: 100%; }
 .loot-shown-head { flex-wrap: wrap; row-gap: 2px; color: var(--ink); font-size: 15px; }
 .loot-shown-head .loot-art { --s: 2px; }
 .loot-shown-note { flex-basis: 100%; color: var(--ink-3); font-size: 13px; font-weight: 400; }
-}
 /* A job taken off the saved list, kept where it was until the page is left: its words and initial faded, its buttons
    as they are, the bookmark empty, to save it again. */
 .result.faded > :is(.result-mark, .result-text) { opacity: 0.45; transition: opacity 0.2s ease; }
@@ -1597,10 +1606,9 @@ textarea { resize: vertical; width: 100%; }
   .result-actions { width: 100%; align-self: auto; padding-inline-start: 58px; }
   .saved-empty { padding-top: 64px; }
 }
-/* Drawing without the graphics card (public/boot.js), the glow stands still, only breathing, and the ranking's glass
-   is frosted without blurring; with less motion asked for, nothing moves. */
-html.lite .ai-glow { animation: ai-breathe 1.6s ease-in-out infinite alternate; }
-html.lite .rank-pill { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
+/* Drawing without the graphics card (public/boot.js), the ranking is the same glass without blurring what is
+   behind it (see html.lite further down); with less motion asked for, nothing moves. */
+html.lite .rank-pill { backdrop-filter: none; }
 @media (prefers-reduced-motion: reduce) {
   .ai-sky > i, .ai-sky, .busy > .ai-sky::before, .ai-glow, .ai-pill, .saved-panel *, .rank-pill::after, .rank-ring, .result.faded > *,
   .apply-rim::before, .apply-rim::after { animation: none !important; transition: none !important; }
@@ -1698,31 +1706,82 @@ select.status { font-weight: 600; }
   text-decoration: none; transition: background-color 0.15s ease;
 }
 .thread:hover { background: var(--hover-soft); }
-.thread.current { background: var(--hover); font-weight: 600; }
+/* The open conversation a shade lighter than the page's usual pressed grey (Sean 2026-11-23, "האפור ככה מדי קצת"),
+   still a step above a row under the pointer. */
+.thread.current { background: color-mix(in srgb, var(--hover) 50%, var(--hover-soft)); font-weight: 600; }
 .thread-title, .chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 [dir="rtl"] :is(.thread-title, .chat-title) { text-align: right; }
 [dir="ltr"] :is(.thread-title, .chat-title) { text-align: left; }
-/* A conversation at work shows Pip's paw prints lighting up one after another, walking the way the language reads, as
-   the loading screen's do; one waiting for you, one paw waving every two seconds; one that stopped, a red dot. */
+/* A conversation at work shows a ring turning (Sean 2026-11-23, back from the paw prints), drawn as the line under the
+   AI's work is (.steps-bar): over a hairline round, a band of the AI's colours that fades in and out at both its ends,
+   so it has no hard edge; it grows in as the work starts. It turns as a loader does (Sean 2026-11-24): slow and
+   short at the bottom, a sliver; whipping over the top, stretched out, its tail fading away behind it as it smears.
+   The band's middle (--thread-ring-at) goes round with an easing slowest at the bottom, where each turn starts, and fastest
+   at the top, never stopping; its length (--thread-ring-len) grows on the way up and shrinks on the way down, so its head
+   races ahead before the top and its tail catches up after. The ring stays still; the gradient moves in it. (A ring
+   thick at the top and thin at the bottom with a glow over it came between: "אפילו לא קרוב".) One waiting for you,
+   one paw waving every two seconds; one that stopped, a red dot.
+   An @property holds for the whole page, so these two have names of their own: registered once as --ring-c, an
+   angle, it broke --ring-c, the colour of every pixel frame (.hero, .stats, .welcome...), and the frames vanished. */
+@property --thread-ring-at { syntax: "<angle>"; inherits: true; initial-value: 180deg; }
+@property --thread-ring-len { syntax: "<angle>"; inherits: true; initial-value: 160deg; }
 .thread-mark { flex: none; display: inline-flex; align-items: center; }
-.thread-mark.paws { --turn: 90deg; gap: 2px; color: var(--accent); }
-[dir="rtl"] .thread-mark.paws { --turn: -90deg; }
-.thread-mark.paws svg { width: 9px; height: 8px; opacity: 0.18; transform: rotate(var(--turn)); animation: thread-step 1.2s steps(1) infinite; }
-.thread-mark.paws svg:nth-child(2) { translate: 0 2px; animation-delay: 0.2s; }
-.thread-mark.paws svg:nth-child(3) { animation-delay: 0.4s; }
-@keyframes thread-step { 0% { opacity: 1; } 55% { opacity: 0.18; } }
+.thread-mark.ring {
+  --thread-ring-cut: radial-gradient(farthest-side, transparent calc(100% - 2.6px), #000 calc(100% - 2.1px));
+  width: 15px; height: 15px; border-radius: 50%;
+  background: conic-gradient(from calc(var(--thread-ring-at) - var(--thread-ring-len) / 2), transparent 0deg, var(--sky-3) calc(var(--thread-ring-len) * 0.5),
+    var(--sky-6) calc(var(--thread-ring-len) * 0.75), var(--sky-1) calc(var(--thread-ring-len) - max(18deg, var(--thread-ring-len) * 0.12)), transparent var(--thread-ring-len)) var(--line);
+  -webkit-mask: var(--thread-ring-cut); mask: var(--thread-ring-cut);
+  animation: thread-mark-in 0.2s cubic-bezier(0.23, 1, 0.32, 1) backwards, thread-ring-turn 1.2s cubic-bezier(0.45, 0.1, 0.55, 0.9) infinite,
+    thread-ring-len 1.2s infinite;
+}
+@keyframes thread-mark-in { from { opacity: 0; scale: 0.6; } }
+@keyframes thread-ring-turn { from { --thread-ring-at: 180deg; } to { --thread-ring-at: 540deg; } }
+@keyframes thread-ring-len {
+  0%, 100% { --thread-ring-len: 60deg; animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
+  50% { --thread-ring-len: 250deg; animation-timing-function: cubic-bezier(0.45, 0, 0.55, 1); }
+}
 .thread-mark.wave svg { width: 12px; height: 11px; color: var(--warn); transform-origin: 50% 100%; animation: thread-wave 2s ease-in-out infinite; }
 @keyframes thread-wave { 0%, 50%, 100% { transform: rotate(0); } 60% { transform: rotate(-18deg); } 70% { transform: rotate(14deg); } 80% { transform: rotate(-12deg); } 90% { transform: rotate(6deg); } }
 .thread-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 .thread-dot.error { background: var(--bad); }
 /* Conversations read left to right in a Hebrew page too, since most of their titles are English (Sean 2026-11-22):
-   the title at the left, its mark and ⋯ at the right, the paws walking right. The groups' names stay where Hebrew puts
-   them. The row isn't given dir="ltr", so its ⋯ menu stays Hebrew. */
+   the title at the left, its mark and ⋯ at the right. The groups' names stay where Hebrew puts them. The row isn't
+   given dir="ltr", so its ⋯ menu stays Hebrew. */
 [dir="rtl"] .thread.thread-row { flex-direction: row-reverse; }
 [dir="rtl"] .thread.thread-row .thread-title { text-align: left; }
-[dir="rtl"] .thread.thread-row .thread-more { margin-inline: -6px 0; }
 .thread.thread-row .thread-mark { direction: ltr; }
-[dir="rtl"] .thread.thread-row .thread-mark.paws { --turn: 90deg; }
+/* The row's very end (Sean 2026-11-23): its mark and its ⋯ share one place there. Under the pointer, with a keyboard's
+   focus in the row or its menu open, the mark gives way to the ⋯ and a pin comes in just before it, over the title's
+   end, which fades out under the pin as the line's ends do. The end is at the right in either language (the row is
+   turned in Hebrew, above), so the pin is placed from the right. */
+.thread-end { position: relative; z-index: 1; flex: none; display: grid; place-items: center; margin-inline-end: -6px; }
+[dir="rtl"] .thread-end { margin-inline: -6px 0; }
+.thread-end > * { grid-area: 1 / 1; }
+.thread-end .thread-more { margin: 0; }
+.thread-end > :is(.thread-mark, .thread-dot) { transition: opacity 0.15s ease, scale 0.2s cubic-bezier(0.23, 1, 0.32, 1); }
+.thread-pin {
+  position: absolute; top: 50%; right: 34px; z-index: 1; display: grid; place-items: center; width: 28px; height: 28px; margin-top: -14px; padding: 0;
+  border: 0; border-radius: 8px; background: none; color: var(--ink-2); cursor: pointer; opacity: 0; scale: 0.85; pointer-events: none;
+  transition: opacity 0.15s ease, scale 0.2s cubic-bezier(0.23, 1, 0.32, 1), background-color 0.15s ease, color 0.15s ease;
+}
+.thread-pin .icon { width: 16px; height: 16px; }
+.thread-pin:hover { background: var(--hover); color: var(--ink); }
+.thread-row .thread-title {
+  -webkit-mask: linear-gradient(to left, transparent 24px, #000 42px) 0 0 / calc(100% + 42px) 100% no-repeat;
+  mask: linear-gradient(to left, transparent 24px, #000 42px) 0 0 / calc(100% + 42px) 100% no-repeat;
+  transition: -webkit-mask-position 0.2s cubic-bezier(0.23, 1, 0.32, 1), mask-position 0.2s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.thread-row:is(:hover, :has(:focus-visible), :has(.thread-more[aria-expanded="true"])) .thread-pin { opacity: 1; scale: 1; pointer-events: auto; }
+.thread-row:is(:hover, :has(:focus-visible), :has(.thread-more[aria-expanded="true"])) .thread-more { opacity: 1; }
+.thread-row:is(:hover, :has(:focus-visible), :has(.thread-more[aria-expanded="true"])) .thread-end > :is(.thread-mark, .thread-dot) { opacity: 0; scale: 0.6; }
+.thread-row:is(:hover, :has(:focus-visible), :has(.thread-more[aria-expanded="true"])) .thread-title { -webkit-mask-position: 100% 0; mask-position: 100% 0; }
+/* A touch screen has no pointer to hover: the open conversation keeps its ⋯ in sight in the mark's place, so it can
+   still be renamed, pinned or deleted. */
+@media (hover: none) {
+  .thread-row.current .thread-more { opacity: 1; }
+  .thread-row.current .thread-end > :is(.thread-mark, .thread-dot) { opacity: 0; }
+}
 .threads-shade { display: none; }
 
 /* The list's head: the search's round button and the one that hides the list, at its end; the search opens out of its
@@ -1760,8 +1819,8 @@ select.status { font-weight: 600; }
 .thread-group-count { margin-inline-start: 6px; color: var(--ink-3); font-weight: 500; }
 .threads-none { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0; padding: 28px 12px; color: var(--ink-3); font-size: 13.5px; }
 .threads-none .icon { width: 22px; height: 22px; opacity: 0.6; }
-/* A conversation in the list: its title leads to it from anywhere on the row; its ⋯ shows on hover, on the open one,
-   on focus and while its menu is open. */
+/* A conversation in the list: its title leads to it from anywhere on the row; its ⋯ shows on hover, on focus and while
+   its menu is open. */
 .thread-link {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; align-self: stretch; padding: 0; border: 0; background: none; color: inherit;
   font: inherit; text-decoration: none; text-align: start; cursor: pointer;
@@ -1773,22 +1832,27 @@ select.status { font-weight: 600; }
   position: relative; z-index: 1; flex: none; display: grid; place-items: center; width: 28px; height: 28px; margin-inline-end: -6px; border: 0;
   border-radius: 8px; background: none; color: var(--ink-2); cursor: pointer; opacity: 0; transition: opacity 0.15s ease, background-color 0.15s ease;
 }
-.thread:hover .thread-more, .thread.current .thread-more, .thread-more:focus-visible, .thread-more[aria-expanded="true"] { opacity: 1; }
+/* The ⋯ shows under the pointer, the open conversation's too (Sean 2026-11-23); a conversation's own row is above. */
+.thread:hover .thread-more, .thread-more:focus-visible, .thread-more[aria-expanded="true"] { opacity: 1; }
 .thread-more:hover, .thread-more[aria-expanded="true"] { background: var(--hover); color: var(--ink); }
 .thread-more .icon { width: 17px; height: 17px; }
-/* Renaming, the title becomes a field; deleting, the row asks first. */
+/* Renaming, the title becomes a field; deleted, after its menu asked (.menu-ask), a conversation or a project fades,
+   then folds up, the rows under it closing up (Sean 2026-11-23: the pink row that asked had no way in or out). Its
+   height folds from what it is to nothing (interpolate-size); where a browser can't, it fades and then goes. */
+.thread-row.leaving, .project.leaving {
+  interpolate-size: allow-keywords; overflow: hidden; pointer-events: none;
+  animation: thread-leave 0.3s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+@keyframes thread-leave {
+  0% { opacity: 1; translate: 0 0; }
+  40% { opacity: 0; translate: 0 -2px; height: auto; min-height: 38px; }
+  100% { opacity: 0; translate: 0 -2px; height: 0; min-height: 0; }
+}
 .thread.editing { padding-inline: 4px; }
 .thread.editing input {
   flex: 1; min-width: 0; height: 32px; padding-inline: 8px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface);
   color: var(--ink); font: inherit; font-size: 14.5px; outline: none;
 }
-.thread.asking { gap: 6px; padding-inline-end: 6px; background: color-mix(in srgb, var(--bad) 7%, var(--surface)); }
-.thread.asking .thread-title { font-size: 13.5px; font-weight: 600; white-space: normal; line-height: 1.3; }
-.thread-yes, .thread-no { flex: none; height: 28px; padding-inline: 10px; border: 0; border-radius: 999px; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; transition: background-color 0.15s ease; }
-.thread-yes { background: var(--bad); color: #fff; }
-.thread-yes:hover { background: color-mix(in srgb, var(--bad) 85%, var(--ink)); }
-.thread-no { background: var(--hover); color: var(--ink); }
-.thread-no:hover { background: color-mix(in srgb, var(--ink) 12%, var(--surface)); }
 /* Projects, as ChatGPT lists them: a new one first, a row like the rest, in the same ink (it was grey until hovered:
    Sean 2026-11-18, "למה פרויקט חדש זה בצבע אפור כזה ברגיל"); then each project, its folder, its name, and how many
    conversations it holds in a small soft pill; open, its conversations set in under it along a fine line. */
@@ -2257,7 +2321,17 @@ button.tool-row:hover .step-icon { color: var(--ink-2); }
 /* Full access's note under the box (FullWarn in chat.tsx): a quiet line in the middle, its name first, the access's
    shield before it, as chat apps put their notes there (Sean's pick of three sketches, 2026-11-12). The access button
    itself stays plain, like the box's other round buttons. */
-.composer-warn { display: flex; justify-content: center; align-items: flex-start; gap: 6px; margin: 10px 32px 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.5; text-align: center; }
+/* Full access's note keeps its place under the box while hidden (Sean 2026-11-24), so turning full access on or off
+   moves nothing: it drops in out of the box's edge, fading, and goes back up into it a little quicker. The box's
+   own space under it is smaller beside the note, so there is not much more room below the box than without one. */
+.composer-warn {
+  display: flex; justify-content: center; align-items: flex-start; gap: 6px; margin: 6px 32px 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.5; text-align: center;
+  opacity: 0; translate: 0 -5px; visibility: hidden;
+  transition: opacity 0.15s ease-out, translate 0.15s cubic-bezier(0.23, 1, 0.32, 1), visibility 0s linear 0.15s;
+}
+.composer-warn.on { opacity: 1; translate: none; visibility: visible; transition: opacity 0.22s ease-out, translate 0.22s cubic-bezier(0.23, 1, 0.32, 1), visibility 0s; }
+.composer:has(> .composer-warn) { padding-bottom: 10px; }
+@media (prefers-reduced-motion: reduce) { .composer-warn { translate: none; } }
 .composer-warn .icon { flex: none; width: 14px; height: 14px; margin-top: 2px; }
 .composer-warn b { color: var(--ink-2); font-weight: 600; }
 .composer-hint { margin: 8px 8px 0; color: var(--ink-3); font-size: 12.5px; line-height: 1.45; }
@@ -2482,8 +2556,6 @@ details > summary { cursor: pointer; font-family: var(--head); font-weight: 600;
 .file-link:hover { background: var(--surface-2); }
 .file-link[aria-current="true"] { background: var(--soft); font-weight: 600; }
 .file-name { font-family: Consolas, monospace; font-size: 15px; }
-.run-row { display: flex; flex-wrap: wrap; gap: 4px 14px; padding-block: 7px; border-bottom: 1px solid var(--line); font-size: 14px; }
-.run-row:last-child { border-bottom: 0; }
 
 /* Login: pixel art on two canvases, one behind the form and one in front. The form's board is drawn on the one
    behind, in the forest's pixels; --px is the size of that pixel, set by the intro, for the fields' edges. */
@@ -2778,20 +2850,21 @@ html.forest .boot-paws { color: #ffffff; }
 }
 @keyframes boot-paw { 0% { opacity: 1; } 60% { opacity: 0.14; } }
 
-/* Lite, when the browser draws without the graphics card (public/boot.js): the sky stands still, the glass is
-   frosted without blurring what is behind it, the glow round the sparkles stops turning, and the window's
-   backdrop only dims. Those were what made the page crawl with hardware acceleration off. The sparkles' clouds
-   still drift (five small ones in one small circle, only moved, never repainted), and so do those they spread over
-   the box while they ask, for those moments; the glow about the box, which would be blurred anew every moment,
-   comes up and breathes but stands still. */
-html.lite .seek-sky *, html.lite .seek-ai::before { animation: none !important; }
-html.lite .smart-glow { animation: ai-glow-in 0.5s ease-out 0.35s backwards, ai-breathe 1.6s ease-in-out 0.85s infinite alternate; }
-html.lite :is(.seek-pill, .role-fan-item):not(.on) { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
+/* Lite, when the browser draws without the graphics card (public/boot.js): everything looks and moves as it
+   does with it, drawn the cheap way. The sky is painted on a canvas (ui/lite-sky.ts); the role buttons are the
+   same glass over it without blurring what is behind (soft gradients, which a blur hardly changes; blurred anew
+   over a moving sky it took most of a core), and the fan's roles, which open over the page's words, frosted
+   instead so the words behind stay out of the way. */
+html.lite .seek-pill:not(.on, .role-fan-item) { backdrop-filter: none; }
+html.lite .role-fan-item { backdrop-filter: none; background: linear-gradient(160deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--surface) 70%, transparent)); }
 html.lite .where-dialog::backdrop { backdrop-filter: none; background: rgb(0 0 0 / 45%); }
 @media (prefers-reduced-motion: reduce) {
   .pip *, .dots i, .btn, .login-card, .login-top .lang::before, .shell.entering, .boot *, .seek-sky *, .seek-pill, .seek-pill-more .icon, .role-fan, .seek-loading, .seek-ring, .seek-loading-mark, .seek-results > *, .seek-results .result, .result, .result::before, .result-act, .seek-pip, .seek-panel, .choice-option, .where-row, .where-change, .where-dialog, .where-dialog::backdrop, .thin-bar, .thin-bar::before, .select, .select > .icon, .select-panel, .more-menu, .more-menu :is(a, button), .nav > button .icon, .account .icon, .act-label, .mine, .thread-dot, .thread-mark svg, .typing-text, .threads, .steps-head > .icon, .composer-box, .chat-start, .peek-pip, .peek-say, .login-say, .smart-sky, .smart-sky::after, .smart-blob, .smart-glow, .smart-q, .smart-go, .smart-go::before, .seek-tools > .seek-icon, .seek-ai, .seek-ai::before, .seek-ai-lit, .ai-blob, .seek-go, .seek-go-slot { animation: none !important; transition: none !important; }
   .boot-paws svg { opacity: 0.6; }
-  .thread-mark.paws svg { opacity: 1; }
+  .thread-mark.ring { animation: thread-ring-turn 2.4s linear infinite !important; }
+  .thread-pin, .thread-end > :is(.thread-mark, .thread-dot) { scale: none !important; }
+  .thread-row.leaving, .project.leaving { animation: thread-fade 0.2s linear forwards; }
+  @keyframes thread-fade { to { opacity: 0; } }
   .pip-a { opacity: 1; }
 }
 
@@ -4459,3 +4532,184 @@ button.prof-chip .icon { width: 14px; height: 14px; color: var(--ink-3); transit
   .theme-frame { transition: none; }
 }
 @keyframes gallery-fade { from { opacity: 0; } }
+
+/* The settings screen (settings.tsx, Sean 2026-11-23): one topic at a time. The topics down the side, a soft shape
+   sliding under the one open; the topic's heading and a line about it; then framed groups of rows, each its name and
+   a short line at the start and its control at the end, a switch for on and off, borderless pills and light links for
+   actions. A topic comes in with its groups rising one after another. */
+.settings .set-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 44px; align-items: start; }
+.set-nav { position: sticky; top: 20px; display: flex; flex-direction: column; gap: 2px; }
+.set-nav-mark {
+  position: absolute; top: 0; left: 0; border-radius: 12px; background: var(--soft); pointer-events: none;
+  transition: transform 0.28s cubic-bezier(0.23, 1, 0.32, 1), width 0.28s cubic-bezier(0.23, 1, 0.32, 1), height 0.28s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.set-nav button {
+  position: relative; display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 12px;
+  background: none; color: var(--ink-2); font: inherit; font-size: 15.5px; font-weight: 500; text-align: start; white-space: nowrap; cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+}
+.set-nav button .icon { width: 19px; height: 19px; transition: color 0.2s ease; }
+.set-nav button[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.set-nav button[aria-selected="true"] .icon { color: var(--accent); }
+.set-nav button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.set-nav-name { flex: none; }
+/* A topic that is on (the daily run, the alerts) has a green dot, one that needs something an amber one; it grows in
+   and shrinks away as that changes. */
+.set-nav-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--good); opacity: 0; scale: 0.3; transition: opacity 0.2s ease, scale 0.25s cubic-bezier(0.23, 1, 0.32, 1), background-color 0.2s ease; }
+.set-nav-dot.on, .set-nav-dot.warn { opacity: 1; scale: 1; }
+.set-nav-dot.warn { background: var(--warn); }
+@media (hover: hover) and (pointer: fine) {
+  .set-nav button:not([aria-selected="true"]):hover { color: var(--ink); background: var(--hover-soft); }
+}
+
+.set-panel { display: flex; flex-direction: column; gap: 30px; min-width: 0; }
+.set-panel > * { animation: set-in 0.28s cubic-bezier(0.23, 1, 0.32, 1) both; }
+.set-panel > :nth-child(2) { animation-delay: 35ms; }
+.set-panel > :nth-child(3) { animation-delay: 70ms; }
+.set-panel > :nth-child(4) { animation-delay: 105ms; }
+.set-panel > :nth-child(n + 5) { animation-delay: 140ms; }
+@keyframes set-in { from { opacity: 0; transform: translateY(10px); } }
+@keyframes set-fade { from { opacity: 0; } }
+.set-panel-head h2 { font-size: 26px; font-weight: 700; }
+.set-panel-head p { max-width: 64ch; margin-top: 6px; color: var(--ink-2); font-size: 15.5px; }
+
+.set-group { display: flex; flex-direction: column; gap: 10px; }
+.set-group-head { display: flex; flex-direction: column; gap: 3px; padding-inline: 4px; }
+.set-group-head h3 { font-size: 16.5px; font-weight: 600; }
+.set-group-head p { max-width: 66ch; color: var(--ink-2); font-size: 14px; }
+.set-frame { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); overflow: hidden; }
+.set-frame > * + *:not(.set-fold) { border-top: 1px solid var(--line); }
+.set-anchor { scroll-margin-top: 20px; }
+
+.set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 28px; min-height: 64px; padding: 14px 20px; }
+.set-row.wide { grid-template-columns: minmax(0, 1fr); }
+.set-row.toggle { cursor: pointer; transition: background-color 0.2s ease; }
+@media (hover: hover) and (pointer: fine) { .set-row.toggle:hover { background: var(--hover-soft); } }
+.set-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.set-label { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--ink); font-size: 15.5px; font-weight: 600; }
+.set-row.lead .set-label { font-size: 17px; }
+.set-hint { max-width: 62ch; color: var(--ink-2); font-size: 13.5px; line-height: 1.5; }
+.set-hint b { font-weight: 600; color: var(--ink); }
+.set-control { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+.set-row.wide .set-control { justify-content: flex-start; }
+.set-control > :is(input[type="text"], input[type="email"], input[type="password"]), .set-control > .select { width: 280px; max-width: 100%; }
+.set-row.wide .set-control > :is(input[type="text"], input[type="email"], input[type="password"]) { width: 100%; }
+.set-inline { flex-wrap: nowrap; width: 100%; }
+.set-inline > input { flex: 1; min-width: 0; width: auto !important; }
+.set-num { width: 112px; }
+.set-range { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.set-range-word { color: var(--ink-2); font-size: 14.5px; }
+.set-currency { width: 76px; }
+.set-block { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
+.set-block h4, .settings .role-field-name { margin: 0; }
+.set-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 20px; background: var(--surface-2); }
+.set-empty { padding: 18px 20px; color: var(--ink-2); font-size: 14px; }
+.set-tip { max-width: 70ch; padding-inline: 4px; color: var(--ink-2); font-size: 13.5px; }
+
+/* On and off: a round track, grey or green, and its white knob sliding across. */
+.set-switch {
+  position: relative; flex: none; width: 46px; height: 28px; padding: 0; border: 0; border-radius: 999px;
+  background: color-mix(in srgb, var(--ink-3) 42%, var(--surface)); cursor: pointer; transition: background-color 0.22s ease;
+}
+.set-switch-knob {
+  position: absolute; top: 3px; inset-inline-start: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 24%), 0 1px 1px rgb(0 0 0 / 8%); transition: transform 0.25s cubic-bezier(0.23, 1, 0.32, 1);
+}
+.set-switch[aria-checked="true"] { background: var(--accent); }
+.set-switch[aria-checked="true"] .set-switch-knob { transform: translateX(18px); }
+[dir="rtl"] .set-switch[aria-checked="true"] .set-switch-knob { transform: translateX(-18px); }
+.set-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.set-switch:disabled { opacity: 0.5; cursor: default; }
+
+/* Actions: a soft grey pill, or the mint one for a group's main action; no border and no shadow. */
+.set-act {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 18px; border: 0; border-radius: 999px;
+  background: var(--soft); color: var(--ink); font: inherit; font-size: 14.5px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background-color 0.2s ease, opacity 0.2s ease, transform 0.12s ease-out;
+}
+.set-act .icon { width: 17px; height: 17px; }
+.set-act .spinner { width: 14px; height: 14px; }
+.set-act.go { background: var(--primary); color: var(--primary-ink); }
+.set-act:active:not(:disabled) { transform: scale(0.97); }
+.set-act:disabled { opacity: 0.5; cursor: default; }
+.set-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .set-act:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 9%, var(--surface)); }
+  .set-act.go:hover:not(:disabled) { background: color-mix(in srgb, var(--primary) 70%, var(--primary-edge)); }
+}
+.set-link {
+  display: inline-flex; align-items: center; gap: 5px; margin-inline-start: -10px; padding: 5px 10px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--accent); font: inherit; font-size: 14.5px; font-weight: 600; text-decoration: none; cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease;
+}
+.set-foot .set-link:not(:first-child) { margin-inline-start: 0; }
+.set-link .icon { width: 16px; height: 16px; }
+.set-link.quiet { color: var(--ink-2); }
+.set-link:disabled { opacity: 0.5; cursor: default; }
+.set-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .set-link:hover:not(:disabled) { background: var(--hover); }
+  .set-link.quiet:hover:not(:disabled) { color: var(--bad); }
+}
+
+/* How an action went, and the state of a connection: a round mark, green while connected, amber while waiting. */
+.set-status { display: inline-flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--ink-2); font-size: 14px; animation: set-fade 0.2s ease; }
+.set-status.bad { color: var(--bad); }
+.set-status.warn { color: var(--warn); }
+.set-status .icon { flex: none; width: 17px; height: 17px; margin-top: 2px; }
+.set-status .spinner { flex: none; margin-top: 3px; }
+.set-state {
+  display: inline-flex; align-items: center; gap: 7px; padding: 4px 12px; border-radius: 999px; background: var(--hover-soft); color: var(--ink-2);
+  font-size: 13px; font-weight: 600; white-space: nowrap; animation: set-fade 0.2s ease;
+}
+.set-state::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.set-state:has(.spinner)::before { display: none; }
+.set-state .spinner { width: 12px; height: 12px; }
+.set-state.on { background: var(--good-soft); color: var(--accent); }
+.set-state.wait { background: var(--warn-soft); color: var(--warn); }
+.set-foot.ready .set-state { white-space: normal; }
+
+/* The bot's steps, numbered in small rounds, folding away once it is connected. */
+.set-fold { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows 0.3s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.2s ease; }
+.set-fold.open { grid-template-rows: 1fr; opacity: 1; }
+.set-fold > div { min-height: 0; overflow: hidden; }
+.set-steps { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 16px 20px; border-top: 1px solid var(--line); list-style: none; }
+.set-steps li { display: flex; align-items: flex-start; gap: 12px; font-size: 14.5px; line-height: 1.55; overflow-wrap: anywhere; }
+.set-step-n { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--soft); color: var(--ink-2); font-size: 13px; font-weight: 700; }
+
+/* The daily run's times, each with its round × beside it. */
+.run-time-x { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 50%; background: none; color: var(--ink-3); cursor: pointer; transition: background-color 0.2s ease, color 0.2s ease; }
+.run-time-x .icon { width: 15px; height: 15px; }
+@media (hover: hover) and (pointer: fine) { .run-time-x:hover { background: color-mix(in srgb, var(--bad) 10%, var(--surface)); color: var(--bad); } }
+
+/* The last runs: when, and under it what came of it. */
+.set-runs-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; padding: 14px 20px; }
+.set-frame > .set-status { padding: 10px 20px; }
+.set-run { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 4px 16px; padding: 12px 20px; font-size: 14px; }
+.set-run-when { justify-self: start; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.set-run-what { display: flex; flex-direction: column; gap: 2px; color: var(--ink-2); }
+.set-run-what strong { color: var(--ink); font-weight: 600; }
+.set-run-what .bad { color: var(--bad); }
+
+.settings .segmented button { transition: background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease; }
+
+/* A narrower screen: the topics along the top, scrolling sideways, staying as the page scrolls. */
+@media (max-width: 1000px) {
+  .settings .set-layout { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .set-nav { top: 0; z-index: 5; flex-direction: row; gap: 4px; margin-inline: -16px; padding: 8px 16px; overflow-x: auto; background: var(--bg); scrollbar-width: none; }
+  .set-nav::-webkit-scrollbar { display: none; }
+  .set-nav button { flex: none; min-height: 40px; padding: 0 14px; gap: 8px; font-size: 15px; }
+  .set-nav-name { flex: none; }
+}
+@media (max-width: 640px) {
+  .set-row { grid-template-columns: minmax(0, 1fr); padding: 14px 16px; }
+  .set-row.toggle { grid-template-columns: minmax(0, 1fr) auto; }
+  .set-control { justify-content: flex-start; }
+  .set-control > :is(input[type="text"], input[type="email"], input[type="password"]), .set-control > .select { width: 100%; }
+  .set-block, .set-foot, .set-runs-head, .set-run, .set-steps { padding-inline: 16px; }
+  .set-run { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .set-panel > * { animation-name: set-fade; animation-duration: 0.2s; }
+  .set-nav-mark, .set-switch-knob { transition: none; }
+  .set-fold { transition: opacity 0.2s ease; }
+}

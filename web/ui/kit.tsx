@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Archive, ArchiveRestore, ArrowLeftRight, ArrowUp, Award, Bookmark, BookOpenText, BriefcaseBusiness, CalendarClock, Check, ChevronDown, ChevronLeft, ChevronRight, CircleEllipsis, Clapperboard, Cpu, createLucideIcon, Download, Ellipsis, ExternalLink, Feather, FileText, Folder, FolderGit2, FolderInput, FolderOpen, FolderPlus, Gauge,
   Gem, Globe, GraduationCap, Palette, LayoutGrid, Leaf, Link, ListChecks, LogIn, LogOut, Mail, MapPin, MessageCircle, MessageCircleDashed, Mic, Minus, Moon, PanelLeft, PanelRight, Pause, Pencil, Phone, Pin, PinOff, Play, Plus, RefreshCw, Search, Send, Settings, ShieldAlert, ShieldCheck, SlidersHorizontal,
-  Sparkles, Square, SquarePen, Sun, Trash2, TriangleAlert, User, UserPlus, X, Zap,
+  Bell, Sparkles, Square, SquarePen, Sun, Trash2, TriangleAlert, Upload, User, UserPlus, X, Zap,
   type LucideIcon,
 } from "lucide-react";
 import { translate, type Lang } from "./i18n";
@@ -309,7 +309,7 @@ const ICONS: Record<string, LucideIcon> = {
   "folder-plus": FolderPlus, move: FolderInput, "panel-left": PanelLeft, "panel-right": PanelRight,
   "access-ask": ShieldCheck, "access-auto": Zap, "access-full": ShieldAlert,
   "model-default": Cpu, "model-opus": Gem, "model-sonnet": Feather, "model-haiku": Leaf,
-  palette: Palette,
+  palette: Palette, bell: Bell, upload: Upload,
 };
 
 // filled is for the page you are on: the shape filled in, its inner lines cut out (see .icon.filled in the CSS).

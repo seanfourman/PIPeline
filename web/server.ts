@@ -10,6 +10,7 @@ import { createSession, createTaskSession, defaultEfforts, deleteSession, getSes
 import { AccountError, clearedCookie, createAuth, openedByHand, rememberedCookie, rememberedOf, sessionCookie, sessionOf } from "./auth";
 import { buildInterface, watchInterface } from "./build";
 import { createAutomation, mailWords, readMailAccount, saveMailAccount, sendMail, testMailHtml } from "./automation";
+import { connectBot, readTgAccount, sendTelegram, TgError, tgSaved, tgWords } from "./telegram-bot";
 import { chip, jobCard, mailPage, sectionHead } from "./mail-html";
 import { askInOrder, ENGINE_NAMES, engineOrder } from "./ai";
 import { ChatbotError, forgetKeys, keyStatus, PROVIDERS, type Provider } from "./chatbots";
@@ -128,6 +129,8 @@ const autoScores = createAutoScores({ dir: POSTINGS, profile: readProfile });
 
 const automation = createAutomation({
   loadSettings, loadState: (settings) => loadState(settings, autoScores), runSession: runUnattended, sendMail: (mail) => sendMail(mail), computer: computerId(),
+  // The CVs on the user's Telegram bot (telegram-bot.ts), once it knows their chat.
+  telegram: { ready: () => Boolean(readTgAccount()), send: (message, lang) => sendTelegram(message, lang) },
   // The search, with no AI: LinkedIn and freehire for every role, and the Telegram channels (scraper.ts searchDaily).
   search: (title, timeout) => runTask(title, (steps, signal) => searchDaily({ steps, signal, lang: language() }), timeout),
   // The daily run's portals check: the employers and the Israeli boards, which the run's agent doesn't search. An
@@ -148,8 +151,21 @@ const automation = createAutomation({
   // Each job picked, applied for by the server with a few calls to the AI (applier.ts), a CV only for a strong or good fit.
   applyJob: (url, title, timeout) => runTask(title, (steps, signal) => applyJob({ input: url, steps, signal, lang: language(), ask: askFor(steps), strict: true }), timeout),
 });
-// Only the address leaves the server. The password is written once and never read back.
-const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), next: automation.next(), mailUser: readMailAccount()?.user ?? "", alerts: watcher.status() });
+// The Telegram bot as the settings show it. While its token is saved and the user hasn't written to it yet, each
+// look (the settings page asks every ten seconds) checks again, at most every five seconds, so pressing Start in
+// Telegram connects it with nothing more to do here.
+let botLooked = 0;
+const botStatus = () => {
+  const saved = tgSaved();
+  if (saved.token && !saved.chat && Date.now() - botLooked > 5000) {
+    botLooked = Date.now();
+    connectBot().catch(() => {});
+  }
+  return saved;
+};
+// Only the address leaves the server, and of the bot its name and whom it writes to. The password and the token are
+// written once and never read back.
+const automationStatus = () => ({ running: automation.isRunning(), runs: automation.runs(), next: automation.next(), mailUser: readMailAccount()?.user ?? "", telegram: botStatus(), alerts: watcher.status() });
 
 const auth = createAuth();
 // The server's own run on the job list going now, "rank" or "scrape", or "" for none.
@@ -649,7 +665,7 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (parts[0] === "search") {
       try {
         const p = url.searchParams;
-        return json(await searchJobs(p.get("q") ?? "", p.get("days") ?? "14", p.get("market") ?? "all", p.get("mode") ?? "", loadSettings()));
+        return json(await searchJobs(p.get("q") ?? "", p.get("days") ?? "14", p.get("market") ?? "all", p.get("mode") ?? "", loadSettings(), "all", undefined, { asked: true }));
       } catch (err) {
         return json({ error: String((err as Error).message) }, 400);
       }
@@ -757,6 +773,20 @@ async function api(req: Request, url: URL): Promise<Response> {
       saveMailAccount(user, password);
       return json(automationStatus());
     }
+    // The Telegram bot's token, checked with Telegram and saved; the user's chat is then looked for (telegram-bot.ts).
+    if (parts[1] === "telegram") {
+      try {
+        await connectBot(String(body.token ?? ""));
+      } catch (err) {
+        if (err instanceof TgError) throw new EditError(err.message);
+        throw err;
+      }
+      return json(automationStatus());
+    }
+    if (parts[1] === "telegram-test") {
+      if (!readTgAccount()) throw new EditError("telegram_missing");
+      return json({ result: await sendTelegram({ kind: "text", text: tgWords(language()).test }, language()) });
+    }
     if (parts[1] === "test") {
       const to = loadSettings().automation.email || readMailAccount()?.user;
       if (!to) throw new EditError("mail_account_missing");
@@ -764,7 +794,8 @@ async function api(req: Request, url: URL): Promise<Response> {
       const html = testMailHtml(words.testTitle, words.testBody, words.kind, loadSettings().language);
       return json({ result: await sendMail({ to, subject: words.testSubject, body: words.testBody, html, attachments: [] }) });
     }
-    // A test of the live alerts: the computer's notice, and the email when an address is set.
+    // A test of the live alerts: the computer's notice, the email when an address is set, and the Telegram bot's
+    // message when it is connected and chosen.
     if (parts[1] === "alert-test") {
       const settings = loadSettings();
       const he = language() === "he";
@@ -782,7 +813,8 @@ async function api(req: Request, url: URL): Promise<Response> {
         footer: he ? "נשלח מההתראות החיות של פיפ. אפשר לכבות אותן בהגדרות." : "Sent by Pip's live alerts. They can be turned off in the settings.",
       });
       const mail = to ? await sendMail({ to, subject: he ? "פיפ: התראת בדיקה" : "Pip: a test alert", body: he ? "אם המייל הזה הגיע, ההתראות החיות יגיעו לכאן." : "If this email reached you, the live alerts will reach you here.", html, attachments: [] }) : { status: "no_address" as const };
-      return json({ desktop, mail });
+      const telegram = settings.alerts.telegram && readTgAccount() ? await sendTelegram({ kind: "text", text: tgWords(lang).alertTest }, lang) : null;
+      return json({ desktop, mail, telegram });
     }
   }
   // Phone access: linking takes the account's name on the site, unlinking gives it back (remote.ts).
@@ -949,16 +981,17 @@ const AUTOMATION_CHECK_MS = 60_000;
 setInterval(() => automation.tick(), AUTOMATION_CHECK_MS);
 
 // Live alerts (alerts.ts): the search watched with no AI, quietly, with no conversation for it, and each new job told by
-// email and on this computer as it is stored, by its group (groups.ts). Its two lanes start only while the daily run
+// email, on the user's Telegram bot and on this computer as it is stored, by its group (groups.ts). Its two lanes start only while the daily run
 // and a search of the user's own aren't going; a daily run that starts during one writes the list through the same
-// locked tool. The quick search looks one day back, newest first. In the half-hourly sweep, an employer read through a
+// locked tool. The quick search looks one day back, newest first, LinkedIn in it every 15 minutes at most (alerts.ts
+// LINKEDIN_EVERY_MS). In the half-hourly sweep, an employer read through a
 // board's page (AllJobs's or Drushim's, some 400 on two sites, read a page at a time) is read hourly; one on its own
 // site or a recruiting platform each time (25 minutes, under the sweep's half hour).
 const QUIET: Steps = { start() {}, done() {} };
 const throughBoard = (p: Portal) => !p.direct && Boolean(p.read && ("alljobs" in p.read || "drushim" in p.read));
 const watcher = createWatcher({
   loadSettings,
-  search: (found, signal) => searchDaily({ steps: QUIET, signal, lang: language(), found, days: "1" }),
+  search: (found, signal, o) => searchDaily({ steps: QUIET, signal, lang: language(), found, days: "1", linkedin: o.linkedin }),
   scan: (found, signal) => scanPortals({ steps: QUIET, signal, lang: language(), ask: async () => "", boards: true, discover: true, rest: 0.25, fresh: (p) => (throughBoard(p) ? 60 : 25), found }),
   busy: () => listBusy !== "" || automation.isRunning(),
   screen: (jobs) => { const s = loadSettings(); return worthTelling(jobs, { read: readForAlert, seniority: s.seniority, students: s.studentJobs }); },
@@ -985,6 +1018,11 @@ async function tellAlerts(jobs: AlertJob[]) {
   if (settings.alerts.desktop) await desktopNotice(text.headline, text.notice, text.open);
   const to = settings.automation.email || readMailAccount()?.user;
   if (settings.alerts.email && to) await sendMail({ to, subject: text.subject, body: text.body, html: text.html, attachments: [] });
+  // On Telegram too, once the bot knows the user's chat (Sean 2026-11-23: "אני לא מקבל הודעות בטלגרם על משרות").
+  if (settings.alerts.telegram && readTgAccount()) {
+    const sent = await sendTelegram({ kind: "text", text: text.chat }, language());
+    if (sent.status !== "sent") console.log(`live alert on Telegram: ${sent.status} ${sent.detail ?? ""}`);
+  }
 }
 
 // Every request, from this computer's browser or passed on from the phone by the site (remote.ts).

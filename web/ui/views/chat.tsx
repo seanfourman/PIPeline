@@ -69,11 +69,31 @@ function useThreadActions(current: string) {
   return { meta, remove };
 }
 
-// A conversation's ⋯: rename, pin or unpin, move to a project (the menu's second level, with a new project made right
-// there), archive or bring back, and delete. Its words are the menu's (PopMenu, near).
+// The ⋯ menu's level before a delete (Sean 2026-11-23, after the row turned pink to ask: "אחד המכוערים"): the question,
+// what would go under it in the quieter ink, and the two ways out, as the menu's own rows, rising in as they do. Cancel
+// takes the focus, so a key pressed by habit deletes nothing; either closes the menu.
+function DeleteAsk({ ask, what, note = "", onDelete }: { ask: string; what: string; note?: string; onDelete: () => void }) {
+  const { t } = useApp();
+  return (
+    <>
+      <div className="menu-ask"><strong>{ask}</strong><bdi>{what}</bdi>{note && <span>{note}</span>}</div>
+      <hr />
+      <button type="button" className="danger" onClick={onDelete}><Icon name="trash" />{t("chat.delete")}</button>
+      <button type="button" autoFocus><Icon name="close" />{t("chat.cancel")}</button>
+    </>
+  );
+}
+// A menu's level goes back to its first once the menu has shrunk away, not while it still shows.
+const MENU_GONE_MS = 200;
+// How long a deleted row takes to fade and fold away (thread-leave in styles.css) before it is deleted.
+const LEAVE_MS = 300;
+
+// A conversation's ⋯: pin or unpin, rename, move to a project (the menu's second level, with a new project made right
+// there), archive or bring back, and delete, asked first in the menu (DeleteAsk). Its words are the menu's (PopMenu,
+// near).
 function ThreadMenu({ thread, projects, onRename, onDelete }: { thread: Thread; projects: Project[]; onRename: () => void; onDelete: () => void }) {
   const { t, refresh } = useApp();
-  const [level, setLevel] = useState<"main" | "projects" | "new">("main");
+  const [level, setLevel] = useState<"main" | "projects" | "new" | "delete">("main");
   const [name, setName] = useState("");
   const { meta } = useThreadActions("");
   const move = (project: string) => meta(thread.id, { project });
@@ -82,15 +102,18 @@ function ThreadMenu({ thread, projects, onRename, onDelete }: { thread: Thread; 
     if (made) { await meta(thread.id, { project: made.id }); await refresh(); }
   };
   return (
-    <PopMenu className="thread-more" near label={t("chat.menu")} face={<Icon name="dots" />} onToggle={(open) => { if (!open) { setLevel("main"); setName(""); } }}>
+    <PopMenu className="thread-more" near label={t("chat.menu")} face={<Icon name="dots" />} onToggle={(open) => { if (!open) setTimeout(() => { setLevel("main"); setName(""); }, MENU_GONE_MS); }}>
       {level === "main" ? <>
-        <button type="button" onClick={onRename}><Icon name="edit" />{t("chat.rename")}</button>
+        {/* Pinning first (Sean 2026-11-23), as the row's own pin beside the ⋯ is. */}
         {!thread.archived && <button type="button" onClick={() => meta(thread.id, { pinned: !thread.pinned })}><Icon name={thread.pinned ? "unpin" : "thread-pin"} />{t(thread.pinned ? "chat.unpin" : "chat.pin")}</button>}
+        <button type="button" onClick={onRename}><Icon name="edit" />{t("chat.rename")}</button>
         <button type="button" data-keep="" onClick={() => setLevel("projects")}><Icon name="move" /><span className="menu-grow">{t("chat.moveTo")}</span><Icon name="onward" /></button>
         <button type="button" onClick={() => meta(thread.id, { archived: !thread.archived })}><Icon name={thread.archived ? "unarchive" : "archive"} />{t(thread.archived ? "chat.unarchive" : "chat.archive")}</button>
         <hr />
-        <button type="button" className="danger" onClick={onDelete}><Icon name="trash" />{t("chat.delete")}</button>
-      </> : level === "projects" ? <>
+        <button type="button" className="danger" data-keep="" onClick={() => setLevel("delete")}><Icon name="trash" />{t("chat.delete")}</button>
+      </> : level === "delete" ? (
+        <DeleteAsk ask={t("chat.deleteAsk")} what={friendlyTitle(thread.title, t)} onDelete={onDelete} />
+      ) : level === "projects" ? <>
         <button type="button" data-keep="" onClick={() => setLevel("main")}><Icon name="back" />{t("chat.back")}</button>
         <hr />
         <button type="button" aria-checked={!thread.project} role="menuitemradio" onClick={() => move("")}><Icon name={!thread.project ? "check" : "minus"} />{t("chat.noProject")}</button>
@@ -111,19 +134,21 @@ function ThreadMenu({ thread, projects, onRename, onDelete }: { thread: Thread; 
   );
 }
 
-// What a conversation in the list shows while it isn't done (Sean picked them, 2026-11-22): Pip's paw prints walking
-// while he works, the way the loading screen's do, one paw waving while he waits for your answer, a red dot when it
-// stopped.
+// What a conversation in the list shows while it isn't done: a thin ring turning in Pip's green while he works (Sean
+// went back to it from the paw prints on 2026-11-23, "אני מעדיף את הסימן המסתובב"), one paw waving while he waits for
+// your answer, a red dot when it stopped.
 const PAW = "M2 0h2v2h-2zM5 0h2v2h-2zM0 2h2v2h-2zM7 2h2v2h-2zM3 3h3v1h-3zM2 4h5v1h-5zM1 5h7v2h-7zM2 7h2v1h-2zM5 7h2v1h-2z";
 const Paw = () => <svg viewBox="0 0 9 8" shapeRendering="crispEdges" aria-hidden="true"><path d={PAW} fill="currentColor" /></svg>;
 function ThreadMark({ status, label }: { status: string; label: string }) {
-  if (status === "running") return <span className="thread-mark paws" role="img" aria-label={label}><Paw /><Paw /><Paw /></span>;
+  if (status === "running") return <span className="thread-mark ring" role="img" aria-label={label} />;
   if (status === "waiting") return <span className="thread-mark wave" role="img" aria-label={label}><Paw /></span>;
   return <span className={`thread-dot ${status}`} role="img" aria-label={label} />;
 }
 
-// One conversation in the list: its title leading to it, a mark while it works, waits or stopped, and its ⋯. Renaming,
-// the title becomes a field (Enter or leaving it saves, Escape keeps the old one); deleting, the row asks first.
+// One conversation in the list: its title leading to it, and at its very end a mark while it works, waits or stopped,
+// which under the pointer gives its place to the ⋯, with a pin beside it (Sean 2026-11-23). Renaming, the title becomes
+// a field (Enter or leaving it saves, Escape keeps the old one); deleted, once its menu has asked, it fades and folds
+// away (styles.css, .leaving) before it is gone, the rows under it closing up. If the delete fails, it comes back.
 // A title with what was searched for marked in it, wherever it falls, in any case of letters.
 function Marked({ text, q }: { text: string; q: string }) {
   const at = q ? text.toLocaleLowerCase().indexOf(q.toLocaleLowerCase()) : -1;
@@ -135,54 +160,57 @@ function Marked({ text, q }: { text: string; q: string }) {
 function ThreadRow({ thread, current, projects, onPick, mark = "" }: { thread: Thread; current: string; projects: Project[]; onPick: () => void; mark?: string }) {
   const { t } = useApp();
   const { meta, remove } = useThreadActions(current);
-  const [mode, setMode] = useState<"" | "rename" | "delete">("");
+  const [mode, setMode] = useState<"" | "rename">("");
   const [name, setName] = useState(thread.title);
+  const [leaving, setLeaving] = useState(false);
   const title = friendlyTitle(thread.title, t);
   const save = () => { const next = name.trim(); if (next && next !== thread.title) void meta(thread.id, { title: next }); setMode(""); };
+  const drop = () => { setLeaving(true); setTimeout(() => { void remove(thread.id).finally(() => setLeaving(false)); }, LEAVE_MS); };
   if (mode === "rename") return (
     <div className="thread editing">
       <input autoFocus value={name} maxLength={200} aria-label={t("chat.rename")} dir="auto" onChange={(e) => setName(e.target.value)} onBlur={save}
         onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setName(thread.title); setMode(""); } }} />
     </div>
   );
-  if (mode === "delete") return (
-    <div className="thread asking" role="alertdialog" aria-label={t("chat.deleteAsk")}>
-      <span className="thread-title">{t("chat.deleteAsk")}</span>
-      <button type="button" className="thread-yes" onClick={() => { setMode(""); void remove(thread.id); }}>{t("chat.delete")}</button>
-      <button type="button" className="thread-no" onClick={() => setMode("")}>{t("chat.cancel")}</button>
-    </div>
-  );
   return (
-    <div className={`thread thread-row ${thread.id === current ? "current" : ""}`}>
+    <div className={`thread thread-row ${thread.id === current ? "current" : ""} ${leaving ? "leaving" : ""}`}>
       <a className="thread-link" href={`/chat/${thread.id}`} aria-current={thread.id === current ? "page" : undefined} onClick={onPick}>
         <span className="thread-title" dir="auto"><Marked text={title} q={mark} /></span>
       </a>
-      {thread.status !== "idle" && <ThreadMark status={thread.status} label={t(`session.${thread.status}`)} />}
-      <ThreadMenu thread={thread} projects={projects} onRename={() => { setName(thread.title); setMode("rename"); }} onDelete={() => setMode("delete")} />
+      {!thread.archived && (
+        <button type="button" className="thread-pin" aria-pressed={Boolean(thread.pinned)} aria-label={t(thread.pinned ? "chat.unpin" : "chat.pin")} onClick={() => void meta(thread.id, { pinned: !thread.pinned })}>
+          <Icon name={thread.pinned ? "unpin" : "thread-pin"} />
+        </button>
+      )}
+      <span className="thread-end">
+        {thread.status !== "idle" && <ThreadMark status={thread.status} label={t(`session.${thread.status}`)} />}
+        <ThreadMenu thread={thread} projects={projects} onRename={() => { setName(thread.title); setMode("rename"); }} onDelete={drop} />
+      </span>
     </div>
   );
 }
 // A project in the list: its folder, its name and how many conversations it holds, opening to show them; its ⋯ renames
-// or deletes it (its conversations only leave it). Renaming and deleting ask in the row, as a conversation's do.
+// or deletes it (its conversations only leave it). Renaming is in the row, as a conversation's; deleting is asked in
+// the menu (DeleteAsk), and the project then fades and folds away, as a conversation does.
 function ProjectRow({ project, threads, open, onToggle, current, projects, onPick }: {
   project: Project; threads: Thread[]; open: boolean; onToggle: () => void; current: string; projects: Project[]; onPick: () => void;
 }) {
   const { t, refresh } = useApp();
-  const [mode, setMode] = useState<"" | "rename" | "delete">("");
+  const [mode, setMode] = useState<"" | "rename">("");
+  const [asking, setAsking] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [name, setName] = useState(project.name);
   const save = () => { const next = name.trim(); if (next && next !== project.name) void api(`projects/${project.id}`, { name: next }).then(() => refresh()).catch(() => {}); setMode(""); };
+  const drop = () => {
+    setLeaving(true);
+    setTimeout(() => { void api(`projects/${project.id}/delete`, {}).then(() => refresh()).catch(() => {}).finally(() => setLeaving(false)); }, LEAVE_MS);
+  };
   return (
-    <div className="project">
+    <div className={`project ${leaving ? "leaving" : ""}`}>
       {mode === "rename" ? (
         <div className="thread editing">
           <input autoFocus value={name} maxLength={80} aria-label={t("chat.rename")} dir="auto" onChange={(e) => setName(e.target.value)} onBlur={save}
             onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setName(project.name); setMode(""); } }} />
-        </div>
-      ) : mode === "delete" ? (
-        <div className="thread asking" role="alertdialog" aria-label={t("chat.deleteProjectAsk")}>
-          <span className="thread-title">{t("chat.deleteProjectAsk")}</span>
-          <button type="button" className="thread-yes" onClick={() => { setMode(""); void api(`projects/${project.id}/delete`, {}).then(() => refresh()).catch(() => {}); }}>{t("chat.delete")}</button>
-          <button type="button" className="thread-no" onClick={() => setMode("")}>{t("chat.cancel")}</button>
         </div>
       ) : (
         <div className="thread project-row">
@@ -191,10 +219,12 @@ function ProjectRow({ project, threads, open, onToggle, current, projects, onPic
             <bdi className="thread-title">{project.name}</bdi>
             <span className="project-count">{threads.length}</span>
           </button>
-          <PopMenu className="thread-more" near label={t("chat.projectMenu")} face={<Icon name="dots" />}>
-            <button type="button" onClick={() => { setName(project.name); setMode("rename"); }}><Icon name="edit" />{t("chat.rename")}</button>
-            <hr />
-            <button type="button" className="danger" onClick={() => setMode("delete")}><Icon name="trash" />{t("chat.delete")}</button>
+          <PopMenu className="thread-more" near label={t("chat.projectMenu")} face={<Icon name="dots" />} onToggle={(on) => { if (!on) setTimeout(() => setAsking(false), MENU_GONE_MS); }}>
+            {asking ? <DeleteAsk ask={t("chat.deleteProject")} what={project.name} note={t("chat.projectStays")} onDelete={drop} /> : <>
+              <button type="button" onClick={() => { setName(project.name); setMode("rename"); }}><Icon name="edit" />{t("chat.rename")}</button>
+              <hr />
+              <button type="button" className="danger" data-keep="" onClick={() => setAsking(true)}><Icon name="trash" />{t("chat.delete")}</button>
+            </>}
           </PopMenu>
         </div>
       )}
@@ -399,12 +429,14 @@ function Threads({ id, onPick, onHide, folded, onOpen }: { id: string; onPick: (
 // again. Enter sends and Shift+Enter starts a new line; empty, it takes the page's direction, so the hint starts
 // on the page's side. Images and files come in by the +, by pasting, or dropped on the box; each is sent up as
 // it comes and shows over the words, with a mark while it goes up and an × to take it off. onSend gets their ids.
-// Under it, warn is full access's note (FullWarn) and hint a quieter line. glow: the shape of voice typing's glow
+// Under it, warn is full access's note (FullWarn), shown while warnOn, and hint a quieter line. The note keeps its
+// place under the box while hidden, so turning full access on or off moves nothing (Sean 2026-11-24); it fades in
+// and out there. glow: the shape of voice typing's glow
 // behind it, a halo round a box in the middle of the page or rising behind one at its foot (VoiceGlow).
 // temporary: a temporary conversation's box, whose attachments go where nothing syncs (uploads.ts TEMP_UPLOADS).
-function Composer({ text, setText, onSend, onStop, working = false, placeholder, tools, warn, hint, input, autoFocus, glow = "rise", temporary = false }: {
+function Composer({ text, setText, onSend, onStop, working = false, placeholder, tools, warn, warnOn = false, hint, input, autoFocus, glow = "rise", temporary = false }: {
   text: string; setText: (v: string) => void; onSend: (files: string[]) => void; onStop?: () => void; working?: boolean; placeholder: string;
-  tools?: React.ReactNode; warn?: React.ReactNode; hint?: React.ReactNode; input?: React.RefObject<HTMLTextAreaElement>; autoFocus?: boolean;
+  tools?: React.ReactNode; warn?: React.ReactNode; warnOn?: boolean; hint?: React.ReactNode; input?: React.RefObject<HTMLTextAreaElement>; autoFocus?: boolean;
   glow?: "halo" | "rise"; temporary?: boolean;
 }) {
   const { t } = useApp();
@@ -510,13 +542,13 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
         </div>
       </div>
       {errors.map((line) => <p key={line} className="composer-error" role="alert"><Icon name="warn" /><span>{line}</span></p>)}
-      {warn && <p className="composer-warn" role="note"><Icon name="access-full" /><span>{warn}</span></p>}
+      {warn && <p className={`composer-warn ${warnOn ? "on" : ""}`} role="note" aria-hidden={!warnOn}><Icon name="access-full" /><span>{warn}</span></p>}
       {hint && <p className="composer-hint" role="note">{hint}</p>}
     </form>
   );
 }
 
-// Under the box while full access is picked: a quiet line in the middle, its name first, as chat apps put their
+// Under the box, shown while full access is picked: a quiet line in the middle, its name first, as chat apps put their
 // notes there (Sean's pick of three sketches, 2026-11-12), with the access's shield.
 function FullWarn() {
   const { t } = useApp();
@@ -767,7 +799,7 @@ function NewConversation({ onList }: { onList: () => void }) {
         <Composer
           text={text} setText={setText} onSend={(files) => { go(text.trim(), files)?.catch(() => {}); }} placeholder={t("chat.newPlaceholder")} input={input} autoFocus glow="halo" temporary={temporary}
           tools={plain ? null : <>{!codex && <ModelMenu model={model} effort={effort} onModel={setModel} onEffort={setEffort} />}<AccessPicker value={access} onChange={setAccess} /></>}
-          warn={!plain && access === "full" ? <FullWarn /> : ""} hint={codex ? t("chat.ai.codex", MAKERS[first]) : plain ? t("chat.ai.plain", MAKERS[first]) : ""}
+          warn={plain ? "" : <FullWarn />} warnOn={access === "full"} hint={codex ? t("chat.ai.codex", MAKERS[first]) : plain ? t("chat.ai.plain", MAKERS[first]) : ""}
         />
         <div className="chat-starts" role="group" aria-label={t("chat.suggest")}>
           {/* Rows under the box, as ChatGPT's suggestions: an icon, the start's name and what it does, quiet until hovered
@@ -940,7 +972,7 @@ function useToolLabel() {
 // writing mint, judging amber, keeping pink.
 const TOOL_ICONS: Record<string, string> = {
   FetchPosting: "site", WebFetch: "site", WebSearch: "find", SearchRole: "find", ReadPortal: "portals", ReadChannel: "portals", Read: "file", Glob: "files", Grep: "find",
-  Write: "edit", Edit: "edit", NotebookEdit: "edit", Bash: "tools", DraftCv: "edit", ReviewCv: "rules", BuildCv: "apps", EvaluateFit: "gauge",
+  Write: "edit", Edit: "edit", NotebookEdit: "edit", Bash: "tools", DraftCv: "edit", AddKeywords: "edit", ReviewCv: "rules", BuildCv: "apps", EvaluateFit: "gauge",
   FitCheck: "gauge", RankJob: "gauge", SaveJobs: "saved", SaveApplication: "saved", Skill: "readme", Agent: "ai", Task: "ai", TodoWrite: "rules",
   AskUserQuestion: "chat",
 };
@@ -1452,7 +1484,7 @@ export function Conversation({ id, onList, bare = false }: { id: string; onList?
       <Composer
         text={text} setText={setText} onSend={send} onStop={stop} working={working || background.length > 0} placeholder={t("chat.message")} temporary={Boolean(session?.temporary)}
         tools={plain ? null : <AccessPicker value={access} onChange={changeAccess} />}
-        warn={!plain && access === "full" ? <FullWarn /> : ""}
+        warn={plain ? "" : <FullWarn />} warnOn={access === "full"}
       />
     </div>
   );

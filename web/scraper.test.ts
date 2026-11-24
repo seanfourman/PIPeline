@@ -223,11 +223,11 @@ describe("scraper", () => {
     const kept = (titles: string[]) => { const judged = judgeByRules(titles.map((title) => ({ title, tier: "unknown" })), mine, "en"); return titles.filter((_, i) => judged.get(i)?.keep); };
     expect(kept([
       "Web Developer", "React Native Developer בחברת סטארט-אפ", "AI Engineer", "NLP Research Engineer", "System Integration Engineer", "בודק/ת תוכנה (QA)", "מפתח/ת ETL",
-      "Junior SW Engineer - Virtual Platforms", "Reinforcement Learning Researcher", "מהנדס/ת פיתוח אלגוריתמי עיבוד אות",
+      "Junior SW Engineer - Virtual Platforms", "Reinforcement Learning Researcher", "מהנדס/ת פיתוח אלגוריתמי עיבוד אות", "AI Builder, Marketing Technology (Junior)",
       "מפעיל/ת מכונה", "Electrical Power Systems Engineer", "כלכלן/ית רכש", "AI Video Creator", "Junior Marketing Coordinator- Cloud", "נציג/ת פיתוח עסקי Full Time", "מהנדס/ת תהליך", "מוביל/ת איכות",
     ])).toEqual([
       "Web Developer", "React Native Developer בחברת סטארט-אפ", "AI Engineer", "NLP Research Engineer", "System Integration Engineer", "בודק/ת תוכנה (QA)", "מפתח/ת ETL",
-      "Junior SW Engineer - Virtual Platforms", "Reinforcement Learning Researcher", "מהנדס/ת פיתוח אלגוריתמי עיבוד אות",
+      "Junior SW Engineer - Virtual Platforms", "Reinforcement Learning Researcher", "מהנדס/ת פיתוח אלגוריתמי עיבוד אות", "AI Builder, Marketing Technology (Junior)",
     ]);
     // With no place given, an excluded place the title names counts.
     expect(kept(["Software Engineer - Kiryat Gat", "Software Engineer, Ashkelon", "Software Engineer"])).toEqual(["Software Engineer"]);

@@ -11,6 +11,7 @@ import { REPO } from "./policy";
 import type { Settings } from "./settings";
 import { APP_DIR, cvFileName } from "./user";
 import { canSeal, isSealed, seal, unseal } from "./vault";
+import type { TgMessage, TgResult } from "./telegram-bot";
 
 const STATE_FILE = path.join(APP_DIR, "automation.json");
 // Outside the project, so a session's free reads of the project cannot reach the password.
@@ -31,7 +32,8 @@ export const applyPrompt = (url: string) => `${UNATTENDED}\n\nRead .claude/comma
 export type MailResult = { status: "sent" | "no_address" | "no_account" | "failed"; detail?: string };
 // "rank" is an older run's AI ranking, kept in its history.
 export type RunStep = { step: "search" | "portals" | "read" | "rank" | "apply" | "stopped"; company?: string; session?: string; ok: boolean; note?: string };
-export type Run = { started: string; finished?: string; trigger: "schedule" | "manual"; steps: RunStep[]; drafted: string[]; mail: MailResult | null };
+// telegram: how its messages went (telegram-bot.ts), when the run sent any there.
+export type Run = { started: string; finished?: string; trigger: "schedule" | "manual"; steps: RunStep[]; drafted: string[]; mail: MailResult | null; telegram?: TgResult | null };
 // lastSlot is the run time the last run stood for, "2026-11-05 13:00"; an older file has only lastRunDate.
 type State = { lastRunDate: string; lastSlot?: string; tried: string[]; runs: Run[] };
 // score is the AI's, when the user asked for one; auto the automatic one, by the job's posting or its title alone (autoBasis).
@@ -57,6 +59,9 @@ export type Deps = {
   // a CV only for a strong or good fit. Without it, each job is /apply as an agent (applyPrompt), at many times the cost.
   applyJob?: (url: string, title: string, timeoutMs: number) => Promise<{ id: string; ok: boolean; text: string }>;
   sendMail: (mail: Mail) => Promise<MailResult>;
+  // The user's Telegram bot (telegram-bot.ts), ready once it knows their chat. The settings' delivery says where the
+  // run's messages go.
+  telegram?: { ready: () => boolean; send: (message: TgMessage, lang: "he" | "en") => Promise<TgResult> };
   stateFile?: string;
   root?: string;
   now?: () => Date;
@@ -68,13 +73,18 @@ export type Deps = {
 const WORDS = {
   he: {
     title: { search: "הריצה היומית: חיפוש", portals: "הריצה היומית: פורטלים", read: "הריצה היומית: קריאת המשרות", apply: "הריצה היומית: " },
-    drafted: (n: number) => `נוצרו ${n} קורות חיים. כדאי לבדוק כל אחד ולשלוח אותו בעצמך.`,
+    jobSubject: (company: string, title: string) => `קורות חיים: ${company}, ${title}`,
+    jobLead: "הקובץ מצורף, בשם שאפשר לשלוח למעסיק כמו שהוא. כדאי לעבור עליו ולהגיש בעצמך.",
+    restSubject: "חיפוש עבודה: סיכום הריצה",
+    restHeading: "סיכום הריצה",
+    restLead: (n: number) => (n === 1 ? "קורות החיים נשלחו במייל נפרד. כאן מה שלא הסתדר." : "קורות החיים נשלחו במיילים נפרדים, מייל לכל משרה. כאן מה שלא הסתדר."),
     none: "הריצה הסתיימה בלי קורות חיים חדשים.",
     noCv: "לא נוצרו קורות חיים.",
     ats: "ציון ATS",
     card: "ציון לפי מה שכל חברה מפרסמת",
     noScore: "אין",
     failed: "שלבים שלא הושלמו:",
+    noCvFor: "בלי קורות חיים:",
     unfinished: "לא הסתיים",
     footer: "הפרטים המלאים בשיחות, באתר המקומי.",
     subject: (n: number) => `חיפוש עבודה: ${n} קורות חיים חדשים`,
@@ -82,9 +92,8 @@ const WORDS = {
     testSubject: "חיפוש עבודה: מייל בדיקה",
     testBody: "אם הגיע אליך המייל הזה, הריצה היומית תוכל לשלוח לך קורות חיים.",
     kind: "הריצה היומית",
-    heading: (n: number) => (n === 1 ? "קורות חיים חדשים מחכים לך" : `${n} קורות חיים חדשים מחכים לך`),
+    heading: "קורות חיים חדשים מחכים לך",
     headingNone: "היום בלי קורות חיים חדשים",
-    lead: "הקבצים מצורפים למייל. כדאי לעבור על כל אחד ולשלוח אותו בעצמך.",
     leadNone: "מה שקרה בכל שלב מופיע בשיחות, באתר המקומי.",
     open: "פתיחת המשרה",
     attached: "קורות החיים מצורפים",
@@ -93,13 +102,18 @@ const WORDS = {
   },
   en: {
     title: { search: "Daily run: search", portals: "Daily run: portals", read: "Daily run: reading the jobs", apply: "Daily run: " },
-    drafted: (n: number) => `${n} new CV${n === 1 ? "" : "s"}. Read each one and send it yourself.`,
+    jobSubject: (company: string, title: string) => `CV: ${company}, ${title}`,
+    jobLead: "The file is attached, named to send to the employer as it is. Go through it and apply yourself.",
+    restSubject: "Job search: the run's summary",
+    restHeading: "The run's summary",
+    restLead: (n: number) => (n === 1 ? "The CV came in an email of its own. Here is what did not work out." : "The CVs came in emails of their own, one for each job. Here is what did not work out."),
     none: "The run finished with no new CVs.",
     noCv: "No CV came out.",
     ats: "ATS score",
     card: "By what each company publishes",
     noScore: "none",
     failed: "Steps that did not finish:",
+    noCvFor: "No CV for:",
     unfinished: "did not finish",
     footer: "The full details are in the conversations on the local site.",
     subject: (n: number) => `Job search: ${n} new CV${n === 1 ? "" : "s"}`,
@@ -107,9 +121,8 @@ const WORDS = {
     testSubject: "Job search: test email",
     testBody: "If this email reached you, the daily run can send you CVs.",
     kind: "Daily run",
-    heading: (n: number) => (n === 1 ? "A new CV is waiting for you" : `${n} new CVs are waiting for you`),
+    heading: "A new CV is waiting for you",
     headingNone: "No new CVs today",
-    lead: "The files are attached. Go through each one and send it yourself.",
     leadNone: "What happened at each step is in the conversations on the local site.",
     open: "Open the job",
     attached: "CV attached",
@@ -182,38 +195,59 @@ export function leftToday(settings: Settings, runs: Run[], now: Date) {
 // A job the run tried, for the email's page: its CV's scores and what the agent said, or why no CV came out.
 type Tried = { company: string; title: string; url: string; cv: boolean; ats?: number | null; overall?: number | null; text: string };
 
-// The run's email as a page (mail-html.ts): the CVs that came out as cards, each with its scores and the agent's
-// words, then the jobs that got none and the steps that did not finish.
-function mailHtml(run: Run, tried: Tried[], words: (typeof WORDS)["he" | "en"], lang: "he" | "en") {
-  const failed = run.steps.filter((s) => !s.ok).map((s) => `${words.steps[s.step]}${s.company ? ` ${s.company}` : ""}: ${s.note ?? words.unfinished}`);
-  const parts = tried.map((j) => jobCard({
-    title: j.title, company: j.company, url: j.url, lang, action: words.open,
-    chips: j.cv
-      ? [chip(words.attached, "green"), chip(`${words.ats}: ${j.ats ?? words.noScore}`), ...(j.overall != null ? [chip(`${words.overall}: ${j.overall}`)] : [])]
-      : [chip(words.noCv.replace(/\.$/, ""), "amber")],
-    note: j.text.trim() ? agentWords(j.text) : undefined,
-  }));
+type Words = (typeof WORDS)["he" | "en"];
+
+// A job the run tried as a card on an email's page (mail-html.ts): its CV's scores and the agent's words, or why no
+// CV came out.
+const triedCard = (j: Tried, words: Words, lang: "he" | "en") => jobCard({
+  title: j.title, company: j.company, url: j.url, lang, action: words.open,
+  chips: j.cv
+    ? [chip(words.attached, "green"), chip(`${words.ats}: ${j.ats ?? words.noScore}`), ...(j.overall != null ? [chip(`${words.overall}: ${j.overall}`)] : [])]
+    : [chip(words.noCv.replace(/\.$/, ""), "amber")],
+  note: j.text.trim() ? agentWords(j.text) : undefined,
+});
+
+const failedSteps = (run: Run, words: Words) => run.steps.filter((s) => !s.ok).map((s) => `${words.steps[s.step]}${s.company ? ` ${s.company}` : ""}: ${s.note ?? words.unfinished}`);
+
+// Each CV comes in an email of its own (Sean, 2026-11-23: all of them came in one email under the same name, and
+// nothing told which was which job's): the subject names the job, the page is its card, and its CV alone is
+// attached, under the name it goes to the employer by.
+function jobMail(to: string, j: Tried, detail: string, cv: { path: string; name: string }, words: Words, lang: "he" | "en"): Mail {
+  return {
+    to, subject: words.jobSubject(j.company, j.title), attachments: [cv],
+    body: [words.jobLead, detail, `\n${words.footer}`].join("\n"),
+    html: mailPage({ lang, kind: words.kind, title: words.heading, lead: words.jobLead, preheader: `${j.company}: ${j.title}`, parts: [triedCard(j, words, lang)], footer: words.footer }),
+  };
+}
+
+// The rest of the run as one line, for Telegram, short enough to read on a phone.
+function restLine(run: Run, rest: Tried[], words: Words) {
+  const failed = failedSteps(run, words).map((l) => l.replace(/[.\s]+$/, "").slice(0, 90));
+  return [
+    rest.length ? `${words.noCvFor} ${rest.map((j) => `${j.company} (${j.title})`).join(", ")}.` : "",
+    failed.length ? `${words.failed} ${failed.join(", ")}.` : "",
+  ].filter(Boolean).join(" ") || words.none;
+}
+
+// The rest of the run, with nothing attached: the jobs that got no CV and the steps that did not finish, or, on a
+// day with neither and no CV, that nothing came.
+function restMail(to: string, run: Run, rest: Tried[], details: string[], words: Words, lang: "he" | "en"): Mail {
+  const failed = failedSteps(run, words);
+  const drafted = run.drafted.length;
+  const lead = drafted ? words.restLead(drafted) : words.leadNone;
+  const parts = rest.map((j) => triedCard(j, words, lang));
   if (failed.length) parts.push(warnBox(words.failed.replace(/:$/, ""), failed, lang));
-  if (!tried.length && !failed.length) parts.push(para(words.none, lang, { muted: true, top: 16 }));
-  return mailPage({
-    lang, kind: words.kind, title: run.drafted.length ? words.heading(run.drafted.length) : words.headingNone,
-    lead: run.drafted.length ? words.lead : words.leadNone, preheader: run.drafted.join(" | "), parts, footer: words.footer,
-  });
+  if (!rest.length && !failed.length) parts.push(para(words.none, lang, { muted: true, top: 16 }));
+  return {
+    to, subject: drafted ? words.restSubject : words.subject(0), attachments: [],
+    body: [drafted ? words.restLead(drafted) : words.none, ...details, failed.length ? `\n${words.failed}\n${failed.map((l) => `- ${l}`).join("\n")}` : "", `\n${words.footer}`].filter(Boolean).join("\n"),
+    html: mailPage({ lang, kind: words.kind, title: drafted ? words.restHeading : words.headingNone, lead, parts, footer: words.footer }),
+  };
 }
 
 // A test email's page: the same frame, saying it came.
 export function testMailHtml(title: string, text: string, kind: string, lang: "he" | "en", footer = "") {
   return mailPage({ lang, kind, title, lead: text, footer });
-}
-
-function mailBody(run: Run, details: string[], words: (typeof WORDS)["he" | "en"]) {
-  const failed = run.steps.filter((s) => !s.ok).map((s) => `- ${words.steps[s.step]}${s.company ? ` ${s.company}` : ""}: ${s.note ?? words.unfinished}`);
-  return [
-    run.drafted.length ? words.drafted(run.drafted.length) : words.none,
-    ...details,
-    failed.length ? `\n${words.failed}\n${failed.join("\n")}` : "",
-    `\n${words.footer}`,
-  ].filter(Boolean).join("\n");
 }
 
 export function createAutomation(deps: Deps) {
@@ -265,9 +299,12 @@ export function createAutomation(deps: Deps) {
       const { applications, jobs } = deps.loadState(settings);
       const limit = trigger === "schedule" ? leftToday(settings, before, now()) : settings.automation.maxPerDay;
       const picks = pickJobs(jobs, applications, read().tried, settings, limit);
+      // The CVs that came out, each for its own email, and the jobs that got none, for the rest's.
+      const cvs: { job: Tried; detail: string; pdf: string }[] = [];
+      const rest: Tried[] = [];
       const details: string[] = [];
-      const tried: Tried[] = [];
-      const attachments: Mail["attachments"] = [];
+      // Named after the user, as build.py saves it (user.ts).
+      const cvName = cvFileName(path.join(root, "user"));
       for (const job of picks) {
         const title = `${words.title.apply}${job.company}`;
         const result = deps.applyJob
@@ -276,31 +313,49 @@ export function createAutomation(deps: Deps) {
         saveRun(entry, { tried: [job.url, ...read().tried].slice(0, KEPT_TRIED) });
         const row = deps.loadState(settings).applications.find((a) => same(a.source, job.url) && !applications.includes(a));
         const name = inUserFolder(row?.cv_file).match(/^user\/cv\/main_([a-z0-9_]+)\.\w+$/)?.[1];
-        // Named after the user, as build.py saves it (user.ts).
-        const cvName = cvFileName(path.join(root, "user"));
         const pdf = name ? path.join(root, "user", "documents", "applications", name, cvName) : "";
         const heading = `\n${job.company}: ${job.title}\n${job.url}`;
         if (!name || !existsSync(pdf)) {
           details.push(`${heading}\n${words.noCv} ${result.text.slice(0, 600)}`);
-          tried.push({ company: job.company, title: job.title, url: job.url, cv: false, text: result.text.slice(0, 600) });
+          rest.push({ company: job.company, title: job.title, url: job.url, cv: false, text: result.text.slice(0, 600) });
           continue;
         }
         entry.drafted.push(`${job.company}: ${job.title}`);
-        attachments.push({ path: pdf, name: cvName });
         const ats = readAts(`user/cv/main_${name}.tex`, root);
         const card = readCard(`user/cv/main_${name}.tex`, root);
         const scores = card ? `\n${words.card}: ${cardLine(card, settings.language)}` : "";
-        details.push(`${heading}\n${words.ats}: ${ats?.score ?? words.noScore}${scores}\n${result.text.slice(0, 1500)}`);
-        tried.push({ company: job.company, title: job.title, url: job.url, cv: true, ats: ats?.score ?? null, overall: card?.overall ?? null, text: result.text.slice(0, 1500) });
+        cvs.push({
+          job: { company: job.company, title: job.title, url: job.url, cv: true, ats: ats?.score ?? null, overall: card?.overall ?? null, text: result.text.slice(0, 1500) },
+          detail: `${heading}\n${words.ats}: ${ats?.score ?? words.noScore}${scores}\n${result.text.slice(0, 1500)}`,
+          pdf,
+        });
       }
       // The day's first run always emails, so the candidate hears even of a day with nothing new; a later run
       // emails only when it drafted something.
       const firstToday = !before.some((r) => localDate(new Date(r.started)) === localDate(now()));
       if (entry.drafted.length || firstToday) {
-        const to = settings.automation.email || readMailAccount()?.user;
-        entry.mail = to
-          ? await deps.sendMail({ to, subject: words.subject(entry.drafted.length), body: mailBody(entry, details, words), html: mailHtml(entry, tried, words, settings.language), attachments })
-          : { status: "no_address" };
+        const to = settings.automation.email || readMailAccount()?.user || "";
+        const lang = settings.language;
+        const { delivery } = settings.automation;
+        const bot = delivery !== "email" && deps.telegram?.ready() ? deps.telegram : null;
+        const mailed: MailResult[] = [];
+        const messaged: TgResult[] = [];
+        // Each message to Telegram, and by email too when the settings say both, or instead when Telegram didn't
+        // take it or isn't set up, so no CV is lost.
+        const deliver = async (mail: Mail, message: TgMessage) => {
+          const viaBot = bot ? await bot.send(message, lang) : null;
+          if (viaBot) messaged.push(viaBot);
+          if (delivery !== "telegram" || viaBot?.status !== "sent") mailed.push(to ? await deps.sendMail(mail) : { status: "no_address" });
+        };
+        // The rest goes first, only when it has something to say, so the CVs' own messages end up on top.
+        const quiet = cvs.length && !rest.length && entry.steps.every((s) => s.ok);
+        if (!quiet) await deliver(restMail(to, entry, rest, details, words, lang), { kind: "run", text: restLine(entry, rest, words) });
+        for (const c of cvs) {
+          const file = { path: c.pdf, name: cvName };
+          await deliver(jobMail(to, c.job, c.detail, file, words, lang), { kind: "cv", file, role: c.job.title, company: c.job.company, url: c.job.url });
+        }
+        entry.mail = mailed.find((r) => r.status !== "sent") ?? mailed[0] ?? null;
+        entry.telegram = messaged.find((r) => r.status !== "sent") ?? messaged[0] ?? null;
       }
     } catch (err) {
       entry.steps.push({ step: "stopped", ok: false, note: String((err as Error)?.message ?? err).slice(0, 200) });

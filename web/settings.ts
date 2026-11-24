@@ -28,10 +28,13 @@ export type Settings = {
   aiPrimary: "claude" | "openai";
   // The server runs the automation, so none of this reaches the agent's files.
   // computer: the one of the account's computers that runs it (accounts.ts's computerId), "" for whichever has it on.
-  automation: { enabled: boolean; email: string; maxPerDay: number; runTimes: string[]; minScore: number; computer: string };
-  // Live alerts (alerts.ts): the search watched with no AI, each new job told by email (to automation's address) and on
-  // the computer as it is found: the quick search every few minutes (every), the sites' sweep every half hour.
-  alerts: { enabled: boolean; email: boolean; desktop: boolean; every: 5 | 10 | 15 | 30 | 60 };
+  // delivery: where the CVs go, the user's Telegram bot (telegram-bot.ts) unless they chose email or both; what
+  // Telegram doesn't take goes by email.
+  automation: { enabled: boolean; email: string; maxPerDay: number; runTimes: string[]; minScore: number; computer: string; delivery: "telegram" | "email" | "both" };
+  // Live alerts (alerts.ts): the search watched with no AI, each new job told by email (to automation's address), on
+  // the user's Telegram bot (telegram-bot.ts, once it is connected) and on the computer as it is found: the quick
+  // search every few minutes (every), the sites' sweep every half hour.
+  alerts: { enabled: boolean; email: boolean; telegram: boolean; desktop: boolean; every: 5 | 10 | 15 | 30 | 60 };
   // The quick search's own choices on the jobs page, kept from one visit to the next: how recent, which market
   // ("all" or a code), the work type ("" follows workMode), and which areas show. Only the page uses these.
   quickSearch: { days: "1" | "7" | "14" | "30"; market: string; mode: "" | "any" | "remote" | "hybrid" | "onsite"; areas: "relevant" | "listed" | "all" };
@@ -55,8 +58,8 @@ export const EMPTY_SETTINGS: Settings = {
   displayName: "", home: "", markets: [], areas: [], workMode: "any", seniority: "any", relocate: false,
   roles: [{ id: "software", label: "Software", query: "Software Engineer" }],
   salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he", aiPrimary: "claude",
-  automation: { enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "" },
-  alerts: { enabled: false, email: true, desktop: true, every: 15 },
+  automation: { enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "", delivery: "telegram" },
+  alerts: { enabled: false, email: true, telegram: true, desktop: true, every: 15 },
   quickSearch: { days: "14", market: "all", mode: "", areas: "relevant" },
   homeJobs: HOME_JOBS,
   introDone: false,
@@ -192,10 +195,12 @@ export function validateSettings(input: any): Settings {
       runTimes: times.length ? [...new Set<string>(times)].sort().slice(0, 24) : ["09:00"],
       minScore: wholeNumber(input?.automation?.minScore, 100) || 60,
       computer: /^[0-9a-f]{32}$/.test(String(input?.automation?.computer ?? "")) ? input.automation.computer : "",
+      delivery: ["email", "both"].includes(input?.automation?.delivery) ? input.automation.delivery : "telegram",
     },
     alerts: {
       enabled: input?.alerts?.enabled === true,
       email: input?.alerts?.email !== false,
+      telegram: input?.alerts?.telegram !== false,
       desktop: input?.alerts?.desktop !== false,
       every: ([5, 10, 15, 30, 60] as const).find((n) => n === Number(input?.alerts?.every)) ?? 15,
     },

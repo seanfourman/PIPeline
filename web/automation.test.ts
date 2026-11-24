@@ -130,7 +130,8 @@ describe("a run", () => {
     expect(prompts.map((p) => p.match(/(job-scraper|rank\.md|apply\.md)/)?.[1])).toEqual(["job-scraper", "apply.md"]);
     expect(mails).toHaveLength(1);
     expect(mails[0].to).toBe("me@x.co");
-    expect(mails[0].attachments[0].name).toBe("Dana Cohen - Resume.pdf");
+    expect(mails[0].subject).toBe("קורות חיים: Acme, Dev");
+    expect(mails[0].attachments).toEqual([{ path: expect.stringContaining("acme_dev"), name: "Dana Cohen - Resume.pdf" }]);
     expect(mails[0].body).toContain("ציון ATS: 77");
     expect(mails[0].body).toContain("Added: Docker");
     // The same as a page: the job as a card with its CV's score and the agent's words.
@@ -181,8 +182,72 @@ describe("a run", () => {
   test("writes the email in the interface language", async () => {
     const { deps, mails } = setup({ loadSettings: () => validateSettings({ language: "en", automation: { enabled: true, email: "me@x.co" } }) });
     await createAutomation(deps).run("manual");
-    expect(mails[0].subject).toBe("Job search: 1 new CV");
+    expect(mails[0].subject).toBe("CV: Acme, Dev");
     expect(mails[0].body).toContain("ATS score: 77");
+  });
+
+  test("emails each CV on its own, its subject naming its job, and the rest of the run apart, first", async () => {
+    const applications: Record<string, string>[] = [];
+    const jobs = [job(), job({ company: "Beta", title: "QA", url: "https://x.co/2" }), job({ company: "Gamma", title: "Ops", url: "https://x.co/3" })];
+    const { deps, mails, root } = setup({
+      loadSettings: () => settings({ maxPerDay: 3 }),
+      loadState: () => ({ applications: [...applications], jobs }),
+      // Acme and Beta get a CV, Gamma none, and Gamma's step fails.
+      applyJob: async (url) => {
+        if (url.endsWith("/3")) return { id: "g", ok: false, text: "Not a fit" };
+        applications.push({ source: url, cv_file: url.endsWith("/1") ? "user/cv/main_acme_dev.tex" : "user/cv/main_beta_qa.tex" });
+        return { id: "a", ok: true, text: "Added: Docker" };
+      },
+    });
+    const beta = path.join(root, "user/documents/applications/beta_qa");
+    mkdirSync(beta, { recursive: true });
+    writeFileSync(path.join(beta, "Dana Cohen - Resume.pdf"), "pdf");
+    await createAutomation(deps).run("manual");
+    expect(mails.map((m) => m.subject)).toEqual(["חיפוש עבודה: סיכום הריצה", "קורות חיים: Acme, Dev", "קורות חיים: Beta, QA"]);
+    expect(mails[0].attachments).toEqual([]);
+    expect(mails[0].html).toContain("Gamma");
+    expect(mails[0].html).not.toContain("Acme");
+    expect(mails[1].attachments.map((a: any) => a.path)).toEqual([expect.stringContaining("acme_dev")]);
+    expect(mails[2].attachments.map((a: any) => a.path)).toEqual([expect.stringContaining("beta_qa")]);
+    expect(mails[2].html).toContain('href="https://x.co/2"');
+    expect(mails[2].html).not.toContain("Acme");
+  });
+
+  test("sends each CV to the Telegram bot when it is set up, by default with no email", async () => {
+    const sent: any[] = [];
+    const { deps, mails } = setup({ telegram: { ready: () => true, send: async (m) => { sent.push(m); return { status: "sent", detail: "@pip_bot" }; } } });
+    const automation = createAutomation(deps);
+    await automation.run("manual");
+    expect(sent).toEqual([{ kind: "cv", file: { path: expect.stringContaining("acme_dev"), name: "Dana Cohen - Resume.pdf" }, role: "Dev", company: "Acme", url: "https://x.co/1" }]);
+    expect(mails).toEqual([]);
+    expect(automation.runs()[0].telegram).toEqual({ status: "sent", detail: "@pip_bot" });
+    expect(automation.runs()[0].mail).toBeNull();
+  });
+
+  test("emails what Telegram didn't take, or everything when it isn't set up, and both when the settings say so", async () => {
+    const failed = setup({ telegram: { ready: () => true, send: async () => ({ status: "failed", detail: "403: Forbidden: bot was blocked by the user" }) } });
+    await createAutomation(failed.deps).run("manual");
+    expect(failed.mails.map((m) => m.subject)).toEqual(["קורות חיים: Acme, Dev"]);
+
+    const unset = setup({ telegram: { ready: () => false, send: async () => { throw new Error("not called"); } } });
+    await createAutomation(unset.deps).run("manual");
+    expect(unset.mails).toHaveLength(1);
+
+    const sent: any[] = [];
+    const both = setup({ loadSettings: () => settings({ delivery: "both" }), telegram: { ready: () => true, send: async (m) => { sent.push(m); return { status: "sent" }; } } });
+    await createAutomation(both.deps).run("manual");
+    expect([sent.length, both.mails.length]).toEqual([1, 1]);
+
+    const email = setup({ loadSettings: () => settings({ delivery: "email" }), telegram: { ready: () => true, send: async () => { throw new Error("not called"); } } });
+    await createAutomation(email.deps).run("manual");
+    expect(email.mails).toHaveLength(1);
+  });
+
+  test("the rest of the run goes to Telegram as one line", async () => {
+    const sent: any[] = [];
+    const { deps } = setup({ loadState: () => ({ applications: [], jobs: [job()] }), telegram: { ready: () => true, send: async (m) => { sent.push(m); return { status: "sent" }; } } });
+    await createAutomation(deps).run("manual");
+    expect(sent).toEqual([{ kind: "run", text: "בלי קורות חיים: Acme (Dev)." }]);
   });
 
   test("tries a job once, even when no CV came out", async () => {

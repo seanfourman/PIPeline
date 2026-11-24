@@ -272,7 +272,7 @@ export async function scrapeJobs(o: { ask: Ask; steps: Steps; signal: AbortSigna
 
 // ---------- the daily run's search ----------
 
-const toolsOnly = (days: string): Search => (role, settings, signal) => searchJobs(role, days, "all", settings.workMode, settings, "tools", signal);
+const toolsOnly = (days: string, skip: string[] = []): Search => (role, settings, signal) => searchJobs(role, days, "all", settings.workMode, settings, "tools", signal, { skip });
 
 // The daily run's search, with no AI at all, where an agent used to run /job-scraper: every role on LinkedIn and
 // freehire in every market (the Israeli boards are the portals check's, which comes next), and the Telegram channels
@@ -281,7 +281,8 @@ const toolsOnly = (days: string): Search => (role, settings, signal) => searchJo
 // smart search and to the employers found on them (discover.ts).
 // days is how far back LinkedIn and freehire look, two weeks unless said. The live alerts look one day back: LinkedIn
 // gives a search's first ten by relevance, and over two weeks a job posted an hour ago is seldom among them.
-export async function searchDaily(o: Omit<Judging, "ask" | "rules"> & { settings?: Settings; fetch?: Fetch; search?: Search; now?: number; days?: "1" | "14" }) {
+// linkedin false leaves LinkedIn out this once (the live alerts read it less often than freehire and the channels).
+export async function searchDaily(o: Omit<Judging, "ask" | "rules"> & { settings?: Settings; fetch?: Fetch; search?: Search; now?: number; days?: "1" | "14"; linkedin?: boolean }) {
   const { steps, signal, lang, run = runTool } = o;
   const settings = o.settings ?? loadSettings();
   const fetch = o.fetch ?? pageFetcher(run);
@@ -289,7 +290,7 @@ export async function searchDaily(o: Omit<Judging, "ask" | "rules"> & { settings
   const roles = [...new Set(settings.roles.map((r) => r.query).filter(Boolean))];
   if (!settings.markets.length) throw new ChatbotError("scrape_no_market");
   if (!roles.length) throw new ChatbotError("scrape_no_roles");
-  const { hits, failed } = await searchRoles(roles, settings, o.search ?? toolsOnly(o.days ?? "14"), steps, signal);
+  const { hits, failed } = await searchRoles(roles, settings, o.search ?? toolsOnly(o.days ?? "14", o.linkedin === false ? ["linkedin"] : []), steps, signal);
   const field = fieldWords(settings.roles);
   const places = settings.areas.flatMap((a) => a.places);
   const channels = webPortals(settings).filter((p) => p.channel).map((p) => ({ name: channelName(p.url), label: employerName(p, lang) })).filter((c) => c.name);

@@ -4,9 +4,9 @@ import path from "node:path";
 import { BOARDS, pageFetcher, searchBoard, type Board, type Fetch } from "./boards";
 import { REPO } from "./policy";
 import { boardOn, ownName } from "./portals";
-import { levelGate } from "./experience";
+import { juniorTitle, levelGate, seniorTitle, STUDENT } from "./experience";
 import { jobGroup, jobIndustry } from "./groups";
-import type { createAutoScores } from "./match";
+import { words, type createAutoScores } from "./match";
 import { boardQueries } from "./roles";
 import { inEnglish, linkedinPlace, REMOTE, type Area, type Market, type Settings } from "./settings";
 import { asksForTranscript, TRANSCRIPT } from "./transcript";
@@ -255,7 +255,7 @@ export function conversationFiles(events: Record<string, unknown>[]): { path: st
   return [...found.values()].sort((a, b) => b.modified - a.modified);
 }
 
-type SearchOptions = { days: string; market: Market; workMode: Settings["workMode"]; seniority: Settings["seniority"] };
+type SearchOptions = { days: string; market: Market; workMode: Settings["workMode"]; seniority: Settings["seniority"]; page?: number };
 
 // LinkedIn gives one page of ten, by relevance unless asked otherwise. A search one day back (the live alerts') asks
 // for the newest first: by relevance, its ten were as often yesterday's as the last hour's (checked 2026-11-15).
@@ -264,7 +264,8 @@ export function portalArgs(source: "linkedin" | "freehire", q: string, o: Search
   const mode = remote ? ["--remote", remote] : [];
   if (source === "linkedin") {
     const sort = o.days === "1" ? ["--sort", "recent"] : [];
-    return ["search", "--location", linkedinPlace(o.market), "-q", q, "--jobage", o.days, ...mode, ...sort, "--limit", "25", "--format", "json"];
+    const page = o.page && o.page > 1 ? ["--page", String(o.page)] : [];
+    return ["search", "--location", linkedinPlace(o.market), "-q", q, "--jobage", o.days, ...mode, ...sort, ...page, "--limit", "25", "--format", "json"];
   }
   return [
     "search", "-q", q, "--jobage", o.days, "--no-description", "--limit", "25", "--format", "json", ...mode,
@@ -302,15 +303,47 @@ async function runPortal(source: "linkedin" | "freehire", q: string, o: SearchOp
   }));
 }
 
-const GENERIC_WORDS = new Set(["junior", "graduate", "entry", "level", "engineer", "developer", "student", "and", "or"]);
+// Words every title of the kind has, so that a search's other words are what say what it is for: an engineer's, a
+// developer's or a programmer's, in either language (all "developer", match.ts words), and software.
+const PLAIN = new Set(["developer", "software"]);
+// Words close enough that a search for one wants the titles with another: an AI search, the ML jobs too.
+const KIN = [["ai", "ml", "llm", "nlp", "genai", "mlops", "deep"], ["qa", "test", "tester", "testing", "sdet"], ["devops", "sre"], ["backend", "server"]];
+const KIN_WEIGHT = 0.7;
+const HEBREW = /\p{Script=Hebrew}/u;
+const FINALS: Record<string, string> = { ם: "מ", ן: "נ", ץ: "צ", ף: "פ", ך: "כ" };
+const unfinal = (w: string) => w.replace(/[םןץףך]/g, (c) => FINALS[c]);
 
-// freehire matches loosely, so "Junior QA Engineer" also returns "Junior Treasury Assistant".
-export function matchesQuery(title: string, query: string) {
-  const words = query.toLowerCase().split(/[^\p{L}\p{N}+#]+/u).filter((w) => w && !GENERIC_WORDS.has(w));
-  if (!words.length) return true;
-  const lower = title.toLowerCase();
-  return words.some((w) => lower.includes(w));
+// How well a result answers a search, from 0, not at all, to 1: the share of the search's words its title has, a plain
+// word counting half and a kindred one (KIN) most of one. A title with none of the words that say what the search is
+// for is 0, unless the search has none such ("Junior Engineer") and it has a plain one; a job at the company searched
+// for ("Exodigo") is 1. The portals and boards all match loosely, LinkedIn most of all: with few postings that fit,
+// it fills its page with the newest of any kind (a C++ developer and a mobile one for "junior algorithm developer",
+// a marketing manager for "Exodigo", checked 2026-11-24), and freehire's "Junior QA Engineer" brings a treasury
+// assistant. Words are matched in either language (match.ts words), an English one from a word's start
+// ("Algorithms"), a Hebrew one anywhere in a word, past the letters joined at its front and its last letter's form.
+export function queryFit(title: string, company: string, query: string): number {
+  const want = [...new Set(words(query))];
+  if (!want.length) return 1;
+  const telling = want.filter((w) => !PLAIN.has(w));
+  const firm = new Set(words(company));
+  if (telling.length && telling.every((w) => firm.has(w))) return 1;
+  const has = words(title).map(unfinal);
+  const at = (w: string) => {
+    const u = unfinal(w);
+    return has.some((t) => t === u || (HEBREW.test(u) ? t.includes(u) : u.length >= 4 && t.startsWith(u)));
+  };
+  const hit = (w: string) => (at(w) ? 1 : (KIN.find((g) => g.includes(w)) ?? []).some((k) => k !== w && at(k)) ? KIN_WEIGHT : 0);
+  if (!(telling.length ? telling : want).some((w) => hit(w) > 0)) return 0;
+  const weight = (w: string) => (PLAIN.has(w) ? 0.5 : 1);
+  return want.reduce((n, w) => n + hit(w) * weight(w), 0) / want.reduce((n, w) => n + weight(w), 0);
 }
+
+export const matchesQuery = (title: string, query: string) => queryFit(title, "", query) > 0;
+
+// A person's own search from the jobs page puts a junior title this much higher, for a junior, and a student's
+// position this much lower when the settings rank them low.
+const JUNIOR_LIFT = 0.15;
+const STUDENT_DROP = 0.3;
 
 const boardFetch: Fetch = pageFetcher();
 
@@ -327,8 +360,13 @@ async function runBoard(board: Board, q: string, days: number, areas: Area[], si
 // Israeli boards are searched for a market in Israel, with the role's Hebrew name as well as its title; any site
 // switched off on the portals page is left out. Stopped (signal), what is still running is killed.
 // sources: everything, the Israeli boards alone (the portals check), or the portals' tools alone, LinkedIn and
-// freehire (the daily run's search, whose boards are the portals check's).
-export async function searchJobs(q: string, days: string, marketCode: string, workMode: string, settings: Settings, sources: "all" | "boards" | "tools" = "all", signal?: AbortSignal) {
+// freehire (the daily run's search, whose boards are the portals check's). skip leaves a tool out this once (the live
+// alerts' quick search, which reads LinkedIn less often than the rest). A board's or freehire's result needs some of
+// the search's words (queryFit). asked is a person's own search on the jobs page: LinkedIn's second page of ten as
+// well, LinkedIn's results held to the search's words too, no senior titles for a junior (unless the search asks for
+// one), and the best fits first, the newest first among equals. The other searches' results are newest first, and
+// their senior titles are for their own checks to leave out and say so.
+export async function searchJobs(q: string, days: string, marketCode: string, workMode: string, settings: Settings, sources: "all" | "boards" | "tools" = "all", signal?: AbortSignal, o: { skip?: readonly string[]; asked?: boolean } = {}) {
   const query = q.trim().slice(0, 120);
   if (!query || query.startsWith("-")) throw new Error("bad query");
   const age = ["1", "7", "14", "30"].includes(days) ? days : "14";
@@ -337,29 +375,48 @@ export async function searchJobs(q: string, days: string, marketCode: string, wo
     : settings.markets;
   if (!markets.length) throw new Error("no market");
   const mode = (["any", "remote", "hybrid", "onsite"] as const).find((m) => m === workMode) ?? settings.workMode;
-  const tools = sources === "boards" ? [] : (["linkedin", "freehire"] as const).filter((s) => boardOn(s, settings));
-  const runs: { label: string; run: Promise<Result[]> }[] = markets.flatMap((market) => tools.map((source) => {
+  const tools = sources === "boards" ? [] : (["linkedin", "freehire"] as const).filter((s) => boardOn(s, settings) && !o.skip?.includes(s));
+  const runs: { label: string; run: Promise<Result[]> }[] = markets.flatMap((market) => tools.flatMap((source) => {
     const options = { days: age, market, workMode: mode, seniority: settings.seniority };
-    return { label: `${source} ${market.label}`, run: runPortal(source, query, options, settings.areas, signal) };
+    const first = { label: `${source} ${market.label}`, run: runPortal(source, query, options, settings.areas, signal) };
+    // The second page adds to the first; it failing alone isn't the search failing.
+    if (!o.asked || source !== "linkedin") return [first];
+    return [first, { label: "", run: runPortal(source, query, { ...options, page: 2 }, settings.areas, signal).catch(() => []) }];
   }));
+  // A role from the settings is searched by its Hebrew name on the boards as well, and a result may fit either.
+  const role = settings.roles.find((r) => r.query.toLowerCase() === query.toLowerCase());
+  const phrasings = role ? boardQueries(role) : [query];
   if (sources !== "tools" && markets.some((m) => m.code === "IL")) {
-    const role = settings.roles.find((r) => r.query.toLowerCase() === query.toLowerCase());
     for (const board of BOARDS.filter((b) => boardOn(b, settings))) {
-      for (const search of role ? boardQueries(role) : [query]) runs.push({ label: board, run: runBoard(board, search, Number(age), settings.areas, signal) });
+      for (const search of phrasings) runs.push({ label: board, run: runBoard(board, search, Number(age), settings.areas, signal) });
     }
   }
   const settled = await Promise.allSettled(runs.map((r) => r.run));
+  const junior = settings.seniority === "junior";
+  const noSeniors = o.asked && junior && !seniorTitle(query);
+  const rank = (j: Result) => (junior && juniorTitle(j.title) ? JUNIOR_LIFT : 0) - (settings.studentJobs === "low" && STUDENT.test(j.title) ? STUDENT_DROP : 0);
+  // A board that gives no company (AllJobs, for an agency's posting) often has a job LinkedIn has too, or has it twice
+  // on different days: one with no company is left out when another result has its title.
+  const titleOf = (j: Result) => j.title.toLowerCase().replace(/\s+/g, " ").trim();
+  const named = new Set(settled.flatMap((r) => (r.status === "fulfilled" ? r.value : [])).filter((j) => j.company.trim()).map(titleOf));
   const seen = new Set<string>();
   const results = settled
     .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
-    .filter((j) => j.source !== "freehire" || matchesQuery(j.title, query))
-    .filter((j) => {
-      const key = `${j.company}|${j.title}|${j.location}`.toLowerCase();
+    .map((job) => ({ job, fit: Math.max(...phrasings.map((p) => queryFit(job.title, job.company, p))) }))
+    // LinkedIn's results are kept whatever their titles for the other searches: there, the jobs its own matching
+    // finds beyond the search's words are often the ones wanted ("AI Builder, Marketing Technology (Junior)" for
+    // "Junior Full Stack Developer", Sean 2026-11-24), and the rules judge each by the roles' whole field after
+    // (scraper.ts judgeByRules). A person's own search wants what it names.
+    .filter(({ job, fit }) => (fit > 0 || (!o.asked && job.source === "linkedin")) && !(noSeniors && seniorTitle(job.title)))
+    .filter(({ job: j }) => {
+      if (!j.company.trim() && named.has(titleOf(j))) return false;
+      const key = j.company.trim() ? `${j.company}|${j.title}|${j.location}`.toLowerCase() : `|${titleOf(j)}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     })
-    .sort((a, b) => b.date.localeCompare(a.date));
-  const failed = runs.filter((_, i) => settled[i].status === "rejected").map((r) => r.label);
+    .sort((a, b) => (o.asked ? b.fit + rank(b.job) - (a.fit + rank(a.job)) : 0) || b.job.date.localeCompare(a.job.date))
+    .map(({ job }) => job);
+  const failed = [...new Set(runs.filter((r, i) => r.label && settled[i].status === "rejected").map((r) => r.label))];
   return { results, failed };
 }

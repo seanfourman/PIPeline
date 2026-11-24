@@ -203,6 +203,25 @@ export function reviewPrompt(draft: string, posting: string, r: Read = read) {
   ].join("\n\n");
 }
 
+// The terms ats.py says the CV is missing, as it prints them ("Missing: SAP, Kafka"), or "" for none.
+export function missingTerms(out: string) {
+  const line = out.match(/Missing: (.*)/)?.[1]?.trim() ?? "";
+  return line === "nothing" ? "" : line;
+}
+
+// What the keyword pass is asked, after the first build: the terms of the posting the check didn't find, to add those
+// the profile and the CV rules support and leave the real gaps out, and the CV as it stands. Its instructions are the
+// writer's own (draftingSystem), so the model's cache serves them.
+export function keywordsPrompt(missing: string, source: string) {
+  return [
+    "# Your task now",
+    `The CV below is built, and the keyword check finds these terms of the posting missing from it: ${missing}.`,
+    "Add each one the candidate profile or the CV rules support, under the posting's exact word: a skill the profile shows goes in Technical Skills, and work the profile records may say it in its bullet. The CV rules name terms that always go on when the posting asks for them; follow them. Leave out every term the profile doesn't support, and count additions as the CV rules do.",
+    "Keep everything else as it is, keep to one page and to the limits, bring the first line's comment up to date, and answer with the whole LaTeX source in one ```latex block and nothing else. If none of the terms can honestly go on, answer with the CV unchanged.",
+    `\`\`\`latex\n${source}\`\`\``,
+  ].join("\n\n");
+}
+
 // What the CV says it adds beyond the profile (ADDED), as plain words, at most a few; "none" is none.
 export function addedFrom(source: string) {
   const head = /^\s*%\s*added beyond the profile:\s*/i;
@@ -350,30 +369,55 @@ export async function applyJob(o: {
     if (!built.ok) {
       out.push(w.notBuilt(FIXES));
     } else {
-      const saved = built.output.match(/Saved (user\/documents\/applications\/[^\n]+\.pdf)/)?.[1] ?? `user/documents/applications/${name}`;
-      out.push(w.built(saved));
-      const added = addedFrom(source);
-      out.push(added.length ? w.added(added.join(", ")) : w.addedNone);
+      let saved = built.output.match(/Saved (user\/documents\/applications\/[^\n]+\.pdf)/)?.[1] ?? `user/documents/applications/${name}`;
       // 4. Step 6b: the tracker row, the archived posting, the ATS score.
       steps.start("record", name, "SaveApplication");
       const result = record({
         company: ev.company, role: ev.role, fit_rating: ev.overall, cv_file: `user/cv/main_${name}.tex`, source: isUrl ? input : "",
         channel: portal ? "portal" : isUrl ? "online" : "", sector: ev.sector, role_type: ev.role_type, contact_person: ev.contact_person, deadline: ev.deadline,
       }, root);
-      out.push(w.tracker[result]);
       const archive = path.join(root, "user", "documents", "applications", name, "job_posting.md");
-      if (!existsSync(archive)) {
+      const archived = !existsSync(archive);
+      if (archived) {
         mkdirSync(path.dirname(archive), { recursive: true });
         const counts = guardCounts(got.findings);
         writeFileSync(archive, `${got.text}\n\n## posting_guard\n\n${got.guard}${counts ? `\n\n${counts}` : ""}\n`);
-        out.push(w.archived);
-      } else out.push(w.kept);
-      const ats = await run([PYTHON, `${TEMPLATE}/ats.py`, name]);
+      }
+      let ats = await run([PYTHON, `${TEMPLATE}/ats.py`, name]);
+      steps.done("record", true, "");
+      // 5. The posting's terms the keyword check didn't find: one more pass adds those the profile and the CV rules
+      // support, under the posting's own word, and the check runs again. The drafts kept leaving terms off that the
+      // profile has, AI and Microservices again and again, and the user asked for them each time (Sean 2026-11-23,
+      // "אמרתי לו 40 פעם"). A pass that changes nothing, or that the build refuses, leaves the CV as it was.
+      const missing = missingTerms(ats.out);
+      if (missing && !signal.aborted) {
+        steps.start("keywords", name, "AddKeywords");
+        const fuller = await latexAsk(ask, system, keywordsPrompt(missing, source), signal, by);
+        let kept = false;
+        if (fuller && fuller.trim() !== source.trim() && !checkSource(fuller, allowed, usepackage).length) {
+          writeFileSync(file, fuller);
+          const again = await build(name);
+          if (again.ok) {
+            source = fuller;
+            kept = true;
+            saved = again.output.match(/Saved (user\/documents\/applications\/[^\n]+\.pdf)/)?.[1] ?? saved;
+            ats = await run([PYTHON, `${TEMPLATE}/ats.py`, name]);
+          } else {
+            writeFileSync(file, source);
+            await build(name);
+          }
+        }
+        steps.done("keywords", kept, "");
+      }
+      out.push(w.built(saved));
+      const added = addedFrom(source);
+      out.push(added.length ? w.added(added.join(", ")) : w.addedNone);
+      out.push(w.tracker[result]);
+      out.push(archived ? w.archived : w.kept);
       const score = ats.out.match(/ATS score: (\S+)/)?.[1];
-      if (score) out.push(w.ats(score, ats.out.match(/Missing: (.*)/)?.[1]?.trim() === "nothing" ? "" : ats.out.match(/Missing: (.*)/)?.[1]?.trim() ?? ""));
+      if (score) out.push(w.ats(score, missingTerms(ats.out)));
       const card = readCard(`user/cv/main_${name}.tex`, root);
       if (card) out.push(w.card(cardLine(card, lang)));
-      steps.done("record", true, "");
       out.push(w.check);
     }
     if (ev.asks_cover_letter) out.push(w.letter);

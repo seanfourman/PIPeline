@@ -65,8 +65,8 @@ export async function worthTelling(jobs: NewJob[], o: { read: (job: NewJob) => P
 export type WatchDeps = {
   loadSettings: () => Settings;
   // The quick search and the sites' sweep (the portals check with the boards), each handing the jobs it stored as new
-  // to found as it stores them, the sweep several times.
-  search: (found: Found, signal: AbortSignal) => Promise<unknown>;
+  // to found as it stores them, the sweep several times. The quick search is told whether LinkedIn is due this round.
+  search: (found: Found, signal: AbortSignal, o: { linkedin: boolean }) => Promise<unknown>;
   scan: (found: Found, signal: AbortSignal) => Promise<unknown>;
   busy: () => boolean;
   // The just published jobs worth telling, once their postings are read (server.ts): a search judges a job by its title
@@ -83,6 +83,10 @@ export type WatchDeps = {
 // A lane's run that goes longer than this is stopped where it is; what it stored by then was told already.
 const ROUND_LIMIT_MS = 50 * 60_000;
 const SITES_EVERY_MS = 30 * 60_000;
+// LinkedIn is read by the quick search at most this often, however often the rest is (Sean 2026-11-23: the channels and
+// freehire every 5 minutes, LinkedIn as it was): a search for each role every few minutes is the sort of load that
+// gets an address held back by LinkedIn for a while, and every 15 minutes is how it has run without that.
+const LINKEDIN_EVERY_MS = 15 * 60_000;
 
 type Lane = { running: boolean; last: number; stop: AbortController | null };
 
@@ -94,26 +98,44 @@ export function createWatcher(deps: WatchDeps) {
   let told = 0;
   // Each job told once, however many runs hand it on.
   const seen = new Set<string>();
-  // One telling at a time, in the order the jobs were stored.
+  // One telling at a time, each job's after the one before it has gone.
   let telling: Promise<void> = Promise.resolve();
+  // Every job still being read or told, so a round ends only once they all have.
+  const pending = new Set<Promise<void>>();
 
-  // Each job looked at once: one that isn't just published isn't told later either.
-  const tellNew = (jobs: NewJob[], readBefore: (portalId: string) => boolean) => {
+  const tellOne = (job: NewJob) => {
     telling = telling.then(async () => {
-      let fresh = justPublished(jobs.filter((j) => j.url && !seen.has(j.url) && seen.add(j.url)), { now: now(), readBefore });
-      if (fresh.length && deps.screen) {
-        try { fresh = await deps.screen(fresh); } catch (err) { deps.log?.(`alerts: reading ${fresh.length} postings failed: ${(err as Error)?.message ?? err}`); }
-      }
-      if (!fresh.length) return;
       try {
-        await deps.tell(fresh.map((j) => ({ ...j, group: deps.group(j) })));
-        told += fresh.length;
+        await deps.tell([{ ...job, group: deps.group(job) }]);
+        told++;
         lastTold = new Date(now()).toISOString();
       } catch (err) {
-        deps.log?.(`alerts: telling ${fresh.length} jobs failed: ${(err as Error)?.message ?? err}`);
+        deps.log?.(`alerts: telling "${job.title}" failed: ${(err as Error)?.message ?? err}`);
       }
     });
     return telling;
+  };
+
+  // Each job looked at once: one that isn't just published isn't told later either. Each is then read and told on its
+  // own, the moment its own posting is read, never waiting for the others found with it (Sean 2026-11-23: "אני רוצה כל
+  // משרה בנפרד ברגע שהיא מתפרסמת לא כמה ביחד"). A posting that can't be read says nothing against its job.
+  const tellNew = (jobs: NewJob[], readBefore: (portalId: string) => boolean) => {
+    const fresh = justPublished(jobs.filter((j) => j.url && !seen.has(j.url) && seen.add(j.url)), { now: now(), readBefore });
+    for (const job of fresh) {
+      const work = (async () => {
+        let worth = true;
+        if (deps.screen) {
+          try { worth = (await deps.screen([job])).length > 0; } catch (err) { deps.log?.(`alerts: reading "${job.title}" failed: ${(err as Error)?.message ?? err}`); }
+        }
+        if (worth) await tellOne(job);
+      })();
+      pending.add(work);
+      void work.finally(() => pending.delete(work));
+    }
+  };
+  const settled = async () => {
+    while (pending.size) await Promise.all([...pending]);
+    await telling;
   };
 
   async function run(lane: Lane, work: (signal: AbortSignal) => Promise<unknown>) {
@@ -124,7 +146,7 @@ export function createWatcher(deps: WatchDeps) {
     lane.last = now();
     try {
       await work(lane.stop.signal);
-      await telling;
+      await settled();
     } finally {
       clearTimeout(timer);
       lane.running = false;
@@ -133,8 +155,14 @@ export function createWatcher(deps: WatchDeps) {
   }
 
   const failed = (what: string) => (err: unknown) => deps.log?.(`alerts: ${what} failed: ${(err as Error)?.message ?? err}`);
-  // The quick lane's jobs come from searches, with no employer's site to have been read before.
-  const search = () => run(quick, (signal) => deps.search((jobs) => void tellNew(jobs, () => true), signal).catch(failed("the search")));
+  // The quick lane's jobs come from searches, with no employer's site to have been read before. LinkedIn comes in a
+  // round only once LINKEDIN_EVERY_MS has passed since it last did.
+  let linkedinLast = 0;
+  const search = () => run(quick, (signal) => {
+    const linkedin = now() - linkedinLast >= LINKEDIN_EVERY_MS;
+    if (linkedin) linkedinLast = now();
+    return deps.search((jobs) => void tellNew(jobs, () => true), signal, { linkedin }).catch(failed("the search"));
+  });
   // Which sites were read before is asked once, as the sweep starts.
   const sweep = () => run(sites, (signal) => {
     const readBefore = deps.readBefore?.() ?? (() => true);
@@ -143,7 +171,8 @@ export function createWatcher(deps: WatchDeps) {
 
   return {
     // Once a minute (server.ts): each lane when the alerts are on, nothing else is working the list, it isn't running
-    // and its time has come: the quick one every minutes, the sweep every half hour (or every minutes, when longer).
+    // and its time has come: the quick one every minutes (LinkedIn in it every 15 at most), the sweep every half hour
+    // (or every minutes, when longer).
     tick() {
       const alerts = deps.loadSettings().alerts;
       if (!alerts.enabled || deps.busy()) return;
@@ -170,6 +199,7 @@ const WORDS = {
     one: (title: string, company: string) => `משרה חדשה: ${title}${company ? `, ${company}` : ""}`,
     many: (n: number, known: number) => `${n} משרות חדשות${known ? `, ${known} בהייטק ובחברות מוכרות` : ""}`,
     headline: (group: Group) => (group === "known" ? "פיפ: משרה חדשה בהייטק או בחברה מוכרת" : "פיפ: משרה חדשה"),
+    chatHead: (group: Group) => (group === "known" ? "משרה חדשה בהייטק או בחברה מוכרת" : "משרה חדשה"),
     headlineMany: (n: number) => `פיפ: ${n} משרות חדשות`,
     open: "פתיחת המשרה",
     list: "כל המשרות באתר המקומי",
@@ -185,6 +215,7 @@ const WORDS = {
     one: (title: string, company: string) => `New job: ${title}${company ? `, ${company}` : ""}`,
     many: (n: number, known: number) => `${n} new jobs${known ? `, ${known} at high-tech or known companies` : ""}`,
     headline: (group: Group) => (group === "known" ? "Pip: a new job at a high-tech or known company" : "Pip: a new job"),
+    chatHead: (group: Group) => (group === "known" ? "A new job at a high-tech or known company" : "A new job"),
     headlineMany: (n: number) => `Pip: ${n} new jobs`,
     open: "Open the job",
     list: "All the jobs on the local site",
@@ -213,6 +244,13 @@ export function alertText(jobs: AlertJob[], lang: "he" | "en", list: string) {
     return these.length ? [`${w.groups[g]} (${these.length})`, ...these.map((j) => `• ${line(j)}\n  ${j.url}`), ""] : [];
   });
   const body = [...sections, `${w.list}: ${list}`, "", w.footer].join("\n");
+  // The same on Telegram (telegram-bot.ts), read on a phone, and never the local site's list, which a phone can't open.
+  // Each job comes in a message of its own (the watcher tells them one by one): what kind of job, its title, the
+  // company and place, and its link, with no footer to read again on every message. Several at once keep the list.
+  const plain = (s: string) => short(String(s ?? "").replace(/\s+/g, " ").trim(), 120);
+  const chat = ordered.length === 1
+    ? [w.chatHead(first.group), plain(first.title), [plain(first.company), plain(first.location)].filter(Boolean).join(" · "), first.url].filter(Boolean).join("\n")
+    : [subject, "", ...sections, w.footer].join("\n");
   const headline = ordered.length === 1 ? w.headline(first.group) : w.headlineMany(ordered.length);
   const notice = ordered.slice(0, 3).map(line).join("\n");
   // The same as a page: the jobs as cards under their group's name, each with its day and a button to open it.
@@ -230,7 +268,7 @@ export function alertText(jobs: AlertJob[], lang: "he" | "en", list: string) {
     lead: ordered.length === 1 ? w.leadOne(first.group) : w.lead(known), preheader: notice.replace(/\n/g, " | "),
     parts, link: { label: w.list, url: list }, footer: w.footer,
   });
-  return { subject, body, html, headline, notice, open: ordered.length === 1 ? first.url : list };
+  return { subject, body, chat, html, headline, notice, open: ordered.length === 1 ? first.url : list };
 }
 
 // ---------- the computer's notice ----------

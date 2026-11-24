@@ -62,6 +62,11 @@ describe("documents in the conversation", () => {
     expect(docKind("user/reports/report.html")).toBe("report");
     expect(docKind("user/documents/applications/x/Dana Levi - Cover Letter.pdf")).toBe("letter");
     expect(docKind("user/documents/applications/x/grades.pdf")).toBe("doc");
+    // A company named Cover is no letter.
+    expect(docKind("user/cv/main_cover_junior_fullstack_developer.pdf")).toBe("cv");
+    expect(docKind("user/documents/applications/cover_junior_fullstack/Dana Levi - Resume.pdf")).toBe("cv");
+    expect(docKind("user/documents/applications/cover_junior_fullstack/Dana Levi - Cover Letter.pdf")).toBe("letter");
+    expect(docKind("user/cover_letters/cover_cover_junior_fullstack.pdf")).toBe("letter");
     expect(docOwner(cv.name)).toBe("Dana Levi");
     expect(docOwner("notes.pdf")).toBe("");
     expect(docSlug(cv.path)).toBe("wix_backend");

@@ -6,6 +6,7 @@ import { useMore } from "../more";
 import { Pip, PipLying, PipMark, PipMiner } from "../pip";
 import { roleLabel, type Role } from "../../roles";
 import { jobId } from "../jobid";
+import { lite, SKY_H, SKY_TOP, SKY_W, useLiteSky } from "../lite-sky";
 import { LOOT, treasure, type Loot, type Treasure } from "../loot";
 import { MAKERS, useFirstAi } from "./chat";
 import { openJob, sendOpen } from "./job";
@@ -294,13 +295,23 @@ export const pipFound = (jobs: Record<string, any>[]) => {
 
 // Behind the search, only gradients, as if alive: a forest rainbow (the --sky colours, a sunny forest's by day and
 // the night forest's at night) as six clouds that drift, turn and stretch round a breathing glow, blending as they
-// pass, each on its own slow course.
-export const Sky = () => (
-  <div className="seek-sky" aria-hidden="true">
-    {[1, 2, 3, 4, 5, 6].map((n) => <span key={n} className={`sky-blob sky-blob-${n}`} />)}
-    <span className="sky-core" />
-  </div>
-);
+// pass, each on its own slow course. Drawn without the graphics card, the same sky is painted on a canvas
+// (ui/lite-sky.ts); with less motion asked for, the clouds stand still in their places either way.
+export function Sky() {
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const [painted] = useState(() => lite() && !matchMedia("(prefers-reduced-motion: reduce)").matches);
+  useLiteSky(canvas, painted);
+  return (
+    <div className="seek-sky" aria-hidden="true">
+      {painted
+        ? <canvas ref={canvas} className="sky-canvas" style={{ width: SKY_W, height: SKY_H, margin: `${-SKY_TOP}px 0 0 ${-SKY_W / 2}px` }} />
+        : <>
+          {[1, 2, 3, 4, 5, 6].map((n) => <span key={n} className={`sky-blob sky-blob-${n}`} />)}
+          <span className="sky-core" />
+        </>}
+    </div>
+  );
+}
 
 // The box's hint: Pip's line most of the time; every few seconds it rubs itself out, types one of the roles to
 // look for, letter by letter, holds it, and types Pip's line back. Still, with reduced motion.

@@ -65,12 +65,16 @@ export function answerParts(src: string): Part[] {
   return parts;
 }
 
-// What a document is, by its folder and its name.
+// What a document is: by its folder first, then by its name. A name says a letter by starting cover_ or naming a
+// (cover) letter, and a CV by starting main_ or naming a resume or CV; a company's name inside it says nothing, so
+// a CV for a company called Cover (main_cover_...) is still a CV.
 export function docKind(path: string, name = path.split("/").pop() ?? ""): DocKind {
   const p = path.toLowerCase();
   const n = name.toLowerCase();
-  if (p.includes("/cover_letters/") || /cover|letter/.test(n)) return "letter";
-  if (p.includes("/cv/") || /resume|(^|[^a-z])cv([^a-z]|$)/.test(n)) return "cv";
+  if (p.includes("/cover_letters/")) return "letter";
+  if (p.includes("/cv/")) return "cv";
+  if (/^cover[_-]|(^|[^a-z])letter([^a-z]|$)/.test(n)) return "letter";
+  if (/^main[_-]|resume|(^|[^a-z])cv([^a-z]|$)/.test(n)) return "cv";
   if (p.includes("/reports/")) return "report";
   return "doc";
 }
@@ -144,7 +148,7 @@ export function turnItems<E extends { t: string }>(events: E[]): TurnItem<E>[] {
 
 // The steps that write a CV (the /apply pipeline's), and so what a document being written is, from the step under
 // way: one of those, or one that writes a file in the CVs' or the letters' folder.
-const WRITES_CV = new Set(["DraftCv", "ReviewCv", "BuildCv"]);
+const WRITES_CV = new Set(["DraftCv", "ReviewCv", "BuildCv", "AddKeywords"]);
 export function writingKind(tools: Ev[], done: (id: string) => boolean): DocKind | null {
   const now = [...tools].reverse().find((x) => !done(String(x.id)));
   if (!now) return null;

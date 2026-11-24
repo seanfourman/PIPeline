@@ -166,13 +166,13 @@ export const fieldWords = (roles: Role[]) => titleWords(roles).filter((w) => !LE
 // information, quality, development, a network or a chain of shops, an analyst of investments) puts no title in the
 // field on its own, nor does a word of one role's title alone ("machine" of machine learning, a machine operator's;
 // "full" of full stack, a full-time job's). And a word that is everywhere now counts only beside one that says who does
-// the work: an AI engineer is in the field, an AI video creator isn't, nor a cloud marketing coordinator.
+// the work: an AI engineer or an AI builder is in the field, an AI video creator isn't, nor a cloud marketing coordinator.
 const BROAD = new Set([
   "engineer", "מהנדס", "system", "מערכות", "it", "מידע", "כלכלן", "quality", "איכות", "פיתוח", "network", "רשת", "רשתות", "infrastructure",
   "תשתיות", "מודל", "analyst", "אנליסט", "project", "פרויקט", "support", "תמיכה", "solutions", "implementation", "הטמעה", "דיגיטל", "product", "מוצר",
 ]);
 const WITH_MAKER = new Set(["ai", "בינה", "cloud", "ענן", "מחשוב", "data", "דאטה", "נתונים", "analytics", "אנליטי"]);
-const MAKERS = ["engineer", "developer", "programmer", "researcher", "scientist", "analyst", "architect", "מהנדס", "מפתח", "מתכנת", "חוקר", "מדען", "אנליסט"];
+const MAKERS = ["engineer", "developer", "programmer", "builder", "researcher", "scientist", "analyst", "architect", "מהנדס", "מפתח", "מתכנת", "חוקר", "מדען", "אנליסט"];
 export function fieldTest(roles: Role[]) {
   const words = ROLE_FIELDS.filter((f) => fieldsOf(roles).includes(f.id)).flatMap((f) => f.words).filter((w) => !LEVEL_ONLY.has(lower(w)) && !BROAD.has(w));
   const alone = words.filter((w) => !WITH_MAKER.has(w));

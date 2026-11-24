@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { cardLine, classifyLocation, documentPaths, matchesQuery, parseCsv, portalArgs, readAts, readCard, resolveDocument, withoutJobSiteCopies } from "./data";
+import { cardLine, classifyLocation, documentPaths, matchesQuery, parseCsv, portalArgs, queryFit, readAts, readCard, resolveDocument, withoutJobSiteCopies } from "./data";
 import { REGION_PRESETS, type Area, type Tier } from "./settings";
 
 const israel = (tiers: Tier[]): Area[] => REGION_PRESETS.IL.map((a, i) => ({ ...a, tier: tiers[i] }));
@@ -171,6 +171,12 @@ describe("portalArgs", () => {
     expect(portalArgs("linkedin", "QA", base)).not.toContain("--sort");
     expect(portalArgs("freehire", "QA", { ...base, days: "1" })).not.toContain("--sort");
   });
+
+  test("asks LinkedIn for a page past the first only when told", () => {
+    const second = portalArgs("linkedin", "QA", { ...base, page: 2 });
+    expect(second[second.indexOf("--page") + 1]).toBe("2");
+    expect(portalArgs("linkedin", "QA", base)).not.toContain("--page");
+  });
 });
 
 describe("matchesQuery", () => {
@@ -182,8 +188,38 @@ describe("matchesQuery", () => {
     expect(matchesQuery("בודק.ת QA", "Junior QA Engineer")).toBe(true);
     expect(matchesQuery("Graduate Full Stack Software Engineer", "Graduate Software Engineer")).toBe(true);
   });
-  test("keeps everything for a generic query", () => {
-    expect(matchesQuery("Anything", "Junior Engineer")).toBe(true);
+  test("a query of plain words keeps the titles of its kind; one of a level alone keeps everything", () => {
+    expect(matchesQuery("Backend Developer", "Junior Engineer")).toBe(true);
+    expect(matchesQuery("Sales Representative", "Junior Engineer")).toBe(false);
+    expect(matchesQuery("Anything", "Junior")).toBe(true);
+  });
+  test("matches a Hebrew word past the letters joined at its front", () => {
+    expect(matchesQuery("ומנהל/ת מערכות מידע", "מנהל מערכות")).toBe(true);
+  });
+});
+
+describe("queryFit", () => {
+  test("drops what LinkedIn fills its page with when few postings fit", () => {
+    const q = "junior algorithm developer";
+    for (const title of ["Python Developer", "Mobile App Developer", "MLOps Engineer", "NLP Research Engineer"]) expect(queryFit(title, "", q)).toBe(0);
+    expect(queryFit("Algorithm Developer for Radar/Lidar Group", "Mobileye", q)).toBe(1);
+    expect(queryFit("מהנדס.ת אלגוריתמים לפיתוח מערכות אוטונומיות", "Rafael", q)).toBe(1);
+    expect(queryFit("Algorithm Researcher", "", q)).toBeGreaterThan(0);
+    expect(queryFit("Algorithm Researcher", "", q)).toBeLessThan(1);
+  });
+  test("a company's name finds its jobs, and not a company whose name only starts the same", () => {
+    expect(queryFit("Senior Full Stack Engineer", "Exodigo", "EXODIGO")).toBe(1);
+    expect(queryFit("Vice President Marketing", "EX.CO", "EXODIGO")).toBe(0);
+    expect(queryFit("Head of CRM", "ExpressVPN", "Exodigo")).toBe(0);
+  });
+  test("a kindred word counts, less than the word itself", () => {
+    const kin = queryFit("Machine Learning Engineer", "", "AI Engineer");
+    expect(kin).toBeGreaterThan(0);
+    expect(kin).toBeLessThan(queryFit("AI Engineer", "", "AI Engineer"));
+  });
+  test("a short word is a whole word, a long one the start of one", () => {
+    expect(queryFit("Aircraft Mechanic", "", "AI Engineer")).toBe(0);
+    expect(queryFit("Algorithms Engineer", "", "Algorithm Developer")).toBe(1);
   });
 });
 

@@ -46,7 +46,8 @@ describe("the live alerts", () => {
     expect(asked).toBe(2);
   });
 
-  test("a round tells the quick search's new jobs at once, then the sweep's batch by batch as it hands them on, each job once, by its group", async () => {
+  // Sean got several jobs in one message (2026-11-23): each job is told on its own, even when found together.
+  test("a round tells each new job on its own as soon as it is found, the sweep's while it still reads, each job once, by its group", async () => {
     const told: AlertJob[][] = [];
     const order: string[] = [];
     const watcher = createWatcher({
@@ -58,16 +59,18 @@ describe("the live alerts", () => {
         found([job("QA Engineer")]);
         await Bun.sleep(1);
         order.push("next batch");
-        found([job("Junior Developer", { company: "Elbit Systems" }), job("Data Engineer")]);
+        found([job("Junior Developer", { company: "Elbit Systems" }), job("Data Engineer"), job("DevOps Engineer", { company: "Wix" })]);
       },
       busy: () => false,
       tell: async (jobs) => { order.push(`tell ${jobs.length}`); told.push(jobs); },
       group: (j) => (j.company ? "known" : "other"),
     });
     await watcher.round();
-    expect(order).toEqual(["search", "tell 1", "scan", "tell 1", "next batch", "tell 1"]);
-    expect(told.map((t) => t.map((j) => [j.title, j.group]))).toEqual([[["Junior Developer", "known"]], [["QA Engineer", "other"]], [["Data Engineer", "other"]]]);
-    expect(watcher.status()).toMatchObject({ running: false, told: 3 });
+    expect(order).toEqual(["search", "tell 1", "scan", "tell 1", "next batch", "tell 1", "tell 1"]);
+    expect(told.map((t) => t.map((j) => [j.title, j.group]))).toEqual([
+      [["Junior Developer", "known"]], [["QA Engineer", "other"]], [["Data Engineer", "other"]], [["DevOps Engineer", "known"]],
+    ]);
+    expect(watcher.status()).toMatchObject({ running: false, told: 4 });
   });
 
   test("the quick search keeps its own time, never held back by a sweep still reading, and each lane runs once at a time", async () => {
@@ -133,6 +136,27 @@ describe("the live alerts", () => {
     watcher.tick();
     await Bun.sleep(5);
     expect(rounds).toBe(2);
+  });
+
+  // Sean asked for the channels and freehire every 5 minutes with LinkedIn as it was (2026-11-23).
+  test("the quick search every 5 minutes takes LinkedIn into a round only every 15", async () => {
+    let clock = 60 * 60_000;
+    const linkedin: boolean[] = [];
+    const watcher = createWatcher({
+      loadSettings: () => on({ every: 5 }),
+      search: async (_found, _signal, o) => { linkedin.push(o.linkedin); },
+      scan: async () => {},
+      busy: () => false,
+      tell: async () => {},
+      group: () => "other",
+      now: () => clock,
+    });
+    for (let i = 0; i < 7; i++) {
+      watcher.tick();
+      await Bun.sleep(5);
+      clock += 5 * 60_000;
+    }
+    expect(linkedin).toEqual([true, false, false, true, false, false, true]);
   });
 
   test("a job is told once its posting is read: not one asking three years or more, a senior one, a closed one, or a student's the settings rank low", async () => {
@@ -211,6 +235,17 @@ describe("the live alerts", () => {
     expect(one.subject).toBe("New job: Junior Backend Developer, One Zero");
     expect(one.headline).toBe("Pip: a new job at a high-tech or known company");
     expect(one.open).toBe("https://jobs.example/Junior%20Backend%20Developer");
+  });
+
+  // Sean got nothing about new jobs on his Telegram bot (2026-11-23): the alerts went only by email and as a notice.
+  test("the same alert on Telegram, one job a message: its kind, title, company and place, and link, no local site", () => {
+    const jobs: AlertJob[] = [{ ...job("Junior Backend Developer", { company: "One Zero", location: "Tel Aviv" }), group: "known" }];
+    const { chat } = alertText(jobs, "he", "http://localhost:4174/jobs");
+    expect(chat.split("\n")).toEqual([
+      "משרה חדשה בהייטק או בחברה מוכרת", "Junior Backend Developer", "One Zero · Tel Aviv", "https://jobs.example/Junior%20Backend%20Developer",
+    ]);
+    expect(chat).not.toContain("localhost");
+    expect(EMPTY_SETTINGS.alerts.telegram).toBe(true);
   });
 
   test("the same alert as a page: each job a card with its link, a job's words escaped, the page in its language's direction", () => {

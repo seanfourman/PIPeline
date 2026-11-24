@@ -116,11 +116,11 @@ describe("validateSettings", () => {
     expect(s.studentJobs).toBe("low");
     expect(s.fields).not.toContain("\n");
     // A settings file from before, with its one runAt, keeps it as the one run time.
-    expect(s.automation).toEqual({ enabled: false, email: "a@b.co", maxPerDay: 10, runTimes: ["07:30"], minScore: 60, computer: "" });
+    expect(s.automation).toEqual({ enabled: false, email: "a@b.co", maxPerDay: 10, runTimes: ["07:30"], minScore: 60, computer: "", delivery: "telegram" });
     expect(validateSettings({ automation: { computer: "0123456789abcdef0123456789abcdef" } }).automation.computer).toBe("0123456789abcdef0123456789abcdef");
     const bad = validateSettings({ salaryMin: -5, salaryMax: "lots", studentJobs: "maybe", automation: { email: "nope", maxPerDay: "x", runAt: "25:00", computer: "../x" } });
     expect([bad.salaryMin, bad.salaryMax, bad.studentJobs]).toEqual([0, 0, "normal"]);
-    expect(bad.automation).toEqual({ enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "" });
+    expect(bad.automation).toEqual({ enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "", delivery: "telegram" });
   });
 
   test("the daily run takes up to 24 run times, in order, each once", () => {

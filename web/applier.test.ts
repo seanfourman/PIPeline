@@ -10,6 +10,7 @@ const never = new AbortController().signal;
 const TEMPLATE = "\\documentclass{article}\n\\usepackage{../../templates/cv/one-page-clean/onepage}\n\\begin{document}\n\\cvname{NAME}\n\\cvsection{SKILLS}\n\\cvbullet{x}\n\\end{document}\n";
 const CV = "\\documentclass{article}\n\\usepackage{../../templates/cv/one-page-clean/onepage}\n\\begin{document}\n\\cvname{DANA}\n\\cvbullet{Python \\& SQL}\n\\end{document}\n";
 const ADDED_CV = `% Added beyond the profile: Docker, Tailwind CSS\n${CV}`;
+const WITH_KAFKA = ADDED_CV.replace("Python \\& SQL", "Python, SQL \\& Kafka");
 const EVALUATION = { company: "Acme Ltd.", role: "Junior Backend Developer", location: "Tel Aviv", language: "English", deadline: "2026-12-01", scores: { technical: 80, experience: 70, behavioral: 60, career: 75 }, location_verdict: "PASS", language_gate: "PASS", strengths: ["Python"], gaps: ["Go"], requirements: [{ term: "Python", priority: "required" }], asks_cover_letter: true };
 
 describe("applier", () => {
@@ -108,15 +109,18 @@ describe("applier", () => {
     const run: Run = async (argv) => {
       if (argv.includes("detail")) return { code: 0, out: "Junior Backend Developer at Acme. Python and SQL. ".repeat(8), err: "" };
       if (argv.some((a) => a.includes("posting_guard.py"))) return { code: 0, out: 'posting_guard: clean\n--- findings ---\n{"hidden_blocks": [1, 2]}\n--- text ---\nJunior Backend Developer at Acme. Python and SQL.', err: "" };
-      if (argv.some((a) => a.includes("ats.py"))) return { code: 0, out: "ATS score: 88 (7 of 8 posting terms)\nMissing: Kafka", err: "" };
+      // The check finds Kafka missing, and once the keyword pass has added it, nothing.
+      if (argv.some((a) => a.includes("ats.py"))) return atsRuns++ ? { code: 0, out: "ATS score: 100 (8 of 8 posting terms)\nMissing: nothing", err: "" } : { code: 0, out: "ATS score: 88 (7 of 8 posting terms)\nMissing: Kafka", err: "" };
       return { code: 2, out: "", err: "unexpected" };
     };
+    let atsRuns = 0;
     const prompts: string[] = [];
     const ask = async (system: string, prompt: string) => {
       prompts.push(prompt);
       if (system.startsWith("You evaluate")) return { text: JSON.stringify(EVALUATION), by: "ChatGPT" };
       // The draft first tries a command the template doesn't have; the fix sends a clean one.
       if (prompt.startsWith("Write the CV")) return { text: "```latex\n" + CV.replace("\\cvbullet", "\\directlua{x}\\cvbullet") + "```", by: "ChatGPT" };
+      if (prompt.includes("keyword check finds these terms")) return { text: "```latex\n" + WITH_KAFKA + "```", by: "ChatGPT" };
       return { text: "```latex\n" + ADDED_CV + "```", by: "ChatGPT" };
     };
     let builds = 0;
@@ -133,8 +137,9 @@ describe("applier", () => {
       steps: { start: (id, t, n) => steps.push(`${n}`), done: (id, ok) => steps.push(ok ? "ok" : "no") },
     });
     const name = "acme_ltd_junior_backend_developer";
-    expect(readFileSync(path.join(root, "user", "cv", `main_${name}.tex`), "utf8")).toBe(ADDED_CV);
-    expect(builds).toBe(2);
+    expect(readFileSync(path.join(root, "user", "cv", `main_${name}.tex`), "utf8")).toBe(WITH_KAFKA);
+    // Two for the draft (one refused, one fixed) and one after the keyword pass.
+    expect(builds).toBe(3);
     expect(prompts.some((p) => p.includes("banned"))).toBe(true);
     expect(recorded[0]).toMatchObject({ company: "Acme Ltd.", role: "Junior Backend Developer", fit_rating: 73, cv_file: `user/cv/main_${name}.tex`, channel: "portal", deadline: "2026-12-01" });
     const archived = readFileSync(path.join(root, "user", "documents", "applications", name, "job_posting.md"), "utf8");
@@ -142,15 +147,17 @@ describe("applier", () => {
     expect(archived).toContain("hidden_blocks: 2");
     expect(steps.filter((s) => s === "BuildCv")).toHaveLength(2);
     expect(text).toContain(`user/documents/applications/${name}/Dana Cohen - Resume.pdf`);
-    expect(text).toContain("ציון ATS: 88. חסרים: Kafka.");
+    expect(prompts.find((p) => p.includes("keyword check finds these terms"))).toContain("missing from it: Kafka.");
+    expect(steps).toContain("AddKeywords");
+    expect(text).toContain("ציון ATS: 100. חסרים: כלום.");
     expect(text).toContain("ציון לפי מה שכל חברה מפרסמת: Google 90, Workday A (85), כללי 88.");
     expect(text).toContain("מכתב מקדים");
     expect(text).toContain("נוסף מעבר לפרופיל, כדאי להתכונן לשאלות עליו: Docker, Tailwind CSS.");
     // What comes next is asked for in the same conversation, with no command to learn.
     expect(text).toContain("אפשר להמשיך כאן כרגיל");
     expect(text).not.toContain("/apply");
-    // Four calls to the AI: the fit, the draft, the review, and one fix after the build stopped.
-    expect(prompts).toHaveLength(4);
+    // Five calls to the AI: the fit, the draft, the review, one fix after the build stopped, and the keyword pass.
+    expect(prompts).toHaveLength(5);
   });
 
   test("in the daily run, writes a CV only for a strong or good fit, and none for a posting the guard flags", async () => {
