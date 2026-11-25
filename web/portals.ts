@@ -51,6 +51,12 @@ export type Read = { alljobs: number } | { drushim: string } | { greenhouse: str
   // (an RSS address, boards.ts parseJobFeed).
   | { wp: { site: string; type: string; query?: string } }
   | { feed: string }
+  // A WordPress careers page whose list a script fills in through the site's admin-ajax (boards.ts readAjaxList): the
+  // page, the action its service answers (a POST, as a form, with the offset of what is loaded already; back a JSON
+  // {success, data: {html, loaded, has_more}}), where each job's card starts in that html, what a job's link looks like
+  // there (a pattern over the link's path) and, when the card names one, where its place is (a pattern whose first
+  // group is the place).
+  | { ajax: { page: string; action: string; item: string; path: string; place?: string } }
   // A government body: its offices' numbers in the civil service's list of tenders (boards.ts parseGov).
   | { gov: string[] }
   // A careers site on Jibe: its host and its search's query (boards.ts readJibe).
@@ -275,7 +281,9 @@ export const PORTALS: Portal[] = [
   cm("algosec", "אלגוסק", "AlgoSec", "algosec/71.006"),
   cm("team8", "Team8", "Team8", "team8/61.003"),
   cm("commit", "קומיט", "CommIT", "comm-it/76.008"),
-  cm("abra", "abra", "abra R&D", "abra_rnd/15.007"),
+  // abra: its own careers page, which gathers all its divisions' jobs, is read first (DIRECT); its R&D board on Comeet
+  // only when that page doesn't answer.
+  cm("abra", "אברא", "abra", "abra_rnd/15.007"),
   cm("xsight-labs", "אקסייט לאבס", "Xsight Labs", "xsightlabs/46.00C"),
   cm("airobotics", "איירובוטיקס", "Airobotics", "airobotics/AA.005"),
   cm("fetcherr", "פטצ'ר", "Fetcherr", "fetcherr/68.006"),
@@ -955,6 +963,9 @@ const DIRECT: Record<string, Read> = {
   histadrut: { feed: "https://www.histadrut.org.il/jobs/feed/" },
   issta: { wp: { site: "https://jobs.issta.co.il/", type: "awsm_job_openings" } },
   nature: { wp: { site: "https://www.parks.org.il/", type: "jobs" } },
+  // abra's careers page gathers the jobs of all its divisions (98 on 2026-11-24, its R&D board on Comeet among them,
+  // Sean's ask that day), filled in by a script through the site's admin-ajax: six cards first, two a request after.
+  abra: { ajax: { page: "https://www.abra-it.com/career/", action: "abra_ajax_filter_jobs", item: '<div class="career__our-careers-item">', path: "^/career/[^/]+/[^/]+/$", place: 'icon--location[^>]*></span>\\s*<span>([^<]{1,80})</span>' } },
   hadassah: { links: { url: "https://www.hadassah.org.il/careers/", path: "^/(wanted|research-and-development)/position-[0-9]+/$" } },
   "hadassah-research": { links: { url: "https://he.hadassah.org.il/research-and-development/research-fund-careers/", path: "^/(wanted|research-and-development)/position-[0-9]+/$" } },
   hapoalim: { links: { url: "https://www.bankhapoalim.co.il/forms/he/jobs-site/lobby", path: "^/he/node/[0-9]+$" } },
@@ -1013,7 +1024,7 @@ for (const p of PORTALS) {
   if (!direct) continue;
   p.direct = direct;
   // What the portals page opens: the employer's own list.
-  p.url = "links" in direct ? direct.links.url : "text" in direct ? direct.text.url : "wp" in direct ? direct.wp.site : "feed" in direct ? direct.feed.replace(/feed\/?$/, "") : "gov" in direct ? "https://merkava.mrp.gov.il/giusp/index.html" : "jibe" in direct ? `https://${direct.jibe.host}/jobs?${direct.jibe.query}` : "comeet" in direct ? `https://www.comeet.com/jobs/${direct.comeet}`
+  p.url = "links" in direct ? direct.links.url : "text" in direct ? direct.text.url : "wp" in direct ? direct.wp.site : "ajax" in direct ? direct.ajax.page : "feed" in direct ? direct.feed.replace(/feed\/?$/, "") : "gov" in direct ? "https://merkava.mrp.gov.il/giusp/index.html" : "jibe" in direct ? `https://${direct.jibe.host}/jobs?${direct.jibe.query}` : "comeet" in direct ? `https://www.comeet.com/jobs/${direct.comeet}`
     : "redmatch" in direct ? `${direct.redmatch.site}index.html`
     : "workday" in direct ? `https://${direct.workday.host}/en-US/${direct.workday.site}`
     : "own" in direct ? OWN_PAGE[direct.own] ?? p.url : p.url;

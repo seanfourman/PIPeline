@@ -190,9 +190,10 @@ export function pageFetcher(run: Run = runTool): Fetch {
 
 // A job-search service that answers only a POST: Clalit's careers app (Redmatch), and the like. Sean allowed it on
 // 2026-11-14 for employers' own job lists. Only ever to an address written in the code (portals.ts), never to one a
-// posting gives; robots.txt asked first, by the same tool fetch_page.py uses; https only; JSON out, a page of text
-// back, capped in time and size; one request at a time to a site, as its pages are. null when the site said no,
-// failed or answered with an error.
+// posting gives; robots.txt asked first, by the same tool fetch_page.py uses; https only; JSON out, or a form
+// (URLSearchParams) where the service reads only that, as WordPress's admin-ajax does; a page of text back, capped in
+// time and size; one request at a time to a site, as its pages are. null when the site said no, failed or answered
+// with an error.
 export type Post = (url: string, body: unknown, signal?: AbortSignal) => Promise<string | null>;
 const POST_TIMEOUT_MS = 45_000;
 const POST_MAX = 10 * 1024 * 1024;
@@ -206,9 +207,10 @@ export function jsonPoster(run: Run = runTool, send: typeof fetch = fetch): Post
     robotsSaid.set(url, { ok, at: Date.now() });
     if (!ok) return null;
     try {
+      const form = body instanceof URLSearchParams;
       const res = await send(url, {
-        method: "POST", body: JSON.stringify(body), redirect: "error",
-        headers: { "Content-Type": "application/json", Accept: "application/json, text/plain, */*", "User-Agent": POST_AGENT },
+        method: "POST", body: form ? body.toString() : JSON.stringify(body), redirect: "error",
+        headers: { "Content-Type": form ? "application/x-www-form-urlencoded" : "application/json", Accept: "application/json, text/plain, */*", "User-Agent": POST_AGENT },
         signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(POST_TIMEOUT_MS)]) : AbortSignal.timeout(POST_TIMEOUT_MS),
       });
       if (!res.ok || Number(res.headers.get("content-length") ?? 0) > POST_MAX) return null;
@@ -829,6 +831,7 @@ async function readCareers(read: Read, roles: Role[], o: { fetch: Fetch; post?: 
   if ("jibe" in read) return readJibe(read.jibe, o);
   // A WordPress site's own list of its jobs, and its feed of them.
   if ("wp" in read) return readWp(read.wp, o);
+  if ("ajax" in read) return readAjaxList(read.ajax, o);
   if ("feed" in read) return parseJobFeed(await page(read.feed), new URL(read.feed).origin);
   // A list written out in full: the jobs as its page has them, in Israel or not, as a page of links has.
   if ("text" in read) {
@@ -1207,6 +1210,55 @@ async function readWp(list: WpList, o: { fetch: Fetch; signal?: AbortSignal }) {
     const page = parseWpList(body, origin);
     all.push(...page);
     if (JSON.parse(body).length < 100) break;
+  }
+  return all;
+}
+
+// A WordPress careers page whose list a script fills in through the site's admin-ajax (portals.ts { ajax }): the
+// service answers a form (its action, the offset of what is loaded already) with a JSON {success, data: {html, loaded,
+// has_more}}, the html the cards of the next jobs. Each card from where the site's pattern (item) matches to the next:
+// its job is the first link in it whose path looks like a job's (path), the link's words its title, and its place
+// where the site's pattern (place, its first group) finds one in the card. Read as far as the site says there is more,
+// from where it says it is loaded (abra's gives six cards first and two a request after that), up to sixty requests.
+export type AjaxList = { page: string; action: string; item: string; path: string; place?: string };
+const AJAX_REQUESTS = 60;
+export function parseAjaxList(json: string, list: AjaxList): { found: Posting[]; loaded: number; more: boolean } {
+  const data = JSON.parse(json)?.data;
+  if (typeof data?.html !== "string") throw new Error("not a WordPress ajax list");
+  const origin = new URL(list.page).origin;
+  const job = new RegExp(list.path, "i");
+  const place = list.place ? new RegExp(list.place, "i") : null;
+  const starts = [...(data.html as string).matchAll(new RegExp(list.item, "gi"))].map((m) => m.index ?? 0);
+  const found = starts.flatMap((start, i) => {
+    const card = (data.html as string).slice(start, i + 1 < starts.length ? starts[i + 1] : undefined);
+    for (const m of card.matchAll(/<a\b[^>]*href=["']([^"'#][^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi)) {
+      const url = onSite(decode(m[1]), origin);
+      if (!url) continue;
+      let where = new URL(url).pathname;
+      try { where = decodeURIComponent(where); } catch { /* matched as it is */ }
+      if (!job.test(where)) continue;
+      const title = text(m[2]);
+      if (title.length < 3 || GENERIC_LINK.test(title)) continue;
+      return posting(title, place?.exec(card)?.[1] ?? "", "", url);
+    }
+    return [];
+  });
+  return { found, loaded: Number(data.loaded) || 0, more: data.has_more === true };
+}
+
+async function readAjaxList(list: AjaxList, o: { post?: Post; signal?: AbortSignal }) {
+  if (!o.post) throw new Error("no way to ask a service that answers only a POST");
+  const origin = new URL(list.page).origin;
+  const all: Posting[] = [];
+  let offset = 0;
+  for (let n = 0; n < AJAX_REQUESTS && !o.signal?.aborted; n++) {
+    const body = await o.post(`${origin}/wp-admin/admin-ajax.php`, new URLSearchParams({ action: list.action, offset: String(offset) }), o.signal);
+    if (body === null) { if (n === 0) throw new Error(`${new URL(origin).host} did not answer`); break; }
+    const page = parseAjaxList(body, list);
+    all.push(...page.found);
+    // A site that says there is more but loads nothing new would be asked for ever.
+    if (!page.more || page.loaded <= offset) break;
+    offset = page.loaded;
   }
   return all;
 }

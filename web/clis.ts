@@ -8,6 +8,7 @@ import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "nod
 import os from "node:os";
 import path from "node:path";
 import { ChatbotError, type Turn } from "./chatbots";
+import { uploadText } from "./uploads";
 
 export type Cli = "openai";
 export type Login = "claude" | Cli;
@@ -106,7 +107,7 @@ function prepare(system: string, turns: Turn[], dir: string) {
   const images: string[] = [];
   const notes: string[] = [];
   for (const u of last?.uploads ?? []) {
-    if (u.kind === "text") { notes.push(`Attached file ${u.name}:\n${readFileSync(u.file, "utf8").slice(0, 200_000)}`); continue; }
+    if (u.kind !== "image" && u.kind !== "pdf") { notes.push(`Attached file ${u.name}:\n${uploadText(u).slice(0, 200_000)}`); continue; }
     const name = `${images.length + notes.length + 1}-${path.basename(u.file).replace(/[^\w.-]+/g, "_")}`;
     copyFileSync(u.file, path.join(dir, name));
     if (u.kind === "image") images.push(path.join(dir, name));

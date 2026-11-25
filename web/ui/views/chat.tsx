@@ -32,13 +32,12 @@ const GROUPS = ["today", "yesterday", "week", "earlier"] as const;
 const DAY_MS = 86_400_000;
 // The box grows with what is written, up to this, then scrolls.
 const BOX_MAX = 220;
-// What can be attached to a message, as uploads.ts takes it: images up to 5 MB, PDFs and text up to 20 MB, five
-// at a time.
+// What can be attached to a message, as uploads.ts takes it: any file up to 50 MB, five at a time; an image up to
+// 5 MB is shown as a picture (the server says, by its bytes, what each one is), a zip is unpacked for the agent.
 const IMAGE_EXT = ["png", "jpg", "jpeg", "gif", "webp"];
-const FILE_EXT = ["pdf", "txt", "md", "csv", "json", "tex"];
 const MB = 1024 * 1024;
+const MAX_MB = 50;
 const MAX_FILES = 5;
-const ACCEPT = [...IMAGE_EXT, ...FILE_EXT].map((e) => `.${e}`).join(",");
 type Attached = { key: string; name: string; kind: string; size: number; id?: string; error?: string };
 type Sent = { id: string; name: string; kind: string; size: number };
 
@@ -468,17 +467,16 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
     setNote(files.length + incoming.length > MAX_FILES ? t("chat.upload.many", { n: MAX_FILES }) : "");
     for (const file of incoming.slice(0, Math.max(0, MAX_FILES - files.length))) {
       const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
-      const kind = IMAGE_EXT.includes(ext) ? "image" : FILE_EXT.includes(ext) ? (ext === "pdf" ? "pdf" : "text") : "";
-      const item: Attached = { key: crypto.randomUUID(), name: file.name, kind: kind || "text", size: file.size };
-      const max = kind === "image" ? 5 : 20;
-      if (!kind) item.error = t("chat.upload.type", { name: file.name });
-      else if (file.size > max * MB) item.error = t("chat.upload.size", { name: file.name, max });
+      const kind = IMAGE_EXT.includes(ext) && file.size <= 5 * MB ? "image" : "file";
+      const item: Attached = { key: crypto.randomUUID(), name: file.name, kind, size: file.size };
+      const max = MAX_MB;
+      if (file.size > max * MB) item.error = t("chat.upload.size", { name: file.name, max });
       setFiles((cur) => [...cur, item]);
       if (item.error) continue;
       const done = (change: Partial<Attached>) => setFiles((cur) => cur.map((x) => (x.key === item.key ? { ...x, ...change } : x)));
       readBase64(file)
         .then((data) => api<Sent>("uploads", { name: file.name, data, ...(temporary ? { temporary: true } : {}) }))
-        .then((up) => done({ id: up.id, name: up.name }))
+        .then((up) => done({ id: up.id, name: up.name, kind: up.kind }))
         .catch((e) => done({ error: t(e?.code === "upload_type" ? "chat.upload.type" : e?.code === "upload_size" ? "chat.upload.size" : "chat.upload.failed", { name: file.name, max }) }));
     }
   };
@@ -524,7 +522,7 @@ function Composer({ text, setText, onSend, onStop, working = false, placeholder,
           </div>
         )}
         <button type="button" className="composer-attach" aria-label={t("chat.upload.attach")} onClick={() => picker.current?.click()}><Icon name="plus" /></button>
-        <input ref={picker} type="file" multiple accept={ACCEPT} hidden onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
+        <input ref={picker} type="file" multiple hidden onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
         <textarea
           ref={box} rows={1} value={text} placeholder={placeholder} aria-label={placeholder} dir={text ? "auto" : undefined} autoFocus={autoFocus}
           onChange={(e) => setText(e.target.value)}

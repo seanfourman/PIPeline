@@ -5,7 +5,7 @@
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Upload } from "./uploads";
+import { uploadText, type Kept, type Upload } from "./uploads";
 import { canSeal, isSealed, seal, unseal } from "./vault";
 
 export type Provider = "openai";
@@ -89,7 +89,7 @@ export async function checkKey(_provider: Provider, key: string, fetcher: typeof
 export type Turn = { role: "user" | "assistant"; text: string; uploads?: (Upload & { file: string })[] };
 
 const dataUrl = (u: Upload & { file: string }) => `data:${u.type.split(";")[0]};base64,${readFileSync(u.file).toString("base64")}`;
-const fileText = (u: Upload & { file: string }) => `Attached file ${u.name}:\n${readFileSync(u.file, "utf8").slice(0, MAX_TEXT_CHARS)}`;
+const fileText = (u: Kept) => `Attached file ${u.name}:\n${uploadText(u).slice(0, MAX_TEXT_CHARS)}`;
 
 // Turns of the same side in a row, as a message sent while the last was being answered, become one.
 function merged(turns: Turn[]) {

@@ -7,6 +7,7 @@ import { query, type SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync } from "node:fs";
 import { ChatbotError, type Turn } from "./chatbots";
 import { askCli, cliSignedIn } from "./clis";
+import { uploadText } from "./uploads";
 
 export type Engine = "claude" | "openai";
 export const ENGINES: Engine[] = ["claude", "openai"];
@@ -35,7 +36,7 @@ async function askClaude(system: string, turns: Turn[], signal: AbortSignal, onT
     const data = readFileSync(u.file);
     if (u.kind === "image") return [{ type: "image", source: { type: "base64", media_type: u.type, data: data.toString("base64") } }];
     if (u.kind === "pdf") return [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: data.toString("base64") } }];
-    return [{ type: "text", text: `Attached file ${u.name}:\n${data.toString("utf8").slice(0, 200_000)}` }];
+    return [{ type: "text", text: `Attached file ${u.name}:\n${uploadText(u).slice(0, 200_000)}` }];
   });
   const text = [earlier && `The conversation so far:\n\n${earlier}\n\nThe user's new message:`, last?.text || "(see the attachment)"].filter(Boolean).join("\n\n");
   const content = [...files, { type: "text", text }] as SDKUserMessage["message"]["content"];

@@ -648,13 +648,15 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (parts[0] === "uploads" && parts[1]) {
       const upload = findUpload(parts[1]);
       if (!upload) return json({ error: "not found" }, 404);
-      // Like /file: a PDF opens in the browser's viewer, which the page's policy would stop; anything else is
-      // shown sandboxed, so nothing in it can run.
+      // Like /file: a PDF opens in the browser's viewer, which the page's policy would stop; an image or text is
+      // shown sandboxed, so nothing in it can run; anything else (an Office file, a zip, any other file) is only
+      // ever saved, never shown.
+      const shown = upload.kind === "pdf" || upload.kind === "image" || upload.kind === "text";
       return new Response(Bun.file(upload.file), {
         headers: {
           "Content-Type": upload.type, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "Cache-Control": "private, max-age=86400",
           ...(upload.kind === "pdf" ? {} : { "Content-Security-Policy": "sandbox; default-src 'none'; img-src 'self'" }),
-          "Content-Disposition": `inline; filename="${upload.name.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(upload.name)}`,
+          "Content-Disposition": `${shown ? "inline" : "attachment"}; filename="${upload.name.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(upload.name)}`,
         },
       });
     }

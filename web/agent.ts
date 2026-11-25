@@ -15,7 +15,7 @@ import { effortsFrom, isEffort, type Effort } from "./efforts";
 import { ACCESS, createPolicy, REPO, type Access } from "./policy";
 import { loadSettings } from "./settings";
 import { matches, type Meta } from "./threads";
-import { attachmentContent, findUpload, removeUpload, type Upload } from "./uploads";
+import { attachmentContent, findUpload, removeUpload, uploadNote, type Upload } from "./uploads";
 import { APP_DIR } from "./user";
 
 export type TaskSteps = {
@@ -192,7 +192,7 @@ class Session {
     this.external ??= new CodexAgent(hooks, this.agentThreadId, undefined, undefined, this.temporary);
     const images = uploads.filter((u) => u.kind === "image");
     const others = uploads.filter((u) => u.kind !== "image");
-    const said = [text, ...others.map((u) => `Attached file (${u.name}): ${path.relative(REPO, u.file).replaceAll("\\", "/")}`)].join("\n").trim() || "(see the attached image)";
+    const said = [text, ...others.map(uploadNote)].join("\n").trim() || "(see the attached image)";
     clearTimeout(this.idleTimer);
     this.setStatus("running");
     this.external.send(said, images.map((u) => u.file)).catch((err) => {

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   allJobsCategories, AMAN, CHECKPOINT, day, dayMonthYear, DIALOG, dialogFields, ELAD, MATRIX, parseAman, parseDialog, matrixCategories, MIMUN_YASHIR, MOBILEYE, NESS, PALOALTO, parseAllJobs, parseElad, parseNess, parseAmazon, parseApple, parseAshby, parseCheckPoint, parseComeet,
   parseDrushim, parseEightfold, parseGoogle, parseGreenhouse, parseJobMaster, parseJobPostings, parseJobvite, parseLever, parseMatrix, parseMobileye, parseRadancy,
-  embeddedBoard, forgetGovList, jsonPoster, nuxtState, parseGotfriends, textBlocks, parseJobFeed, parseJobnet, parseNisha, parseRedmatch, parseWorkday, parseUnity, parseWorkable, postedOn, readEmployer, readLinks, readOwnPage, searchBoard, searchTerms, text, type Fetch, type Post,
+  embeddedBoard, forgetGovList, jsonPoster, nuxtState, parseGotfriends, textBlocks, parseJobFeed, parseJobnet, parseNisha, parseRedmatch, parseAjaxList, parseWorkday, parseUnity, parseWorkable, postedOn, readEmployer, readLinks, readOwnPage, searchBoard, searchTerms, text, type Fetch, type Post,
 } from "./boards";
 import { portalById } from "./portals";
 import { boardQueries, fieldsOf, titleMatches, titleWords } from "./roles";
@@ -812,17 +812,43 @@ describe("the roles' words", () => {
     expect(asked).toEqual([{ appliedFacets: {}, limit: 20, offset: 0, searchText: "Israel" }, { appliedFacets: {}, limit: 20, offset: 20, searchText: "Israel" }]);
   });
 
+  test("reads a WordPress careers page whose list a script fills in through admin-ajax, from where the site says it is loaded", async () => {
+    const card = (title: string, slug: string, place: string) => `<div class="career__our-careers-item"><div class="career__our-careers-item-body"><p class="subtitle">R&amp;D</p>
+      <a href="https://abra.example/career/professional-services/${slug}/" class="title">${title}</a>
+      <ul class="tags"><li><span class="icon icon--location" aria-hidden="true"></span><span>${place}</span></li></ul></div>
+      <a href="https://abra.example/career/professional-services/${slug}/" class="btn btn--primary">Apply</a></div>`;
+    const answer = (html: string, loaded: number, more: boolean) => JSON.stringify({ success: true, data: { html, total: 3, loaded, has_more: more } });
+    const list = { page: "https://abra.example/career/", action: "abra_ajax_filter_jobs", item: '<div class="career__our-careers-item">', path: "^/career/[^/]+/[^/]+/$", place: 'icon--location[^>]*></span>\\s*<span>([^<]{1,80})</span>' };
+    // The page's own links (all jobs, a share) aren't jobs; the "Apply" link is the job's, but the title's link names it.
+    expect(parseAjaxList(answer(`${card("Full Stack Developer", "full-stack-developer", "Center")}<a href="https://abra.example/career/">All jobs</a>`, 1, true), list))
+      .toEqual({ found: [{ title: "Full Stack Developer", company: "", location: "Center", date: "", url: "https://abra.example/career/professional-services/full-stack-developer/", source: "page" }], loaded: 1, more: true });
+    const asked: string[][] = [];
+    const post = async (url: string, body: any) => {
+      asked.push([url, String(body)]);
+      return Number(body.get("offset")) === 0
+        ? answer(card("Full Stack Developer", "full-stack-developer", "Center") + card("Controller", "controller", "Center"), 2, true)
+        : answer(card("DevOps Engineer", "devops-engineer-b4.47f", "Haifa"), 3, false);
+    };
+    const employer = { id: "t", kind: "employer" as const, how: "read" as const, he: "T", en: "T", industry: "hightech" as const, url: "", read: { ajax: list } };
+    const jobs = await readEmployer(employer, [{ label: "x", query: "Junior Full Stack Developer" }, { label: "y", query: "Junior DevOps Engineer" }], { fetch: async () => null, post, today: "2026-11-24" });
+    expect(jobs.map((j) => [j.title, j.location])).toEqual([["Full Stack Developer", "Center"], ["DevOps Engineer", "Haifa"]]);
+    expect(asked).toEqual([["https://abra.example/wp-admin/admin-ajax.php", "action=abra_ajax_filter_jobs&offset=0"], ["https://abra.example/wp-admin/admin-ajax.php", "action=abra_ajax_filter_jobs&offset=2"]]);
+  });
+
   test("asks a service that answers only a POST after robots.txt allows it, over https only, and never follows a redirect", async () => {
     const sent: { url: string; init: RequestInit }[] = [];
     const send = (async (url: string, init: RequestInit) => { sent.push({ url, init }); return new Response('{"ok":1}'); }) as unknown as typeof fetch;
     const allowed = async () => ({ code: 0, out: "ALLOWED", err: "" });
     const post = jsonPoster(allowed, send);
     expect(await post("https://jobs.example/api/search-a", { q: "" })).toBe('{"ok":1}');
-    expect(sent[0].init).toMatchObject({ method: "POST", body: '{"q":""}', redirect: "error" });
+    expect(sent[0].init).toMatchObject({ method: "POST", body: '{"q":""}', redirect: "error", headers: { "Content-Type": "application/json" } });
+    // A form goes as one, for a service that reads only that (WordPress's admin-ajax).
+    expect(await post("https://jobs.example/wp-admin/admin-ajax.php", new URLSearchParams({ action: "list_jobs", offset: "6" }))).toBe('{"ok":1}');
+    expect(sent[1].init).toMatchObject({ method: "POST", body: "action=list_jobs&offset=6", headers: { "Content-Type": "application/x-www-form-urlencoded" } });
     expect(await post("http://jobs.example/api/search-b", {})).toBeNull();
     const refused = jsonPoster(async () => ({ code: 1, out: "DISALLOWED", err: "" }), send);
     expect(await refused("https://other.example/api/search-c", {})).toBeNull();
-    expect(sent).toHaveLength(1);
+    expect(sent).toHaveLength(2);
   });
 
   test("knows the recruiting platform a careers page embeds, whose jobs a script fills in", () => {

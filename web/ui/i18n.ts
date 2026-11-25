@@ -464,7 +464,7 @@ const he = {
     cards: { turn: "להפוך לתשובה", how: "איך לענות", back: "חזרה לשאלה" },
     upload: {
       attach: "צירוף תמונה או קובץ", remove: "הסרת {name}", many: "אפשר לצרף עד {n} קבצים להודעה.",
-      type: "אי אפשר לצרף את {name}: אפשר תמונות (PNG, JPG, GIF, WebP), PDF וקבצי טקסט.", size: "{name} גדול מדי, אפשר עד {max} MB.", failed: "ההעלאה של {name} נכשלה.",
+      type: "אי אפשר לצרף את {name}.", size: "{name} גדול מדי, אפשר עד {max} MB.", failed: "ההעלאה של {name} נכשלה.",
     },
     permission: "אני מבקש אישור: {tool}", allow: "אישור", allowFolder: "אישור לכל התיקייה בשיחה הזו", deny: "דחייה",
     other: "תשובה אחרת", answerAll: "צריך לענות על כל השאלות.", answer: "שליחת תשובה",
@@ -1212,7 +1212,7 @@ const en: Dict = {
     cards: { turn: "Turn over for the answer", how: "How to answer", back: "Back to the question" },
     upload: {
       attach: "Attach an image or a file", remove: "Remove {name}", many: "You can attach up to {n} files to a message.",
-      type: "{name} can't be attached: images (PNG, JPG, GIF, WebP), PDFs and text files can.", size: "{name} is too big, up to {max} MB.", failed: "Uploading {name} failed.",
+      type: "{name} can't be attached.", size: "{name} is too big, up to {max} MB.", failed: "Uploading {name} failed.",
     },
     permission: "I'm asking for approval: {tool}", allow: "Allow", allowFolder: "Allow for this whole folder in this conversation", deny: "Deny",
     other: "Another answer", answerAll: "Answer every question first.", answer: "Send answer",
