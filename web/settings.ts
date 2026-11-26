@@ -23,6 +23,9 @@ export type Settings = {
   salaryCurrency: string;
   fields: string;
   studentJobs: "normal" | "low" | "exclude";
+  // The Wolf Pack: seven reviewers who try to reject each CV /apply drafts before it is shown, every reason they give
+  // fixed (.claude/commands/apply.md, Step 4c). Off unless turned on: it costs seven more runs a CV.
+  wolfPack: boolean;
   language: "he" | "en";
   // The AI the site works with first, the others connected taking over when it fails (ai.ts).
   aiPrimary: "claude" | "openai";
@@ -57,7 +60,7 @@ const SETTINGS_FILE = path.join(APP_DIR, "settings.json");
 export const EMPTY_SETTINGS: Settings = {
   displayName: "", home: "", markets: [], areas: [], workMode: "any", seniority: "any", relocate: false,
   roles: [{ id: "software", label: "Software", query: "Software Engineer" }],
-  salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", language: "he", aiPrimary: "claude",
+  salaryMin: 0, salaryMax: 0, salaryCurrency: "", fields: "", studentJobs: "normal", wolfPack: false, language: "he", aiPrimary: "claude",
   automation: { enabled: false, email: "", maxPerDay: 3, runTimes: ["09:00"], minScore: 60, computer: "", delivery: "telegram" },
   alerts: { enabled: false, email: true, telegram: true, desktop: true, every: 15 },
   quickSearch: { days: "14", market: "all", mode: "", areas: "relevant" },
@@ -186,6 +189,7 @@ export function validateSettings(input: any): Settings {
     salaryCurrency: clean(input?.salaryCurrency, 8),
     fields: clean(input?.fields, 200),
     studentJobs: pick(input?.studentJobs, ["normal", "low", "exclude"] as const),
+    wolfPack: input?.wolfPack === true,
     language: pick(input?.language, ["he", "en"] as const),
     aiPrimary: pick(input?.aiPrimary, ["claude", "openai"] as const),
     automation: {
@@ -282,6 +286,7 @@ export function renderBlock(s: Settings) {
     `- **Also search with WebSearch** (sites the search tools don't cover; run each role with site:, in English, and in Hebrew too on a site in Hebrew): ${webPortals(s).filter((p) => !p.channel).map((p) => `site:${p.site}`).join(", ") || "none"}. Give the search tool the site's domain (without its path) as its domain filter too, WebSearch's allowed_domains: site: alone doesn't keep other sites out. Where the path names one company on a shared platform (jobs.smartrecruiters.com/Wix2), add the company's name to the query and keep only the hits under that path. On a site with jobs from every country, such as glassdoor.com or a recruiting platform (comeet.com, greenhouse.io, lever.co, ashbyhq.com, where companies keep their own job pages, most of them not on the portals page), add the market to the query, such as Israel or Tel Aviv. A search can find a page a year old, so keep a hit only when its page still shows the job open. For posts, add words like hiring, מגייסים or דרושים to the role; a post only counts when it names an employer and a way to apply.`,
     `- **Also read with WebFetch** (public Telegram channels of job posts, each page its newest posts): ${webPortals(s).filter((p) => p.channel).map((p) => `https://${p.site}`).join(", ") || "none"}. Take the posts from the last 14 days that fit a role, in Hebrew, English or Russian; one counts only when it names an employer and a way to apply, and is stored by its own link (t.me/<channel>/<number>). A post that lists several jobs gives each its own entry, all by the post's link: links inside a post are never followed.`,
     `- **Student positions:** ${STUDENT_JOBS[s.studentJobs]}.`,
+    `- **Wolf Pack:** ${s.wolfPack ? "on, so /apply runs Step 4c: seven reviewers try to reject each CV before it is shown, and every reason they give is fixed" : "off, so /apply skips Step 4c"}.`,
     `- **Salary expectations:** ${salaryLine(s)}.`,
     `- **Conversation language:** ${s.language === "en" ? "English" : "Hebrew"}. Talk to the candidate in this language. CVs and application material keep their own language rules.`,
     END,

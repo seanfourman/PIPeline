@@ -230,12 +230,68 @@ export function addedFrom(source: string) {
   return list.split(/[,;]/).map((s) => plain(s, 60)).filter(Boolean).slice(0, 8);
 }
 
-const latexAsk = async (ask: Ask, system: string, prompt: string, signal: AbortSignal, by: Set<string>) => {
+const askText = async (ask: Ask, system: string, prompt: string, signal: AbortSignal, by: Set<string>) => {
   const answer = await ask(system, prompt, signal);
   const [text, engine] = typeof answer === "string" ? [answer, ""] : [answer.text, answer.by];
   if (engine) by.add(engine);
-  return sourceFrom(text);
+  return text;
 };
+const latexAsk = async (ask: Ask, system: string, prompt: string, signal: AbortSignal, by: Set<string>) =>
+  sourceFrom(await askText(ask, system, prompt, signal, by));
+
+// ---------- the Wolf Pack ----------
+
+// Seven readers who each try to reject the draft from a seat of their own, when the settings turn the pack on (Sean
+// 2026-11-26, after a guide's "hiring panel" of seven Claudes). Their seats and instructions are the agent definition's,
+// shared with /apply's Step 4c, so the two never drift apart.
+const WOLF_PACK = ".claude/agents/wolf-pack-reviewer.md";
+export type Seat = { name: string; posting: boolean; task: string };
+export type WolfAnswer = { seat: string; verdict: "PASS" | "REJECT" | ""; score: number | null; text: string };
+
+// The seats, as the definition lists them: each one's name, whether it reads the posting, and its task.
+export function wolfSeats(r: Read = read): Seat[] {
+  return [...r(WOLF_PACK).matchAll(/^- \*\*(The [^*]+)\*\*( \(with the posting\))?: (.+)$/gm)].map((m) => ({ name: m[1], posting: Boolean(m[2]), task: m[3] }));
+}
+// What every wolf is told: the definition without its front matter.
+export const wolfSystem = (r: Read = read) => r(WOLF_PACK).replace(/^---[\s\S]*?---\s*/, "");
+export const wolfPrompt = (seat: Seat, source: string, posting: string) =>
+  [`Your seat: ${seat.name}.`, `# The CV\n\`\`\`latex\n${source}\`\`\``, ...(seat.posting ? [posting] : [])].join("\n\n");
+
+// A wolf's answer, read: its verdict and its score, the text kept whole for the writer.
+export function parseWolf(seat: string, text: string): WolfAnswer {
+  const verdict = text.match(/VERDICT:\s*(PASS|REJECT)/i)?.[1]?.toUpperCase();
+  const score = Number(text.match(/SCORE:\s*(\d{1,3})/)?.[1]);
+  return { seat, verdict: verdict === "PASS" || verdict === "REJECT" ? verdict : "", score: Number.isFinite(score) ? Math.min(100, score) : null, text: text.trim() };
+}
+
+// What the writer is asked once the pack has read the draft: every reason merged into one list, worst first, and the
+// CV rewritten with each one fixed that the profile and the CV rules allow; one only an untrue claim would answer
+// stays a gap. Its instructions are the writer's own (draftingSystem), so the model's cache serves them.
+export function packFixPrompt(answers: WolfAnswer[], source: string) {
+  return [
+    "# Your task now",
+    "Seven readers, the Wolf Pack, each tried to reject the CV below from a seat of their own. Their answers follow it.",
+    "First merge every reason they gave into one numbered list, worst first: a reason more readers raised, or one that decided a REJECT, ranks higher, and each reason appears once. Write the list as plain lines before the code block, each line `<n>. \"<the CV's words>\": <what is wrong>. FIXED: <what you changed>` or, when only a fact the profile doesn't have would answer it, `<n>. \"<the CV's words>\": <what is wrong>. GAP: <what is missing>`.",
+    "Then rewrite the CV fixing every reason the candidate profile and the CV rules allow: cut, reorder, sharpen and reframe what is true, and lead with the biggest work. Never add an employer, title, date, number, project or event the profile doesn't support. Keep to one page and to the limits, bring the first line's comment up to date, and give the whole LaTeX source in one ```latex block after the list.",
+    `# The CV\n\`\`\`latex\n${source}\`\`\``,
+    ...answers.map((a) => `## ${a.seat}\n${a.text}`),
+  ].join("\n\n");
+}
+
+// The pack's list as the writer gave it: the lines before its code block that are numbered.
+export const packList = (answer: string) => answer.split("```")[0].split("\n").map((l) => l.trim()).filter((l) => /^\d+\.\s/.test(l));
+
+// What the pack found, kept beside the CV for the candidate: each seat's verdict and score, the merged list, the Gate's
+// second reading, and every answer whole.
+function packReport(before: WolfAnswer[], list: string[], after: WolfAnswer | null) {
+  const head = (a: WolfAnswer) => `- ${a.seat}: ${a.verdict || "?"}${a.score === null ? "" : `, ${a.score}`}`;
+  return [
+    "# Wolf Pack", "", "## The first reading", ...before.map(head), "",
+    "## What was wrong, worst first", ...(list.length ? list : ["(none given)"]), "",
+    ...(after ? ["## The Gate, reading the final CV", head(after), "", after.text, ""] : []),
+    "## Each answer", ...before.flatMap((a) => ["", `### ${a.seat}`, a.text]), "",
+  ].join("\n");
+}
 
 const WORDS = {
   he: {
@@ -259,6 +315,10 @@ const WORDS = {
     added: (list: string) => `נוסף מעבר לפרופיל, כדאי להתכונן לשאלות עליו: ${list}.`, addedNone: "לא נוסף שום דבר מעבר לפרופיל.",
     weakFit: (band: string) => `ההתאמה היא ${band}, והריצה היומית כותבת רק להתאמה חזקה או טובה`, flagged: "בדיקת המודעה מצאה בה משהו חשוד",
     check: "כדאי לקרוא את קורות החיים לפני ששולחים.",
+    verdict: (v: string) => (v === "PASS" ? "עובר" : v === "REJECT" ? "דוחה" : "לא ענה"),
+    pack: (rejected: number, total: number, fixed: number, gaps: number) => `להקת הזאבים: ${rejected} מתוך ${total} דחו את הטיוטה. תוקנו ${fixed} סיבות${gaps ? `, ו${gaps === 1 ? "סיבה אחת נשארה פער" : `${gaps} נשארו פערים`}` : ""}.`,
+    gate: (before: string, after: string) => `הסינון האוטומטי: ${before} לפני, ${after} אחרי.`,
+    packFile: (file: string) => `כל מה שהזאבים אמרו: \`${file}\``,
   },
   en: {
     title: (role: string, company: string) => `## Application: ${role}, ${company}`,
@@ -279,6 +339,10 @@ const WORDS = {
     added: (list: string) => `Added beyond the profile, worth preparing questions about: ${list}.`, addedNone: "Nothing was added beyond the profile.",
     weakFit: (band: string) => `the fit is ${band}, and the daily run writes only for a strong or good fit`, flagged: "the posting check found something suspicious in it",
     check: "Read the CV before you send it.",
+    verdict: (v: string) => (v === "PASS" ? "passes" : v === "REJECT" ? "rejects" : "no answer"),
+    pack: (rejected: number, total: number, fixed: number, gaps: number) => `Wolf Pack: ${rejected} of ${total} rejected the draft. ${fixed} reasons were fixed${gaps ? `, and ${gaps} stayed gaps` : ""}.`,
+    gate: (before: string, after: string) => `The automated screen: ${before} before, ${after} after.`,
+    packFile: (file: string) => `Everything the wolves said: \`${file}\``,
   },
 };
 
@@ -291,7 +355,7 @@ function guardCounts(findings: Record<string, unknown> | null | undefined) {
 // strict, for the daily run, where nobody is there to decide: a CV only for a strong or good fit, and none for a
 // posting the guard flags, as its old prompt to /apply had it.
 export async function applyJob(o: {
-  input: string; ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; strict?: boolean;
+  input: string; ask: Ask; steps: Steps; signal: AbortSignal; lang: "he" | "en"; strict?: boolean; wolfPack?: boolean;
   run?: Run; build?: (name: string) => Promise<{ ok: boolean; output: string }>; record?: typeof recordDraft; root?: string; r?: Read; context?: string[];
 }) {
   const { ask, steps, signal, lang, run = runTool, build = (name) => buildSource("cv", name), record = recordDraft, root = REPO, r = read } = o;
@@ -346,6 +410,29 @@ export async function applyJob(o: {
     const reviewed = await latexAsk(ask, system, reviewPrompt(source, `The posting is between the two ${mark} lines.\n${posting}`, r), signal, by);
     if (reviewed) source = reviewed;
     steps.done("review", Boolean(reviewed), "");
+
+    // 3b. The Wolf Pack, when the settings turn it on: the seven read the draft at once, each from its seat, and the
+    // writer merges their reasons, worst first, fixing every one the CV rules allow. A wolf that fails to answer is
+    // left out; with none answering, the draft goes on as it was. The Gate reads the final CV again after the build.
+    const postingNote = `The posting is between the two ${mark} lines.\n${posting}`;
+    let pack: { before: WolfAnswer[]; list: string[] } | null = null;
+    if (o.wolfPack && !signal.aborted) {
+      const seats = wolfSeats(r);
+      const wolves = wolfSystem(r);
+      steps.start("wolves", name, "WolfPack");
+      const before = (await Promise.all(seats.map((seat) =>
+        askText(ask, wolves, wolfPrompt(seat, source, postingNote), signal, by).then((text) => parseWolf(seat.name, text), () => parseWolf(seat.name, "")),
+      ))).filter((a) => a.text);
+      steps.done("wolves", before.length > 0, `${before.filter((a) => a.verdict === "REJECT").length} / ${before.length}`);
+      if (before.length && !signal.aborted) {
+        steps.start("pack-fix", name, "FixPackReasons");
+        const answer = await askText(ask, system, packFixPrompt(before, source), signal, by);
+        const fixed = sourceFrom(answer);
+        if (fixed) source = fixed;
+        pack = { before, list: packList(answer) };
+        steps.done("pack-fix", Boolean(fixed), `${pack.list.length}`);
+      }
+    }
 
     const file = path.join(root, "user", "cv", `main_${name}.tex`);
     let built: { ok: boolean; output: string } = { ok: false, output: "" };
@@ -418,6 +505,26 @@ export async function applyJob(o: {
       if (score) out.push(w.ats(score, missingTerms(ats.out)));
       const card = readCard(`user/cv/main_${name}.tex`, root);
       if (card) out.push(w.card(cardLine(card, lang)));
+      // The Wolf Pack's part: the Gate reads the CV as it was built, for the before and after, and what the pack found
+      // is kept in the application's folder.
+      if (pack) {
+        const gate = wolfSeats(r).find((s) => s.name === "The Gate");
+        const first = pack.before.find((a) => a.seat === "The Gate");
+        let after: WolfAnswer | null = null;
+        if (gate && !signal.aborted) {
+          steps.start("gate", name, "GateAgain");
+          after = await askText(ask, wolfSystem(r), wolfPrompt(gate, source, postingNote), signal, by).then((text) => parseWolf(gate.name, text), () => null);
+          steps.done("gate", Boolean(after?.text), after?.verdict ?? "");
+        }
+        const rel = `user/documents/applications/${name}/wolf-pack.md`;
+        mkdirSync(path.join(root, "user", "documents", "applications", name), { recursive: true });
+        writeFileSync(path.join(root, rel), packReport(pack.before, pack.list, after?.text ? after : null));
+        const gaps = pack.list.filter((l) => /\bGAP:/.test(l)).length;
+        out.push(w.pack(pack.before.filter((a) => a.verdict === "REJECT").length, pack.before.length, pack.list.length - gaps, gaps));
+        const said = (a?: WolfAnswer | null) => (a?.text ? `${w.verdict(a.verdict)}${a.score === null ? "" : ` (${a.score})`}` : w.verdict(""));
+        if (first || after?.text) out.push(w.gate(said(first), said(after)));
+        out.push(w.packFile(rel));
+      }
       out.push(w.check);
     }
     if (ev.asks_cover_letter) out.push(w.letter);

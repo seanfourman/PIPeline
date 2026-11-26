@@ -17,10 +17,11 @@ type Lang = "he" | "en";
 type Fetch = (url: string, init?: RequestInit) => Promise<Response>;
 export type TgAccount = { token: string; chatId: string; bot: string };
 export type TgResult = { status: "sent" | "no_account" | "failed"; detail?: string };
-// run: the run's summary, framed as one; text: words as they are (the settings' test).
+// run: the run's summary, framed as one; text: words as they are (the settings' test); html: words in Telegram's
+// HTML (bold, italic), already escaped, as a live alert's job card (alerts.ts telegramCard).
 export type TgMessage =
   | { kind: "cv"; file: { path: string; name: string }; role: string; company: string; url: string }
-  | { kind: "run" | "text"; text: string };
+  | { kind: "run" | "text" | "html"; text: string };
 
 const WORDS = {
   he: {
@@ -123,7 +124,10 @@ export async function sendTelegram(message: TgMessage, lang: Lang, account = rea
     sent = await call(account.token, "sendDocument", form, fetcher);
   } else {
     const text = message.kind === "run" ? words.run(message.text) : message.text;
-    sent = await call(account.token, "sendMessage", { chat_id: account.chatId, text: text.slice(0, 4000), link_preview_options: { is_disabled: true } }, fetcher);
+    sent = await call(account.token, "sendMessage", {
+      chat_id: account.chatId, text: text.slice(0, 4000), link_preview_options: { is_disabled: true },
+      ...(message.kind === "html" ? { parse_mode: "HTML" } : {}),
+    }, fetcher);
   }
   return sent.ok ? { status: "sent", detail: account.bot ? `@${account.bot}` : "" } : { status: "failed", detail: sent.error };
 }

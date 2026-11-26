@@ -11,11 +11,13 @@
 import { levelGate, STUDENT } from "./experience";
 import type { Group } from "./groups";
 import { chip, jobCard, mailPage, sectionHead } from "./mail-html";
+import { titleField } from "./roles";
 import type { Settings } from "./settings";
 
 // posted: the day the posting was published, YYYY-MM-DD, when its source gives one.
 export type NewJob = { title: string; company: string; url: string; location: string; portalId?: string; fit?: string; posted?: string };
-export type AlertJob = NewJob & { group: Group };
+// lines: the posting's words as read before it was told (postings.ts), for its card on Telegram.
+export type AlertJob = NewJob & { group: Group; lines?: string[] };
 type Found = (jobs: NewJob[]) => void;
 
 // What is told is what was just published, not all that is new to the list, which a search two weeks back and an
@@ -199,7 +201,6 @@ const WORDS = {
     one: (title: string, company: string) => `משרה חדשה: ${title}${company ? `, ${company}` : ""}`,
     many: (n: number, known: number) => `${n} משרות חדשות${known ? `, ${known} בהייטק ובחברות מוכרות` : ""}`,
     headline: (group: Group) => (group === "known" ? "פיפ: משרה חדשה בהייטק או בחברה מוכרת" : "פיפ: משרה חדשה"),
-    chatHead: (group: Group) => (group === "known" ? "משרה חדשה בהייטק או בחברה מוכרת" : "משרה חדשה"),
     headlineMany: (n: number) => `פיפ: ${n} משרות חדשות`,
     open: "פתיחת המשרה",
     list: "כל המשרות באתר המקומי",
@@ -215,7 +216,6 @@ const WORDS = {
     one: (title: string, company: string) => `New job: ${title}${company ? `, ${company}` : ""}`,
     many: (n: number, known: number) => `${n} new jobs${known ? `, ${known} at high-tech or known companies` : ""}`,
     headline: (group: Group) => (group === "known" ? "Pip: a new job at a high-tech or known company" : "Pip: a new job"),
-    chatHead: (group: Group) => (group === "known" ? "A new job at a high-tech or known company" : "A new job"),
     headlineMany: (n: number) => `Pip: ${n} new jobs`,
     open: "Open the job",
     list: "All the jobs on the local site",
@@ -229,6 +229,68 @@ const WORDS = {
 };
 
 const short = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+// ---------- a job's card on Telegram ----------
+
+// A job on Telegram as the job posts in the channels Sean follows look (Sean 2026-11-26, a Referally post): its title
+// in bold and the company after a slash; the place and the job's field in italics; three of what it asks, each after
+// a dot; and its link. Words in Telegram's HTML, escaped.
+const escTg = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// A posting's line as one line, without a heading's # marks (some sources write their headings so).
+const oneLine = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim().replace(/^#+\s+/, "");
+// Where the posting's list of what it asks starts, in English or Hebrew, and where the next part starts after it.
+const ASKS = /^(requirements?|qualifications?|(basic|minimum|required|preferred) qualifications|job requirements|skills( (and|&) experience)?|what (you('ll)? need|we('re)? looking for|you('ll)? bring)|who you are|about you|you have|must have|your (profile|skills|background|experience)|דרישות|כישורים|מה (צריך|אנחנו מחפשים)|ניסיון וכישורים)(?=$|[\s:,(&-])/i;
+const NEXT = /^(nice to have|advantages?|bonus|benefits|what we offer|responsibilities|about (us|the (company|team|role))|יתרון|יתרונות|מה אנחנו מציעים|תחומי אחריות|תיאור התפקיד|על החברה)(?=$|[\s:,(&-])/i;
+const BULLET = /^[•·・●▪◦*\-–]/;
+const titled = (line: string) => line.length <= 60 && (/:$/.test(line) || NEXT.test(line));
+
+// The first three things the posting asks for: the lines under its requirements' heading, without their bullets,
+// up to the next part. A heading right under it before any of them ("Requirements:", then "Must have:") is passed.
+export function postingAsks(lines: string[] = [], n = 3) {
+  const start = lines.findIndex((l) => { const t = oneLine(l); return t.length <= 60 && ASKS.test(t.replace(/:$/, "")); });
+  if (start < 0) return [];
+  const asks: string[] = [];
+  for (const raw of lines.slice(start + 1)) {
+    const line = oneLine(raw);
+    const item = line.replace(/^[•·・●▪◦*\-–]\s*/, "").replace(/^\d+[.)]\s+/, "");
+    if (!item) continue;
+    if (titled(item) && !BULLET.test(line)) {
+      if (asks.length || NEXT.test(item)) break;
+      continue;
+    }
+    asks.push(short(item, 110));
+    if (asks.length === n) break;
+  }
+  return asks;
+}
+
+// The job's field by its title: the field of roles (roles.ts) most of whose words it has, named in the title's
+// language (roles.ts titleField); none when its words name none.
+export function jobField(title: string) {
+  const field = titleField(title);
+  return field ? (/\p{Script=Hebrew}/u.test(title) ? field.he : field.en) : "";
+}
+
+// A job's link as short as it goes: a LinkedIn job's by its number, as the channels' posts give it, not its long
+// address with the title spelled out in it.
+function shortLink(url: string) {
+  const id = url.match(/linkedin\.com\/jobs\/view\/(?:[^/?#]*-)?(\d{6,})/i)?.[1];
+  return id ? `https://www.linkedin.com/jobs/view/${id}` : url;
+}
+
+export function telegramCard(j: AlertJob) {
+  const title = escTg(short(oneLine(j.title), 120));
+  const company = escTg(short(oneLine(j.company), 80));
+  const place = oneLine(j.location).split(",")[0].trim();
+  const about = [place, jobField(oneLine(j.title))].filter(Boolean).map((s) => escTg(short(s, 60))).join(" | ");
+  const asks = postingAsks(j.lines).map((a) => `・ ${escTg(a)}`);
+  return [
+    `<b>${title}</b>${company ? ` / ${company}` : ""}`,
+    ...(about ? ["", `<i>${about}</i>`] : []),
+    ...(asks.length ? ["", ...asks] : []),
+    "", escTg(shortLink(j.url)),
+  ].join("\n");
+}
 const line = (j: AlertJob) => [j.title, j.company, j.location].map((s) => short(String(s ?? "").replace(/\s+/g, " ").trim(), 90)).filter(Boolean).join(" · ");
 
 // The email's subject and words, and the computer's notice, the high-tech and known group first. list is the local
@@ -244,13 +306,9 @@ export function alertText(jobs: AlertJob[], lang: "he" | "en", list: string) {
     return these.length ? [`${w.groups[g]} (${these.length})`, ...these.map((j) => `• ${line(j)}\n  ${j.url}`), ""] : [];
   });
   const body = [...sections, `${w.list}: ${list}`, "", w.footer].join("\n");
-  // The same on Telegram (telegram-bot.ts), read on a phone, and never the local site's list, which a phone can't open.
-  // Each job comes in a message of its own (the watcher tells them one by one): what kind of job, its title, the
-  // company and place, and its link, with no footer to read again on every message. Several at once keep the list.
-  const plain = (s: string) => short(String(s ?? "").replace(/\s+/g, " ").trim(), 120);
-  const chat = ordered.length === 1
-    ? [w.chatHead(first.group), plain(first.title), [plain(first.company), plain(first.location)].filter(Boolean).join(" · "), first.url].filter(Boolean).join("\n")
-    : [subject, "", ...sections, w.footer].join("\n");
+  // The same on Telegram (telegram-bot.ts), read on a phone, and never the local site's list, which a phone can't open:
+  // each job as a card (telegramCard), in Telegram's HTML, the watcher telling them one a message.
+  const chat = ordered.map(telegramCard).join("\n\n\n");
   const headline = ordered.length === 1 ? w.headline(first.group) : w.headlineMany(ordered.length);
   const notice = ordered.slice(0, 3).map(line).join("\n");
   // The same as a page: the jobs as cards under their group's name, each with its day and a button to open it.

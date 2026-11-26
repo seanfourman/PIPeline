@@ -970,7 +970,7 @@ function useToolLabel() {
 // writing mint, judging amber, keeping pink.
 const TOOL_ICONS: Record<string, string> = {
   FetchPosting: "site", WebFetch: "site", WebSearch: "find", SearchRole: "find", ReadPortal: "portals", ReadChannel: "portals", Read: "file", Glob: "files", Grep: "find",
-  Write: "edit", Edit: "edit", NotebookEdit: "edit", Bash: "tools", DraftCv: "edit", AddKeywords: "edit", ReviewCv: "rules", BuildCv: "apps", EvaluateFit: "gauge",
+  Write: "edit", Edit: "edit", NotebookEdit: "edit", Bash: "tools", DraftCv: "edit", AddKeywords: "edit", ReviewCv: "rules", BuildCv: "apps", WolfPack: "ai", FixPackReasons: "edit", GateAgain: "rules", EvaluateFit: "gauge",
   FitCheck: "gauge", RankJob: "gauge", SaveJobs: "saved", SaveApplication: "saved", Skill: "readme", Agent: "ai", Task: "ai", TodoWrite: "rules",
   AskUserQuestion: "chat",
 };

@@ -160,6 +160,68 @@ describe("applier", () => {
     expect(prompts).toHaveLength(5);
   });
 
+  // Sean (2026-11-26) wanted a panel of seven reviewers trying to reject each CV, to turn on or off.
+  test("with the Wolf Pack on: seven seats read the draft, the reasons are fixed, the Gate reads it again, and it is kept", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "apply-"));
+    mkdirSync(path.join(root, "user", "cv"), { recursive: true });
+    const pack = readFileSync(path.join(import.meta.dir, "..", ".claude", "agents", "wolf-pack-reviewer.md"), "utf8");
+    const files: Record<string, string> = {
+      "templates/cv/one-page-clean/template.tex": TEMPLATE, "user/cv/main_example.tex": CV, "user/CV_RULES.md": "rules",
+      "user/profile/01-candidate-profile.md": "profile", ".claude/agents/wolf-pack-reviewer.md": pack,
+    };
+    const run: Run = async (argv) => {
+      if (argv.some((a) => a.includes("posting_guard.py"))) return { code: 0, out: "posting_guard: clean\n--- text ---\nJunior Backend Developer at Acme. Python and SQL.", err: "" };
+      if (argv.some((a) => a.includes("ats.py"))) return { code: 0, out: "ATS score: 100 (8 of 8 posting terms)\nMissing: nothing", err: "" };
+      return { code: 2, out: "", err: "unexpected" };
+    };
+    const wolves: { seat: string; posting: boolean; cv: string }[] = [];
+    let gateReads = 0;
+    const ask = async (system: string, prompt: string) => {
+      if (system.startsWith("You evaluate")) return JSON.stringify(EVALUATION);
+      if (system.includes("one wolf of the Wolf Pack")) {
+        const seat = prompt.match(/Your seat: (The [^.]+)\./)![1];
+        wolves.push({ seat, posting: prompt.includes("POSTING-"), cv: prompt });
+        if (seat === "The Gate" && gateReads++) return "SEAT: The Gate\nVERDICT: PASS\nSCORE: 91\nDECIDED BY: clear.";
+        return `SEAT: ${seat}\nVERDICT: ${seat === "The CEO" ? "PASS" : "REJECT"}\nSCORE: 40\nDECIDED BY: small work first.\nREASONS (worst first, at most 5):\n1. LINE: "Cut memory" WHY: too minor. FIX: lead with the AR station.`;
+      }
+      if (prompt.includes("the Wolf Pack, each tried to reject")) return `1. "Cut memory": too minor. FIXED: led with the AR station.\n2. (missing): no Kafka. GAP: Kafka never used.\n\`\`\`latex\n${ADDED_CV}\`\`\``;
+      return "```latex\n" + CV + "```";
+    };
+    const steps: string[] = [];
+    const text = await applyJob({
+      input: "Junior Backend Developer at Acme. Python and SQL.", lang: "he", signal: never, run, root, ask, context: [], wolfPack: true,
+      build: async (name) => ({ ok: true, output: `Saved user/documents/applications/${name}/Dana Cohen - Resume.pdf` }),
+      r: (rel) => files[rel] ?? "", record: () => "added", steps: { start: (id, t, n) => steps.push(`${n}`), done: () => {} },
+    });
+    const name = "acme_ltd_junior_backend_developer";
+    // The seven seats, the four marked so with the posting; then the Gate once more on the built CV.
+    expect(wolves.slice(0, 7).map((w) => w.seat).sort()).toEqual(["The CEO", "The Gate", "The Hiring Manager", "The Interrogator", "The Recruiter", "The Rival", "The Teammate"]);
+    expect(wolves.slice(0, 7).filter((w) => w.posting).map((w) => w.seat).sort()).toEqual(["The Gate", "The Hiring Manager", "The Interrogator", "The Rival"]);
+    expect(wolves).toHaveLength(8);
+    expect(wolves[7].cv).toContain(ADDED_CV.trim().split("\n")[0]);
+    expect(steps).toEqual(expect.arrayContaining(["WolfPack", "FixPackReasons", "GateAgain"]));
+    expect(readFileSync(path.join(root, "user", "cv", `main_${name}.tex`), "utf8")).toBe(ADDED_CV);
+    const kept = readFileSync(path.join(root, "user", "documents", "applications", name, "wolf-pack.md"), "utf8");
+    expect(kept).toContain("- The CEO: PASS, 40");
+    expect(kept).toContain("GAP: Kafka never used.");
+    expect(kept).toContain("## The Gate, reading the final CV");
+    expect(text).toContain("להקת הזאבים: 6 מתוך 7 דחו את הטיוטה. תוקנו 1 סיבות, וסיבה אחת נשארה פער.");
+    expect(text).toContain("הסינון האוטומטי: דוחה (40) לפני, עובר (91) אחרי.");
+    expect(text).toContain(`user/documents/applications/${name}/wolf-pack.md`);
+  });
+
+  test("with the Wolf Pack off, no wolf is asked", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "apply-"));
+    const prompts: string[] = [];
+    const run: Run = async (argv) => (argv.some((a) => a.includes("posting_guard.py")) ? { code: 0, out: "posting_guard: clean\n--- text ---\nA backend job.", err: "" } : { code: 0, out: "ATS score: 90\nMissing: nothing", err: "" });
+    await applyJob({
+      input: "A backend job.", lang: "en", signal: never, run, root, context: [], r: () => "",
+      ask: async (system, prompt) => { prompts.push(system + prompt); return system.startsWith("You evaluate") ? JSON.stringify(EVALUATION) : "```latex\n" + CV + "```"; },
+      build: async (name) => ({ ok: true, output: `Saved user/documents/applications/${name}/x.pdf` }), record: () => "added", steps: { start: () => {}, done: () => {} },
+    });
+    expect(prompts.some((p) => p.includes("Wolf Pack"))).toBe(false);
+  });
+
   test("in the daily run, writes a CV only for a strong or good fit, and none for a posting the guard flags", async () => {
     const tryIt = async (evaluation: object, guard = "posting_guard: clean") => {
       const root = mkdtempSync(path.join(os.tmpdir(), "apply-"));

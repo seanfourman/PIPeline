@@ -494,6 +494,7 @@ const he = {
       SearchRole: "מחפש: {target}", FitCheck: "בודק התאמה למשרות {target}", SaveJobs: "שומר {target} משרות ברשימה", ReadPortal: "קורא את המשרות של {target}", ReadChannel: "קורא את ערוץ הטלגרם {target}",
       FetchPosting: "פותח את המשרה", EvaluateFit: "בודק כמה המשרה מתאימה", DraftCv: "כותב קורות חיים", ReviewCv: "בודק כל עובדה מול הפרופיל",
       BuildCv: "בונה את ה-PDF ובודק את הכללים", SaveApplication: "שומר את ההגשה", AddKeywords: "מוסיף מילות מפתח שחסרות",
+      WolfPack: "להקת הזאבים מנסה לדחות את קורות החיים", FixPackReasons: "מתקן את כל מה שהזאבים מצאו", GateAgain: "הסינון האוטומטי קורא שוב",
     },
   },
   voice: {
@@ -642,6 +643,7 @@ const he = {
       locked: "הקובץ נעול להעתקה, אז אפשר להוריד אותו בנפרד אבל לא לחבר אותו לקורות החיים.",
     },
     salaryFrom: "שכר ברוטו לחודש, מ-", salaryTo: "עד", currency: "מטבע", student: "משרות סטודנט",
+    wolfPack: "להקת הזאבים", wolfPackHint: "שבעה זאבים קוראים כל קורות חיים לפני שהם מגיעים אליך, וכל אחד מנסה לדחות אותם: סינון אוטומטי, מנהל גיוס, מועמד מתחרה, מנכ״ל, מגייס עם 30 שניות, חבר לצוות, ומראיין שבודק כל שורה. כל סיבה שהם מוצאים מתוקנת. לוקח יותר זמן ויותר שימוש.",
     studentOptions: { normal: "כמו כל משרה", low: "דירוג נמוך וסימון", exclude: "לא רלוונטי" },
     fields: "תחומים שמעניינים אותי", fieldsHint: "באנגלית, כי זה מה שאני קורא.",
     industries: "תעשיות", industriesNote: "באילו תעשיות לחפש. בלי בחירה אני מחפש בכולן.",
@@ -1242,6 +1244,7 @@ const en: Dict = {
       SearchRole: "Searching: {target}", FitCheck: "Checking the fit of jobs {target}", SaveJobs: "Saving {target} jobs to the list", ReadPortal: "Reading {target}'s jobs", ReadChannel: "Reading the Telegram channel {target}",
       FetchPosting: "Opening the job", EvaluateFit: "Checking how well the job fits", DraftCv: "Writing the CV", ReviewCv: "Checking every fact against the profile",
       BuildCv: "Building the PDF and checking the rules", SaveApplication: "Saving the application", AddKeywords: "Adding the missing keywords",
+      WolfPack: "The Wolf Pack is trying to reject the CV", FixPackReasons: "Fixing everything the wolves found", GateAgain: "The automated screen reads it again",
     },
   },
   voice: {
@@ -1390,6 +1393,7 @@ const en: Dict = {
       locked: "This file is locked against copying, so it can be downloaded on its own but not joined to a CV.",
     },
     salaryFrom: "Gross monthly salary, from", salaryTo: "To", currency: "Currency", student: "Student positions",
+    wolfPack: "Wolf Pack", wolfPackHint: "Seven wolves read every CV before it reaches you, each trying to reject it: an automated screen, a hiring manager, a rival applicant, a CEO, a recruiter with 30 seconds, a teammate, and an interviewer who probes every line. Every reason they find gets fixed. It takes longer and uses more.",
     studentOptions: { normal: "Like any job", low: "Rank low and flag", exclude: "Not relevant" },
     fields: "Fields that interest me", fieldsHint: "Write in English, because that's what I read.",
     industries: "Industries", industriesNote: "Which industries to search. With none chosen, I search them all.",

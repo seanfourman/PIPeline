@@ -543,11 +543,17 @@ function TranscriptRow() {
   );
 }
 
-// Applying: the salary for forms and interviews, student positions, and the grade sheet.
+// Applying: the Wolf Pack that tries to reject each CV, the salary for forms and interviews, student positions, and
+// the grade sheet.
 function ApplyingSection({ draft, set }: { draft: any; set: (key: string, value: unknown) => void }) {
   const { t } = useApp();
   return (
     <>
+      <Group>
+        <Row toggle className="lead" label={t("settings.wolfPack")} hint={t("settings.wolfPackHint")}>
+          <Switch on={draft.wolfPack === true} onChange={(on) => set("wolfPack", on)} />
+        </Row>
+      </Group>
       <Group>
         <Row label={t("settings.salary")} hint={t("settings.salaryHint")}>
           <span className="set-range">

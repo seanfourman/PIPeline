@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { alertText, createWatcher, desktopNotice, justPublished, noticeCommand, worthTelling, type AlertJob, type NewJob } from "./alerts";
+import { alertText, createWatcher, desktopNotice, jobField, justPublished, noticeCommand, postingAsks, telegramCard, worthTelling, type AlertJob, type NewJob } from "./alerts";
 import { forgetKnown, jobGroup, jobIndustry, plainName } from "./groups";
 import { EMPTY_SETTINGS, type Settings } from "./settings";
 
@@ -238,14 +238,50 @@ describe("the live alerts", () => {
   });
 
   // Sean got nothing about new jobs on his Telegram bot (2026-11-23): the alerts went only by email and as a notice.
-  test("the same alert on Telegram, one job a message: its kind, title, company and place, and link, no local site", () => {
-    const jobs: AlertJob[] = [{ ...job("Junior Backend Developer", { company: "One Zero", location: "Tel Aviv" }), group: "known" }];
+  // Sean (2026-11-26) wants each one like the job posts in the channels he follows (a Referally post).
+  test("the same alert on Telegram as a card: bold title / company, place | field in italics, three asks, the link", () => {
+    const lines = [
+      "Seniority: Entry level", "Employment: Full-time", "Build things <fast> & well.", "Requirements:",
+      "B.Sc. in Computer Science", "• 1+ years with Node.js and React", "2+ years of experience is an advantage", "Docker",
+      "Nice to have:", "Kubernetes",
+    ];
+    const jobs: AlertJob[] = [{ ...job("Junior Backend Developer", { company: "One Zero", location: "Tel Aviv-Yafo, Tel Aviv District, Israel" }), group: "known", lines }];
     const { chat } = alertText(jobs, "he", "http://localhost:4174/jobs");
     expect(chat.split("\n")).toEqual([
-      "משרה חדשה בהייטק או בחברה מוכרת", "Junior Backend Developer", "One Zero · Tel Aviv", "https://jobs.example/Junior%20Backend%20Developer",
+      "<b>Junior Backend Developer</b> / One Zero",
+      "",
+      "<i>Tel Aviv-Yafo | Software development</i>",
+      "",
+      "・ B.Sc. in Computer Science",
+      "・ 1+ years with Node.js and React",
+      "・ 2+ years of experience is an advantage",
+      "",
+      "https://jobs.example/Junior%20Backend%20Developer",
     ]);
     expect(chat).not.toContain("localhost");
     expect(EMPTY_SETTINGS.alerts.telegram).toBe(true);
+  });
+
+  test("a card's words are escaped, a Hebrew posting's asks found under its own heading, and nothing made up", () => {
+    const hebrew: AlertJob = { ...job("מפתח/ת תוכנה ג'וניור", { company: "R&D <Labs>", location: "Rosh HaAyin" }), group: "other",
+      lines: ["דרוש/ה מפתח/ת תוכנה", "דרישות:", "תואר בהנדסת תוכנה", "ידע ב-React ו-Node.js", "ידע ב-C#", "זמינות למשרה מלאה"] };
+    expect(telegramCard(hebrew).split("\n")).toEqual([
+      "<b>מפתח/ת תוכנה ג'וניור</b> / R&amp;D &lt;Labs&gt;", "", "<i>Rosh HaAyin | פיתוח תוכנה</i>", "",
+      "・ תואר בהנדסת תוכנה", "・ ידע ב-React ו-Node.js", "・ ידע ב-C#", "", hebrew.url,
+    ]);
+    // No requirements heading and no known field: only what is known.
+    const bare: AlertJob = { ...job("Junior PMO", { company: "", location: "" }), group: "other", lines: ["We are evolving requirements daily."] };
+    expect(telegramCard(bare)).toBe(`<b>Junior PMO</b>\n\n${bare.url}`);
+    expect(postingAsks(["Responsibilities:", "Lead things", "What you'll need", "- Python", "- SQL"])).toEqual(["Python", "SQL"]);
+    // A heading right under the heading ("דרישות:" then "דרישות חובה:"), and headings written with #, are passed.
+    expect(postingAsks(["דרישות:", "דרישות חובה:", "Node.js", "React", "Nice to have:", "Go"])).toEqual(["Node.js", "React"]);
+    expect(postingAsks(["## מה צריך", "ניסיון ב-Python", "## על החברה", "x"])).toEqual(["ניסיון ב-Python"]);
+    expect(jobField("QA Automation Engineer")).toBe("QA and automation");
+    // A broad word alone names no field: a design engineer is no software developer.
+    expect(jobField("מהנדס/ת תכן")).toBe("");
+    // A LinkedIn job's link by its number.
+    const linked: AlertJob = { ...job("Software Engineer"), url: "https://il.linkedin.com/jobs/view/software-engineer-at-genesys-4492196031?trk=x", group: "other" };
+    expect(telegramCard(linked).split("\n").at(-1)).toBe("https://www.linkedin.com/jobs/view/4492196031");
   });
 
   test("the same alert as a page: each job a card with its link, a job's words escaped, the page in its language's direction", () => {

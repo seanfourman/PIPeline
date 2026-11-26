@@ -148,7 +148,7 @@ export function turnItems<E extends { t: string }>(events: E[]): TurnItem<E>[] {
 
 // The steps that write a CV (the /apply pipeline's), and so what a document being written is, from the step under
 // way: one of those, or one that writes a file in the CVs' or the letters' folder.
-const WRITES_CV = new Set(["DraftCv", "ReviewCv", "BuildCv", "AddKeywords"]);
+const WRITES_CV = new Set(["DraftCv", "ReviewCv", "WolfPack", "FixPackReasons", "BuildCv", "AddKeywords", "GateAgain"]);
 export function writingKind(tools: Ev[], done: (id: string) => boolean): DocKind | null {
   const now = [...tools].reverse().find((x) => !done(String(x.id)));
   if (!now) return null;

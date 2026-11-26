@@ -257,6 +257,20 @@ Step 5 compiles both documents and checks the layout, so a line the pass made lo
 
 ---
 
+## Step 4c: WOLF PACK (only when it is on)
+
+Run this step only when the Search settings in `user/CLAUDE.md` say **Wolf Pack: on**; when they say off, or say nothing, go straight to Step 5. The server's own apply (`web/applier.ts`) runs the same pack.
+
+The Wolf Pack is seven readers who each try to reject the CV from a seat of their own. Their seats are listed in `.claude/agents/wolf-pack-reviewer.md` under "The seats".
+
+1. **Release the pack.** In one message, spawn seven agents at once with `subagent_type: wolf-pack-reviewer`, one per seat. Each prompt is `Your seat: <seat name>.`, then the CV's LaTeX source inline in a ```latex block, then, only for a seat marked "with the posting", the posting inline between two marker lines as in Step 3. The wolves read nothing else, so don't make them Read files.
+2. **Merge.** Put every reason into one numbered list, worst first: a reason more wolves raised, or one that decided a REJECT, ranks higher, and each appears once.
+3. **Fix.** Edit the CV for every reason the profile and `user/CV_RULES.md` allow: cut, reorder, sharpen and reframe what is true, and lead with the biggest work. A reason only an untrue claim would answer stays a gap for Sean, never a line on the CV.
+4. **The Gate again.** After Step 5 builds the CV, send the Gate alone, with the built CV, for the before and after.
+5. **Keep it.** Write `user/documents/applications/<company>_<role>/wolf-pack.md`: each seat's verdict and score, the merged list with what was fixed and what stayed a gap, the Gate's second reading, and every answer whole. Step 6 tells Sean how many wolves rejected the draft, how many reasons were fixed, the Gate before and after, and the file.
+
+---
+
 ## Step 5: DRAFTER - Compile & Inspect PDFs (MANDATORY)
 
 **Never skip this step.** The source files looking fine is not sufficient — page-break decisions are unpredictable and commonly produce broken layouts (orphaned job titles separated from their bullets, cover letters spilling to 2 pages, bullet fonts not matching body text). Compile both documents and visually verify the PDFs before presenting.

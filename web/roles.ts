@@ -180,5 +180,18 @@ export function fieldTest(roles: Role[]) {
   return (title: string) => titleMatches(title, alone) || (titleMatches(title, paired) && titleMatches(title, MAKERS));
 }
 
+// The field a title is in by its own words, the one most of whose words it has, for naming a job's field (alerts.ts
+// telegramCard): neither a level's word nor a broad one counts, so a junior title, an engineer or a מהנדס alone is in
+// none (a design engineer at an arms maker is no software developer).
+export function titleField(title: string) {
+  let best: (typeof ROLE_FIELDS)[number] | null = null, most = 0;
+  for (const field of ROLE_FIELDS) {
+    if (field.id === "start") continue;
+    const n = field.words.filter((w) => !LEVEL_ONLY.has(lower(w)) && !BROAD.has(w) && wordAt(title, w)).length;
+    if (n > most) { best = field; most = n; }
+  }
+  return best;
+}
+
 // A role's searches on the Israeli boards: its title, and its Hebrew name when it has one.
 export const boardQueries = (role: Role) => [...new Set([role.query, listedRole(role.id)?.hebrew].filter((q): q is string => Boolean(q)))];

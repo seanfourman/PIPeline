@@ -149,7 +149,7 @@ const automation = createAutomation({
     return he ? `נקראו ${read} מתוך ${tried} משרות, בלי AI.` : `${read} of ${tried} jobs read, with no AI.`;
   }, timeout),
   // Each job picked, applied for by the server with a few calls to the AI (applier.ts), a CV only for a strong or good fit.
-  applyJob: (url, title, timeout) => runTask(title, (steps, signal) => applyJob({ input: url, steps, signal, lang: language(), ask: askFor(steps), strict: true }), timeout),
+  applyJob: (url, title, timeout) => runTask(title, (steps, signal) => applyJob({ input: url, steps, signal, lang: language(), ask: askFor(steps), strict: true, wolfPack: loadSettings().wolfPack }), timeout),
 });
 // The Telegram bot as the settings show it. While its token is saved and the user hasn't written to it yet, each
 // look (the settings page asks every ten seconds) checks again, at most every five seconds, so pressing Start in
@@ -879,7 +879,7 @@ async function api(req: Request, url: URL): Promise<Response> {
     if (!cliSignedIn()[settings.aiPrimary === "openai" ? "openai" : "claude"]) await cliStatus(true).catch(() => {});
     if (applying && !uploads.length) {
       const lang = settings.language === "en" ? "en" : "he";
-      return json(createTaskSession(applying.slice(0, 300), (steps, signal) => applyJob({ input: applying, steps, signal, lang, ask: askFor(steps) }), body.temporary === true, false, { model: body.model, effort: body.effort }).summary());
+      return json(createTaskSession(applying.slice(0, 300), (steps, signal) => applyJob({ input: applying, steps, signal, lang, ask: askFor(steps), wolfPack: loadSettings().wolfPack }), body.temporary === true, false, { model: body.model, effort: body.effort }).summary());
     }
     return json(createSession(full ? `/apply ${full}` : prompt, body.model, { access: isAccess(body.access) ? body.access : "ask", uploads, temporary: body.temporary === true, effort: body.effort }).summary());
   }
@@ -1020,9 +1020,14 @@ async function tellAlerts(jobs: AlertJob[]) {
   if (settings.alerts.desktop) await desktopNotice(text.headline, text.notice, text.open);
   const to = settings.automation.email || readMailAccount()?.user;
   if (settings.alerts.email && to) await sendMail({ to, subject: text.subject, body: text.body, html: text.html, attachments: [] });
-  // On Telegram too, once the bot knows the user's chat (Sean 2026-11-23: "אני לא מקבל הודעות בטלגרם על משרות").
+  // On Telegram too, once the bot knows the user's chat (Sean 2026-11-23: "אני לא מקבל הודעות בטלגרם על משרות"), each
+  // job as a card with what its posting asks, from its words as read for the alert (readForAlert, so no new read).
   if (settings.alerts.telegram && readTgAccount()) {
-    const sent = await sendTelegram({ kind: "text", text: text.chat }, language());
+    const read = await Promise.all(jobs.map(async (j) => {
+      const p = await postings.readNow({ url: j.url, title: j.title, company: j.company, location: j.location, date: j.posted }).catch(() => null);
+      return { ...j, lines: p?.read?.lines };
+    }));
+    const sent = await sendTelegram({ kind: "html", text: alertText(read, language(), `http://localhost:${PORT}/jobs`).chat }, language());
     if (sent.status !== "sent") console.log(`live alert on Telegram: ${sent.status} ${sent.detail ?? ""}`);
   }
 }
