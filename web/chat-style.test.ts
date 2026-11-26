@@ -8,4 +8,11 @@ describe("chat style", () => {
     expect(chatStyle("en")).toContain("Write every message to the user in English");
     expect(chatStyle("he")).toContain("asks about an English word");
   });
+
+  // The notes between steps slid into English after helpers reported back, and spoke of the user by name (2026-11-26).
+  test("keeps the notes between steps in the language too, and speaks to the user directly", () => {
+    expect(chatStyle("he")).toContain("after a helper (Agent) reports back");
+    expect(chatStyle("he")).toContain("every one of them in Hebrew");
+    expect(chatStyle("he")).toContain("Never call them by name in the third person");
+  });
 });

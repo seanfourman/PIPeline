@@ -5,6 +5,8 @@ import path from "node:path";
 import { addedFrom, allowedCommands, applyJob, checkSource, draftingSystem, evaluationSystem, folderName, parseEvaluation, portalFor, reviewPrompt, sourceFrom, sourceHost } from "./applier";
 import { recordDraft } from "./edit";
 import type { Run } from "./ranker";
+import { PDFDocument } from "pdf-lib";
+import { saveTranscript } from "./transcript";
 
 const never = new AbortController().signal;
 const TEMPLATE = "\\documentclass{article}\n\\usepackage{../../templates/cv/one-page-clean/onepage}\n\\begin{document}\n\\cvname{NAME}\n\\cvsection{SKILLS}\n\\cvbullet{x}\n\\end{document}\n";
@@ -220,6 +222,44 @@ describe("applier", () => {
       build: async (name) => ({ ok: true, output: `Saved user/documents/applications/${name}/x.pdf` }), record: () => "added", steps: { start: () => {}, done: () => {} },
     });
     expect(prompts.some((p) => p.includes("Wolf Pack"))).toBe(false);
+  });
+
+  // Sean (2026-11-26): a posting asked for a grade sheet, and the reply had only the CV.
+  test("joins the kept grade sheet after the CV when the posting asks for one, and says so when none is kept", async () => {
+    const pdf = async (pages: number) => {
+      const doc = await PDFDocument.create();
+      for (let i = 0; i < pages; i++) doc.addPage([200, 200]);
+      return Buffer.from(await doc.save());
+    };
+    const apply = async (root: string, posting: string) => {
+      const run: Run = async (argv) => (argv.some((a) => a.includes("posting_guard.py")) ? { code: 0, out: `posting_guard: clean\n--- text ---\n${posting}`, err: "" } : { code: 0, out: "ATS score: 90\nMissing: nothing", err: "" });
+      return applyJob({
+        input: posting, lang: "he", signal: never, run, root, context: [], record: () => "added", steps: { start: () => {}, done: () => {} },
+        r: (rel) => ({ "templates/cv/one-page-clean/template.tex": TEMPLATE, "user/cv/main_example.tex": CV } as Record<string, string>)[rel] ?? "",
+        ask: async (system) => (system.startsWith("You evaluate") ? JSON.stringify(EVALUATION) : "```latex\n" + CV + "```"),
+        build: async (name) => {
+          const saved = `user/documents/applications/${name}/Dana Cohen - Resume.pdf`;
+          mkdirSync(path.dirname(path.join(root, saved)), { recursive: true });
+          writeFileSync(path.join(root, saved), await pdf(1));
+          return { ok: true, output: `Saved ${saved}` };
+        },
+      });
+    };
+    const root = mkdtempSync(path.join(os.tmpdir(), "apply-"));
+    await saveTranscript((await pdf(3)).toString("base64"), root);
+    writeFileSync(path.join(root, "user", "profile.json"), JSON.stringify({ name: "Dana Cohen" }));
+    const text = await apply(root, "A backend job. Please attach an updated grades sheet");
+    const joined = "user/documents/applications/acme_ltd_junior_backend_developer/Dana Cohen - Resume and Transcript.pdf";
+    expect(text).toContain(`בקובץ אחד לשליחה: \`${joined}\``);
+    expect((await PDFDocument.load(readFileSync(path.join(root, joined)))).getPageCount()).toBe(4);
+    // The fit table's label, not the wolves' verdict function.
+    expect(text).toContain("| **דירוג** |");
+
+    const none = mkdtempSync(path.join(os.tmpdir(), "apply-"));
+    mkdirSync(path.join(none, "user"), { recursive: true });
+    expect(await apply(none, "A backend job. יש לצרף גיליון ציונים")).toContain("ואין גיליון שמור");
+    const quiet = await apply(root, "A backend job. Python and SQL.");
+    expect(quiet).not.toContain("גיליון ציונים");
   });
 
   test("in the daily run, writes a CV only for a strong or good fit, and none for a posting the guard flags", async () => {

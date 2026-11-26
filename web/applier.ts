@@ -17,6 +17,8 @@ import { cardLine, readCard } from "./data";
 import { buildSource, recordDraft } from "./edit";
 import { REPO } from "./policy";
 import { candidateContext, fetchPosting, guarded, PYTHON, runTool, type Ask, type Run, type Steps } from "./ranker";
+import { asksForTranscript, joinWithTranscript, transcriptInfo } from "./transcript";
+import { cvFileName } from "./user";
 
 const SKILLS = ".claude/skills/job-application-assistant";
 const HUMANIZER = ".claude/skills/humanizer/SKILL.md";
@@ -315,7 +317,12 @@ const WORDS = {
     added: (list: string) => `נוסף מעבר לפרופיל, כדאי להתכונן לשאלות עליו: ${list}.`, addedNone: "לא נוסף שום דבר מעבר לפרופיל.",
     weakFit: (band: string) => `ההתאמה היא ${band}, והריצה היומית כותבת רק להתאמה חזקה או טובה`, flagged: "בדיקת המודעה מצאה בה משהו חשוד",
     check: "כדאי לקרוא את קורות החיים לפני ששולחים.",
-    verdict: (v: string) => (v === "PASS" ? "עובר" : v === "REJECT" ? "דוחה" : "לא ענה"),
+    transcript: (file: string) => `המשרה מבקשת גיליון ציונים, אז חיברתי את הגיליון השמור בהגדרות אחרי קורות החיים, בקובץ אחד לשליחה: \`${file}\``,
+    noTranscript: "המשרה מבקשת גיליון ציונים, ואין גיליון שמור. אפשר להעלות אותו בהגדרות, ואז לצרף אותו לקורות החיים בעמוד ההגשות.",
+    transcriptApart: "המשרה מבקשת גיליון ציונים, אבל את הגיליון השמור לא הצלחתי לחבר לקורות החיים. אפשר לשלוח אותו בנפרד מעמוד ההגשות.",
+    // Not verdict, which the fit table's label is: a second key of that name replaced it, and the table showed this
+    // function's code (2026-11-26).
+    wolfVerdict: (v: string) => (v === "PASS" ? "עובר" : v === "REJECT" ? "דוחה" : "לא ענה"),
     pack: (rejected: number, total: number, fixed: number, gaps: number) => `להקת הזאבים: ${rejected} מתוך ${total} דחו את הטיוטה. תוקנו ${fixed} סיבות${gaps ? `, ו${gaps === 1 ? "סיבה אחת נשארה פער" : `${gaps} נשארו פערים`}` : ""}.`,
     gate: (before: string, after: string) => `הסינון האוטומטי: ${before} לפני, ${after} אחרי.`,
     packFile: (file: string) => `כל מה שהזאבים אמרו: \`${file}\``,
@@ -339,7 +346,10 @@ const WORDS = {
     added: (list: string) => `Added beyond the profile, worth preparing questions about: ${list}.`, addedNone: "Nothing was added beyond the profile.",
     weakFit: (band: string) => `the fit is ${band}, and the daily run writes only for a strong or good fit`, flagged: "the posting check found something suspicious in it",
     check: "Read the CV before you send it.",
-    verdict: (v: string) => (v === "PASS" ? "passes" : v === "REJECT" ? "rejects" : "no answer"),
+    transcript: (file: string) => `The job asks for a grade sheet, so the one kept in the settings is joined after the CV, in one file to send: \`${file}\``,
+    noTranscript: "The job asks for a grade sheet, and none is kept. Upload it in the settings, then join it to the CV on the applications page.",
+    transcriptApart: "The job asks for a grade sheet, but the one kept couldn't be joined to the CV. Send it separately from the applications page.",
+    wolfVerdict: (v: string) => (v === "PASS" ? "passes" : v === "REJECT" ? "rejects" : "no answer"),
     pack: (rejected: number, total: number, fixed: number, gaps: number) => `Wolf Pack: ${rejected} of ${total} rejected the draft. ${fixed} reasons were fixed${gaps ? `, and ${gaps} stayed gaps` : ""}.`,
     gate: (before: string, after: string) => `The automated screen: ${before} before, ${after} after.`,
     packFile: (file: string) => `Everything the wolves said: \`${file}\``,
@@ -496,7 +506,27 @@ export async function applyJob(o: {
         }
         steps.done("keywords", kept, "");
       }
+      // 6. A posting that asks for a grade sheet gets the one kept in the settings joined after the final CV, in one
+      // file beside it, as the applications page joins them (transcript.ts): the reply had only the CV, and the user
+      // had to ask for it (Sean 2026-11-26). With none kept, or one that can't be joined, the reply says what to do.
+      let transcript = "";
+      if (asksForTranscript(got.text)) {
+        const kept = transcriptInfo(root);
+        const cvPdf = path.join(root, saved);
+        if (!kept) transcript = w.noTranscript;
+        else if (!kept.joinable || !/\.pdf$/i.test(saved) || !existsSync(cvPdf)) transcript = w.transcriptApart;
+        else {
+          try {
+            const joined = `${path.posix.dirname(saved)}/${cvFileName(path.join(root, "user"), "Resume and Transcript")}`;
+            writeFileSync(path.join(root, joined), await joinWithTranscript(cvPdf, root));
+            transcript = w.transcript(joined);
+          } catch {
+            transcript = w.transcriptApart;
+          }
+        }
+      }
       out.push(w.built(saved));
+      out.push(transcript);
       const added = addedFrom(source);
       out.push(added.length ? w.added(added.join(", ")) : w.addedNone);
       out.push(w.tracker[result]);
@@ -521,7 +551,7 @@ export async function applyJob(o: {
         writeFileSync(path.join(root, rel), packReport(pack.before, pack.list, after?.text ? after : null));
         const gaps = pack.list.filter((l) => /\bGAP:/.test(l)).length;
         out.push(w.pack(pack.before.filter((a) => a.verdict === "REJECT").length, pack.before.length, pack.list.length - gaps, gaps));
-        const said = (a?: WolfAnswer | null) => (a?.text ? `${w.verdict(a.verdict)}${a.score === null ? "" : ` (${a.score})`}` : w.verdict(""));
+        const said = (a?: WolfAnswer | null) => (a?.text ? `${w.wolfVerdict(a.verdict)}${a.score === null ? "" : ` (${a.score})`}` : w.wolfVerdict(""));
         if (first || after?.text) out.push(w.gate(said(first), said(after)));
         out.push(w.packFile(rel));
       }
